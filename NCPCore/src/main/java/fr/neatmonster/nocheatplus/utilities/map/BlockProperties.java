@@ -3539,10 +3539,17 @@ public class BlockProperties {
         final double searchWidth = maxX - minX;
         final double searchDepth = maxZ - minZ;
         final int MAX_SEARCH_RADIUS = 256; // Typical Folia region size
+        final int MAX_WORLD_COORDINATE = 5000000; // Reasonable max coordinate (5 million blocks)
         
-        // If the search area is unreasonably large, it's likely a bug
+        // Check for unreasonably large search area
         if (searchWidth > MAX_SEARCH_RADIUS * 2 || searchDepth > MAX_SEARCH_RADIUS * 2) {
-            // Log warning and return false to prevent cross-region access
+            return false;
+        }
+        
+        // Check for unreasonably far coordinates (likely corrupted data)
+        if (Math.abs(minX) > MAX_WORLD_COORDINATE || Math.abs(maxX) > MAX_WORLD_COORDINATE ||
+            Math.abs(minZ) > MAX_WORLD_COORDINATE || Math.abs(maxZ) > MAX_WORLD_COORDINATE) {
+            // Coordinates are impossibly far - this is definitely corrupted data
             return false;
         }
         

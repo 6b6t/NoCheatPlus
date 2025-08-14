@@ -26,6 +26,7 @@ import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveInfo;
 import fr.neatmonster.nocheatplus.checks.moving.model.VehicleMoveInfo;
+import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.compat.MCAccess;
 import fr.neatmonster.nocheatplus.components.registry.event.IGenericInstanceHandle;
 import fr.neatmonster.nocheatplus.components.registry.feature.IRegisterAsGenericInstance;
@@ -55,6 +56,11 @@ public class AuxMoving implements IRegisterAsGenericInstance {
     private final IGenericInstanceHandle<MCAccess> mcAccess = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstanceHandle(MCAccess.class);
 
     public synchronized PlayerMoveInfo usePlayerMoveInfo() {
+        // Folia: Always create new instances to avoid cross-thread contamination
+        if (Folia.isFoliaServer()) {
+            return new PlayerMoveInfo(mcAccess);
+        }
+        // Original pooling logic for non-Folia servers
         if (parkedPlayerMoveInfo.isEmpty()) {
             return new PlayerMoveInfo(mcAccess);
         }
@@ -69,10 +75,18 @@ public class AuxMoving implements IRegisterAsGenericInstance {
      */
     public synchronized void returnPlayerMoveInfo(final PlayerMoveInfo moveInfo) {
         moveInfo.cleanup();
-        parkedPlayerMoveInfo.add(moveInfo);
+        // Folia: Don't pool objects to avoid cross-thread contamination
+        if (!Folia.isFoliaServer()) {
+            parkedPlayerMoveInfo.add(moveInfo);
+        }
     }
 
     public synchronized VehicleMoveInfo useVehicleMoveInfo() {
+        // Folia: Always create new instances to avoid cross-thread contamination
+        if (Folia.isFoliaServer()) {
+            return new VehicleMoveInfo(mcAccess);
+        }
+        // Original pooling logic for non-Folia servers
         if (parkedVehicleMoveInfo.isEmpty()) {
             return new VehicleMoveInfo(mcAccess);
         }
@@ -87,7 +101,10 @@ public class AuxMoving implements IRegisterAsGenericInstance {
      */
     public synchronized void returnVehicleMoveInfo(final VehicleMoveInfo moveInfo) {
         moveInfo.cleanup();
-        parkedVehicleMoveInfo.add(moveInfo);
+        // Folia: Don't pool objects to avoid cross-thread contamination
+        if (!Folia.isFoliaServer()) {
+            parkedVehicleMoveInfo.add(moveInfo);
+        }
     }
 
     /**
@@ -111,6 +128,14 @@ public class AuxMoving implements IRegisterAsGenericInstance {
      * @param cc
      */
     public synchronized void resetPositionsAndMediumProperties(final Player player, final Location loc, final MovingData data, final MovingConfig cc) {
+        // Folia safety: Validate location is reasonable
+        final int MAX_WORLD_COORDINATE = 5000000; // 5 million blocks
+        if (loc != null && (Math.abs(loc.getX()) > MAX_WORLD_COORDINATE || 
+                            Math.abs(loc.getZ()) > MAX_WORLD_COORDINATE)) {
+            // Location is unreasonably far - likely corrupted data, skip update
+            return;
+        }
+        
         final PlayerMoveInfo moveInfo = usePlayerMoveInfo();
         moveInfo.set(player, loc, null, cc.yOnGround);
         data.resetPlayerPositions(moveInfo.from);
