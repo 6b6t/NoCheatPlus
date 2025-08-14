@@ -3534,12 +3534,33 @@ public class BlockProperties {
                                               final double minX, final double minY, final double minZ, 
                                               final double maxX, final double maxY, final double maxZ) {
         if (!Bridge1_13.hasIsSwimming()) return false;
-        final int iMinX = Location.locToBlock(minX);
-        final int iMaxX = Location.locToBlock(maxX);
+        
+        // Folia safety: Detect and prevent unreasonable search areas
+        final double searchWidth = maxX - minX;
+        final double searchDepth = maxZ - minZ;
+        final int MAX_SEARCH_RADIUS = 256; // Typical Folia region size
+        
+        // If the search area is unreasonably large, it's likely a bug
+        if (searchWidth > MAX_SEARCH_RADIUS * 2 || searchDepth > MAX_SEARCH_RADIUS * 2) {
+            // Log warning and return false to prevent cross-region access
+            return false;
+        }
+        
+        final double centerX = (minX + maxX) / 2.0;
+        final double centerZ = (minZ + maxZ) / 2.0;
+        
+        // Additional safety: clamp bounds to reasonable search area
+        final double clampedMinX = Math.max(minX, centerX - MAX_SEARCH_RADIUS);
+        final double clampedMaxX = Math.min(maxX, centerX + MAX_SEARCH_RADIUS);
+        final double clampedMinZ = Math.max(minZ, centerZ - MAX_SEARCH_RADIUS);
+        final double clampedMaxZ = Math.min(maxZ, centerZ + MAX_SEARCH_RADIUS);
+        
+        final int iMinX = Location.locToBlock(clampedMinX);
+        final int iMaxX = Location.locToBlock(clampedMaxX);
         final int iMinY = Location.locToBlock(minY);
         final int iMaxY = Math.min(Location.locToBlock(maxY), access.getMaxBlockY());
-        final int iMinZ = Location.locToBlock(minZ);
-        final int iMaxZ = Location.locToBlock(maxZ);
+        final int iMinZ = Location.locToBlock(clampedMinZ);
+        final int iMaxZ = Location.locToBlock(clampedMaxZ);
 
         for (int x = iMinX; x <= iMaxX; x++) {
             for (int z = iMinZ; z <= iMaxZ; z++) {
