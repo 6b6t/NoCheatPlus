@@ -86,7 +86,7 @@ public class BlockChangeListener implements Listener {
             @Override
             public void onEvent(BlockRedstoneEvent event) {
                 if (enabled) {
-                    onBlockRedstone(event);
+//                    onBlockRedstone(event);
                 }
             }
         },
@@ -96,7 +96,7 @@ public class BlockChangeListener implements Listener {
             @Override
             public void onEvent(EntityChangeBlockEvent event) {
                 if (enabled) {
-                    onEntityChangeBlock(event);
+//                    onEntityChangeBlock(event);
                 }
             }
         },
@@ -106,7 +106,7 @@ public class BlockChangeListener implements Listener {
             @Override
             public void onEvent(BlockPistonExtendEvent event) {
                 if (enabled) {
-                    onPistonExtend(event);
+//                    onPistonExtend(event);
                 }
             }
         },
@@ -116,7 +116,7 @@ public class BlockChangeListener implements Listener {
             @Override
             public void onEvent(BlockPistonRetractEvent event) {
                 if (enabled) {
-                    onPistonRetract(event);
+//                    onPistonRetract(event);
                 }
             }
         },
@@ -222,7 +222,7 @@ public class BlockChangeListener implements Listener {
 
     /**
      * Get the direction, in which blocks are or would be moved (towards the piston).
-     * 
+     *
      * @param pistonBlock
      * @param eventDirection
      * @return
@@ -283,7 +283,7 @@ public class BlockChangeListener implements Listener {
         // TODO: Fine grained enabling state (pistons, doors, other).
         final Block block = event.getBlock();
         // TODO: Abstract method for a block and a set of materials (redstone, interact, ...).
-        if (block == null 
+        if (block == null
             || (BlockFlags.getBlockFlags(block.getType()) & BlockFlags.F_VARIABLE_REDSTONE) == 0) {
             return;
         }
@@ -328,7 +328,7 @@ public class BlockChangeListener implements Listener {
     @SuppressWarnings("deprecation")
     private void onRightClickBlock(final PlayerInteractEvent event) {
         final Result result = event.useInteractedBlock();
-        if ((result == Result.ALLOW 
+        if ((result == Result.ALLOW
             || result == Result.DEFAULT && !event.isCancelled())) {
             final Block block = event.getClickedBlock();
             if (block != null) {
@@ -342,7 +342,7 @@ public class BlockChangeListener implements Listener {
                             blocktool == tool.toolType) {
                             tracker.addBlocks(block);
                         }
-                    } 
+                    }
                     else {
                         final boolean defdata = block.getData() == 0;
                         if (is1_9 && type == BridgeMaterial.GRASS_BLOCK && tool.toolType == ToolType.SPADE ||
@@ -370,7 +370,7 @@ public class BlockChangeListener implements Listener {
     /**
      * Add a past state for this block, extending for the other block in case of
      * doors. This is for the case of interaction or redstone level change.
-     * 
+     *
      * @param block
      * @param relevantFlags
      */
@@ -386,13 +386,13 @@ public class BlockChangeListener implements Listener {
                  * (TickListener...). Hinge corner... possibilities?
                  */
                 if (otherBlock != null // Top of the map / special case.
-                    && (BlockFlags.getBlockFlags(otherBlock.getType()) 
+                    && (BlockFlags.getBlockFlags(otherBlock.getType())
                         & relevantFlags) != 0) {
                     tracker.addBlocks(block, otherBlock);
                     return;
                 }
             }
-        } 
+        }
         // Legacy
         else {
             final MaterialData materialData = block.getState().getData();
@@ -405,7 +405,7 @@ public class BlockChangeListener implements Listener {
                  * (TickListener...). Hinge corner... possibilities?
                  */
                 if (otherBlock != null // Top of the map / special case.
-                    && (BlockFlags.getBlockFlags(otherBlock.getType()) 
+                    && (BlockFlags.getBlockFlags(otherBlock.getType())
                         & relevantFlags) != 0) {
                     tracker.addBlocks(block, otherBlock);
                     return;

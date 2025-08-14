@@ -56,9 +56,17 @@ public class VersionCommand extends BaseCommand {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        final Component info = getVersionInfo();
-
-        NCPAPIProvider.getNoCheatPlusAPI().adventure().sender(sender).sendMessage(info);
+        try {
+            // Try to use Adventure if available
+            final Component info = getVersionInfo();
+            NCPAPIProvider.getNoCheatPlusAPI().adventure().sender(sender).sendMessage(info);
+        } catch (Exception e) {
+            // Fall back to plain text if Adventure is not available
+            String plainText = getFormattedVersionInfo();
+            for (String line : plainText.split("\n")) {
+                sender.sendMessage(line);
+            }
+        }
 
         return true;
     }

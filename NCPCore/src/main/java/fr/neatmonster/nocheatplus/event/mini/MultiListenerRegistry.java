@@ -33,7 +33,7 @@ import fr.neatmonster.nocheatplus.utilities.StringUtil;
 /**
  * Support for registering multiple event-handler methods at once.<br>
  * <br>
- * 
+ *
  * The MultiListenerRegistry allows passing a defaultOrder, as well as the
  * per-class annotation
  * {@link fr.neatmonster.nocheatplus.components.registry.order.RegistrationOrder.RegisterEventsWithOrder},
@@ -42,15 +42,15 @@ import fr.neatmonster.nocheatplus.utilities.StringUtil;
  * <br>
  * Priority (FCFS): RegisterMethodWithOrder, RegisterEventsWithOrder,
  * defaultOrder
- * 
+ *
  * <br>
  * <br>
  * For alternatives and more details and conventions see:
  * {@link fr.neatmonster.nocheatplus.event.mini.MiniListenerRegistry}<br>
- * 
- * 
+ *
+ *
  * @author asofold
- * 
+ *
  * @param <EB>
  *            Event base class, e.g. Event for Bukkit.
  * @param <P>
@@ -66,8 +66,8 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
         private final RegistrationOrder order;
         private final P basePriority;
 
-        private AutoListener(final Class<E> eventClass, 
-                final Object listener, final Method method, 
+        private AutoListener(final Class<E> eventClass,
+                final Object listener, final Method method,
                 final RegistrationOrder order, final P basePriority) {
             this.eventClass = eventClass;
             this.listener = listener;
@@ -82,7 +82,7 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
                 method.invoke(listener, event);
             }
             catch (InvocationTargetException e) {
-                onException(event, e);
+//                onException(event, e);
             }
             catch (IllegalArgumentException e) {
                 onException(event, e);
@@ -102,8 +102,8 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
                 builder.append(StringUtil.throwableToString(t.getCause()));
                 cause = cause.getCause();
             }
-            StaticLog.logOnce(Level.SEVERE, 
-                    "Exception with " + getComponentName() + ", processing " + event.getClass().getName() + ": " + t.getClass().getSimpleName(), 
+            StaticLog.logOnce(Level.SEVERE,
+                    "Exception with " + getComponentName() + ", processing " + event.getClass().getName() + ": " + t.getClass().getSimpleName(),
                     builder.toString());
         }
 
@@ -126,7 +126,7 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
     }
 
     /**
-     * 
+     *
      * @param method
      * @param basePriority
      * @param defaultOrder
@@ -137,7 +137,7 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
      * @return
      */
     @SuppressWarnings("unchecked")
-    protected <E extends EB> MiniListener<E> register(Object listener, Method method, P basePriority, 
+    protected <E extends EB> MiniListener<E> register(Object listener, Method method, P basePriority,
             RegistrationOrder defaultOrder, boolean ignoreCancelled) {
         RegistrationOrder order = null;
         if (method.getClass().isAnnotationPresent(RegisterMethodWithOrder.class)) {
@@ -151,21 +151,21 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
             // TODO: Throw rather.
             return null;
         }
-        register((Class<E>) method.getParameterTypes()[0], miniListener, 
+        register((Class<E>) method.getParameterTypes()[0], miniListener,
                 basePriority, defaultOrder, ignoreCancelled);
         return miniListener;
     }
 
     /**
      * Auxiliary method to get a MiniListener instance for a given method.
-     * 
+     *
      * @param method
      * @return
      */
     @SuppressWarnings("unchecked")
-    protected <E extends EB> MiniListener<E> getMiniListener(final Object listener, 
+    protected <E extends EB> MiniListener<E> getMiniListener(final Object listener,
             final Method method, final RegistrationOrder order, final P basePriority) {
-        return new AutoListener<E>((Class<E>) method.getParameterTypes()[0], 
+        return new AutoListener<E>((Class<E>) method.getParameterTypes()[0],
                 listener, method, order, basePriority);
     }
 
@@ -202,13 +202,13 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
      * <br>
      * Priority (FCFS): RegisterMethodWithOrder, RegisterEventsWithOrder,
      * defaultOrder
-     * 
+     *
      * @param listener
      *            All internally created MiniListener instances will be attached
      *            to the listener by default.
      * @return Collection of MiniListener instances for attaching.
      */
-    protected Collection<MiniListener<? extends EB>> register(Object listener, 
+    protected Collection<MiniListener<? extends EB>> register(Object listener,
             P defaultPriority, RegistrationOrder defaultOrder, boolean defaultIgnoreCancelled) {
         Collection<MiniListener<? extends EB>> listeners = new ArrayList<MiniListener<? extends EB>>();
         Class<?> listenerClass = listener.getClass();
@@ -231,13 +231,13 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
             if (shouldBeEventHandler(method)) {
                 MiniListener<? extends EB> miniListener = null;
                 if (check_and_prepare_method(method)) {
-                    miniListener = register(listener, method, 
-                            getPriority(method, defaultPriority), order, 
+                    miniListener = register(listener, method,
+                            getPriority(method, defaultPriority), order,
                             getIgnoreCancelled(method, defaultIgnoreCancelled));
                 }
                 if (miniListener == null) {
                     // TODO: ReflectionUtil.toStringSpecialCase(Method) -> With type parameters (simple).
-                    NCPAPIProvider.getNoCheatPlusAPI().getLogManager().severe(Streams.STATUS, 
+                    NCPAPIProvider.getNoCheatPlusAPI().getLogManager().severe(Streams.STATUS,
                             "Could not register event listener: " + listener.getClass().getName()
                             + "#" + method.getName());
                 } else {
@@ -254,7 +254,7 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
     /**
      * Solely meant for check for annotations (not return type etc., use
      * getMiniListener for that).
-     * 
+     *
      * @param method
      * @return
      */
@@ -262,7 +262,7 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
 
     /**
      * This is meant to process platform specific annotations.
-     * 
+     *
      * @param method
      * @return
      */
@@ -270,7 +270,7 @@ public abstract class MultiListenerRegistry<EB, P> extends MiniListenerRegistry<
 
     /**
      * This is meant to process platform specific annotations.
-     * 
+     *
      * @param method
      * @return
      */

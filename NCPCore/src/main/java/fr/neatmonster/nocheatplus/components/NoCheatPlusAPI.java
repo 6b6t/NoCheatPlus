@@ -170,9 +170,8 @@ public interface NoCheatPlusAPI extends ComponentRegistry<Object>, ComponentRegi
 
     /**
      * Get BukkitAudiences of Adventure.
-     * @return
+     * @return BukkitAudiences, or null if Adventure is not available
      */
-    @NonNull
     BukkitAudiences adventure();
 
     /**

@@ -181,8 +181,8 @@ public class PluginTests {
         }
 
         @Override
-        public @NotNull BukkitAudiences adventure() {
-            throw new UnsupportedOperationException();
+        public BukkitAudiences adventure() {
+            return null;
         }
 
         @Override

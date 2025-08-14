@@ -910,8 +910,14 @@ public class NoCheatPlus extends JavaPlugin implements NoCheatPlusAPI {
     @Override
     public void onEnable() {
 
-        // Create BukkitAudiences
-        this.adventure = BukkitAudiences.create(this);
+        // Try to create BukkitAudiences (may fail on newer servers that have Adventure built-in)
+        try {
+            this.adventure = BukkitAudiences.create(this);
+        } catch (Exception e) {
+            // Adventure initialization failed, likely due to server having built-in Adventure
+            getLogger().warning("Failed to initialize Adventure API - this is expected on modern servers with built-in Adventure support");
+            this.adventure = null;
+        }
 
         // Reset TickTask (just in case).
         TickTask.setLocked(true);
@@ -1091,10 +1097,8 @@ public class NoCheatPlus extends JavaPlugin implements NoCheatPlusAPI {
     private BukkitAudiences adventure;
 
     @Override
-    public @NotNull BukkitAudiences adventure() {
-        if(this.adventure == null) {
-            throw new IllegalStateException("Tried to access Adventure when the plugin was disabled!");
-        }
+    public BukkitAudiences adventure() {
+        // Return null if Adventure is not available (newer servers with built-in Adventure)
         return this.adventure;
     }
 
