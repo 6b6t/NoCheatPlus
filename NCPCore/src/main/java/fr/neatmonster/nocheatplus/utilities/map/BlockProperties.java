@@ -44,6 +44,7 @@ import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
 import fr.neatmonster.nocheatplus.compat.AlmostBoolean;
 import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.compat.Bridge1_9;
+import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.compat.BridgeEnchant;
 import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
 import fr.neatmonster.nocheatplus.compat.BridgePotionEffect;
@@ -3535,11 +3536,13 @@ public class BlockProperties {
                                               final double maxX, final double maxY, final double maxZ) {
         if (!Bridge1_13.hasIsSwimming()) return false;
         
-        // Folia safety: Detect and prevent unreasonable search areas
+        // Folia safety: Detect and prevent cross-region searches
         final double searchWidth = maxX - minX;
         final double searchDepth = maxZ - minZ;
-        final int MAX_SEARCH_RADIUS = 256; // Typical Folia region size
         final int MAX_WORLD_COORDINATE = 5000000; // Reasonable max coordinate (5 million blocks)
+        
+        // For Folia, use a much smaller search radius to avoid cross-region access
+        final int MAX_SEARCH_RADIUS = Folia.isFoliaServer() ? 64 : 256; // Smaller radius on Folia
         
         // Check for unreasonably large search area
         if (searchWidth > MAX_SEARCH_RADIUS * 2 || searchDepth > MAX_SEARCH_RADIUS * 2) {
