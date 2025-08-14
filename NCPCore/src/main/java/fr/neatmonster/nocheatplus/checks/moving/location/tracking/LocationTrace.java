@@ -406,7 +406,7 @@ public class LocationTrace {
     public synchronized TraceIterator maxAgeIterator(final long time) {
         TraceEntry start = firstEntry;
         while (start != null) {
-            if (start.next != null && start.next.time >= time) {
+            if (start.next != null && start.next.time < time) {
                 start = start.next;
             }
             else {

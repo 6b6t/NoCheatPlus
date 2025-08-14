@@ -3545,7 +3545,13 @@ public class BlockProperties {
             for (int z = iMinZ; z <= iMaxZ; z++) {
                 for (int y = iMaxY; y >= iMinY; y--) {
                     if (!world.isChunkLoaded(Math.floorDiv(x, 16), Math.floorDiv(z, 16))) return false;
-                    BlockData bd = world.getBlockAt(x,y,z).getBlockData();
+                    BlockData bd;
+                    try {
+                        bd = world.getBlockAt(x,y,z).getBlockData();
+                    } catch (Throwable t) {
+                        // Folia thread check exception - assume not waterlogged
+                        continue;
+                    }
                     if (bd instanceof Waterlogged && ((Waterlogged)bd).isWaterlogged()) {
                          // Clearly outside of bounds. (liquid)
                         if (minX > 1.0 + x || maxX < 0.0 + x

@@ -703,7 +703,12 @@ public class RichBoundsLocation implements IGetBukkitLocation, IGetBlockPosition
      */
     public boolean isInLiquid() {
         // TODO: optimize (check liquid first and only if liquid check further)
-        if (!isInWaterLogged() && blockFlags != null && (blockFlags.longValue() & BlockFlags.F_LIQUID) == 0) return false;
+        try {
+            if (!isInWaterLogged() && blockFlags != null && (blockFlags.longValue() & BlockFlags.F_LIQUID) == 0) return false;
+        } catch (Throwable t) {
+            // Folia thread check exception - assume not waterlogged and continue
+            if (blockFlags != null && (blockFlags.longValue() & BlockFlags.F_LIQUID) == 0) return false;
+        }
         // TODO: This should check for F_LIQUID too, Use a method that returns all found flags (!).
         return isInWater() || isInLava();
     }
