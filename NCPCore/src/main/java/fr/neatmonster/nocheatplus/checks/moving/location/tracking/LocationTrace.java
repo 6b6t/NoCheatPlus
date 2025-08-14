@@ -405,9 +405,12 @@ public class LocationTrace {
      */
     public synchronized TraceIterator maxAgeIterator(final long time) {
         TraceEntry start = firstEntry;
-        while (start != null) {
-            if (start.next != null && start.next.time < time) {
+        int iterations = 0;
+        final int maxIterations = Math.max(1000, size * 2); // Safety limit
+        while (start != null && iterations < maxIterations) {
+            if (start.next != null && start.next.time >= time) {
                 start = start.next;
+                iterations++;
             }
             else {
                 break;
