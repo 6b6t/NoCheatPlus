@@ -129,11 +129,25 @@ public class AuxMoving implements IRegisterAsGenericInstance {
      */
     public synchronized void resetPositionsAndMediumProperties(final Player player, final Location loc, final MovingData data, final MovingConfig cc) {
         // Folia safety: Validate location is reasonable
-        final int MAX_WORLD_COORDINATE = 5000000; // 5 million blocks
-        if (loc != null && (Math.abs(loc.getX()) > MAX_WORLD_COORDINATE || 
-                            Math.abs(loc.getZ()) > MAX_WORLD_COORDINATE)) {
-            // Location is unreasonably far - likely corrupted data, skip update
+        if (loc == null) {
             return;
+        }
+        
+        // On Folia, be much more strict about distance
+        final int MAX_COORDINATE = Folia.isFoliaServer() ? 30000 : 5000000; // 30k blocks on Folia, 5M on normal
+        if (Math.abs(loc.getX()) > MAX_COORDINATE || Math.abs(loc.getZ()) > MAX_COORDINATE) {
+            // Location is unreasonably far - likely corrupted data or cross-thread contamination
+            return;
+        }
+        
+        // Additional Folia check: Validate player location matches roughly
+        if (Folia.isFoliaServer() && player != null) {
+            Location playerLoc = player.getLocation();
+            double distance = Math.abs(playerLoc.getX() - loc.getX()) + Math.abs(playerLoc.getZ() - loc.getZ());
+            if (distance > 1000) { // More than 1000 blocks difference is suspicious
+                // Likely cross-thread contamination, skip update
+                return;
+            }
         }
         
         final PlayerMoveInfo moveInfo = usePlayerMoveInfo();

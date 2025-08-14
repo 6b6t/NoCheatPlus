@@ -16,6 +16,8 @@ package fr.neatmonster.nocheatplus.components.pool;
 
 import java.util.ArrayList;
 
+import fr.neatmonster.nocheatplus.compat.Folia;
+
 public abstract class AbstractPool <O> implements GenericPool <O> {
 
     private final int maxPoolSize;
@@ -33,6 +35,11 @@ public abstract class AbstractPool <O> implements GenericPool <O> {
 
     @Override
     public O getInstance() {
+        // Folia: Always create new instances to avoid thread safety issues
+        if (Folia.isFoliaServer()) {
+            return newInstance();
+        }
+        // Original pooling logic for non-Folia servers
         if (!pool.isEmpty()) {
             return pool.remove(pool.size() - 1); // Prevent re-size.
         }
@@ -46,6 +53,11 @@ public abstract class AbstractPool <O> implements GenericPool <O> {
         if (instance == null) {
             throw new NullPointerException("The passed instance must not be null.");
         }
+        // Folia: Don't pool objects to avoid thread safety issues
+        if (Folia.isFoliaServer()) {
+            return; // Let GC handle it
+        }
+        // Original pooling logic for non-Folia servers
         if (maxPoolSize <= 0 || pool.size() < maxPoolSize) {
             pool.add(instance);
         }
