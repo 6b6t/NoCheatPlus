@@ -1734,6 +1734,32 @@ catch (java.lang.Throwable thr) {}
                                            final long now, final long tick, final CombinedData data, 
                                            final MovingData mData, final MovingConfig mCc, final IPlayerData pData) {
 
+        // Folia safety: Validate coordinates are reasonable before processing
+        if (Folia.isFoliaServer()) {
+            // Check for unreasonable coordinates that indicate cross-thread contamination
+            final double MAX_COORD = 30000; // 30k blocks max on Folia
+            if (Math.abs(from.getX()) > MAX_COORD || Math.abs(from.getZ()) > MAX_COORD ||
+                Math.abs(to.getX()) > MAX_COORD || Math.abs(to.getZ()) > MAX_COORD) {
+                // Coordinates are unreasonable - likely cross-thread contamination, skip processing
+                return;
+            }
+            
+            // Check if movement distance is reasonable
+            final double distance = Math.abs(from.getX() - to.getX()) + Math.abs(from.getZ() - to.getZ());
+            if (distance > 1000) { // More than 1000 blocks in one move is suspicious
+                // Likely corrupted data, skip processing
+                return;
+            }
+            
+            // Validate player's actual location matches roughly
+            final Location playerLoc = player.getLocation();
+            final double playerDistance = Math.abs(playerLoc.getX() - from.getX()) + Math.abs(playerLoc.getZ() - from.getZ());
+            if (playerDistance > 100) { // Player location doesn't match 'from' location
+                // Data mismatch - likely cross-thread issue
+                return;
+            }
+        }
+
         final String toWorldName = to.getWorld().getName();
         Combined.feedYawRate(player, to.getYaw(), now, toWorldName, data, pData);
         // TODO: maybe even not count vehicles at all ?
