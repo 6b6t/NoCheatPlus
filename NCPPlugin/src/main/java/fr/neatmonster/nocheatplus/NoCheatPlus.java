@@ -1203,20 +1203,12 @@ public class NoCheatPlus extends JavaPlugin implements NoCheatPlusAPI {
     }
 
     private void updateBlockChangeTracker(final ConfigFile config) {
-        // Activation / listener.
-        if (config.getBoolean(ConfPaths.COMPATIBILITY_BLOCKS_CHANGETRACKER_ACTIVE) 
-                && config.getBoolean(ConfPaths.COMPATIBILITY_BLOCKS_CHANGETRACKER_PISTONS)) {
-            if (blockChangeListener == null) {
-                blockChangeListener = new BlockChangeListener(blockChangeTracker);
-                blockChangeListener.register();
-            }
-            blockChangeListener.setEnabled(true);
-        }
-        else if (blockChangeListener != null) {
+        // Force-disable BlockChangeTracker in this fork regardless of config.
+        if (blockChangeListener != null) {
             blockChangeListener.setEnabled(false);
-            blockChangeTracker.clear();
         }
-        // Configuration.
+        blockChangeTracker.clear();
+        // Keep internals updated (harmless even if disabled).
         blockChangeTracker.setExpirationAgeTicks(config.getInt(ConfPaths.COMPATIBILITY_BLOCKS_CHANGETRACKER_MAXAGETICKS));
         blockChangeTracker.setWorldNodeSkipSize(config.getInt(ConfPaths.COMPATIBILITY_BLOCKS_CHANGETRACKER_PERWORLD_MAXENTRIES));
         blockChangeTracker.updateBlockCacheHandle();

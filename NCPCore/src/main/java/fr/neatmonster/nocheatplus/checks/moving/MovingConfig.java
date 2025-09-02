@@ -322,11 +322,8 @@ public class MovingConfig extends ACheckConfig {
         } else {
             enforceLocation = ref.decide();
         }
-        // TODO: Rename overall flag to trackBlockChanges. Create a sub-config rather.
-        trackBlockMove = config.getBoolean(ConfPaths.COMPATIBILITY_BLOCKS_CHANGETRACKER_ACTIVE) 
-                && (config.getBoolean(ConfPaths.COMPATIBILITY_BLOCKS_CHANGETRACKER_PISTONS
-                        // TODO: || other activation flags.
-                        ));
+        // Folia-compatible fork: BlockChangeTracker is always disabled.
+        trackBlockMove = false;
         final PlayerSetBackMethod playerSetBackMethod = PlayerSetBackMethod.fromString(
                 "extern.fromconfig", config.getString(ConfPaths.MOVING_SETBACK_METHOD));
         if (playerSetBackMethod.doesThisMakeSense()) {
