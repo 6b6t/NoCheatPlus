@@ -381,13 +381,22 @@ public class PlayerDataManager  implements IPlayerDataManager, ComponentWithName
      * On tick.
      */
     private final void frequentTasks(final int tick, final long timeLast) {
-        frequentPlayerTasks.mergePrimaryThread();
-        final Iterator<UUID> it = frequentPlayerTasks.iteratorPrimaryThread();
-        while (it.hasNext()) {
-            final PlayerData pData = getPlayerData(it.next(), null, false, null);
-            if (pData == null || pData.processTickFrequent(tick, timeLast)) {
-                it.remove();
+        final Collection<UUID> scheduled = frequentPlayerTasks.getMergePrimaryThreadAndClear();
+        if (scheduled == null) {
+            return;
+        }
+        List<UUID> pending = null;
+        for (final UUID playerId : scheduled) {
+            final PlayerData pData = getPlayerData(playerId, null, false, null);
+            if (pData != null && !pData.processTickFrequent(tick, timeLast)) {
+                if (pending == null) {
+                    pending = new ArrayList<UUID>(Math.min(scheduled.size(), 16));
+                }
+                pending.add(playerId);
             }
+        }
+        if (pending != null) {
+            frequentPlayerTasks.addAllPrimaryThread(pending);
         }
     }
 
