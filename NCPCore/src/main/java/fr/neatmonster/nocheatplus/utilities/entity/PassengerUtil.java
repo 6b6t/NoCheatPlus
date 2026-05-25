@@ -33,6 +33,7 @@ import fr.neatmonster.nocheatplus.compat.BridgeMisc;
 import fr.neatmonster.nocheatplus.compat.SchedulerHelper;
 import fr.neatmonster.nocheatplus.components.entity.IEntityAccessVehicle;
 import fr.neatmonster.nocheatplus.components.registry.event.IHandle;
+import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.CheckUtils;
@@ -247,6 +248,15 @@ public class PassengerUtil {
         boolean vehicleTeleported = false;
         boolean playerTeleported = false;
         int otherPlayersTeleported = 0;
+        final Location currentLocation = player.getLocation();
+        final double deltaX = currentLocation.getX() - location.getX();
+        final double deltaZ = currentLocation.getZ() - location.getZ();
+        final double horizontalDistance = Math.sqrt(deltaX * deltaX + deltaZ * deltaZ);
+        if (horizontalDistance > 128.0) {
+            StaticLog.logWarning("LONGRANGE_TELEPORT NOCHEATPLUS " + player.getName() + " " + currentLocation.getX() + " " + currentLocation.getZ()
+                                 + " to " + location.getX() + " " + location.getZ() + " - " + horizontalDistance);
+            return;
+        }
         if (vehicle.isDead() || !vehicle.isValid()) {
             // TODO: Still consider teleporting the player.
             vehicleTeleported = false;
