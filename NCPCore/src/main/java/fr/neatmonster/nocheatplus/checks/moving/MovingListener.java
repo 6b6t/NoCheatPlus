@@ -1621,6 +1621,11 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
         // A check has requested a new to-location.
         else {
 
+            final Location currentLocation = player.getLocation();
+            if (Math.abs(currentLocation.getX() - newTo.getX()) > 128.0 || Math.abs(currentLocation.getZ() - newTo.getZ()) > 128.0) {
+                newTo = currentLocation;
+            }
+
             // 1: Setback override, adjust newTo.
             if (data.hasTeleported()) {
                 if (debug) {
