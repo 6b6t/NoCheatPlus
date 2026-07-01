@@ -120,6 +120,15 @@ public class SurvivalFly extends Check {
         return BridgePotionEffect.WEAVING != null && player.hasPotionEffect(BridgePotionEffect.WEAVING);
     }
 
+    private static boolean isSwimmingMove(final Player player, final PlayerMoveData move) {
+        return Bridge1_13.isSwimming(player)
+                || Bridge1_13.hasIsSwimming() && player.isSprinting() && (move.from.inWater || move.to.inWater);
+    }
+
+    private static double getSwimmingSpeedFactor(final MovingConfig cc) {
+        return Math.max(1.0, cc.survivalFlySwimmingSpeed / 100.0);
+    }
+
 
     /**
      * Checks a player
@@ -413,7 +422,7 @@ public class SurvivalFly extends Check {
 
             // The friction jump phase has to be set externally.
             if (vDistanceAboveLimit <= 0.0 && yDistance > 0.0 
-                && Math.abs(yDistance) > Magic.swimBaseSpeedV(Bridge1_13.isSwimming(player))) {
+                && Math.abs(yDistance) > Magic.swimBaseSpeedV(isSwimmingMove(player, thisMove)) * getSwimmingSpeedFactor(cc)) {
                 data.setFrictionJumpPhase();
             }
         }
@@ -848,7 +857,7 @@ public class SurvivalFly extends Check {
             && BlockProperties.isLiquid(from.getTypeId())
             && !toOnGround && !fromOnGround
             && !from.isHeadObstructed() && !to.isHeadObstructed() 
-            && !Bridge1_13.isSwimming(player)) {
+            && !isSwimmingMove(player, thisMove)) {
             hDistanceAboveLimit = Math.max(hDistanceAboveLimit, hDistance);
             bufferUse = false;
             tags.add("liquidwalk");
@@ -863,7 +872,7 @@ public class SurvivalFly extends Check {
                 && lastMove.toIsValid && lastMove.yDistance == yDistance 
                 || lastMove.yDistance == yDistance * -1 && lastMove.yDistance != 0.0
                 && !from.isHeadObstructed() && !to.isHeadObstructed() 
-                && !Bridge1_13.isSwimming(player)) {
+                && !isSwimmingMove(player, thisMove)) {
 
                 // Prevent being flagged if a player transitions from a block to water and the player falls into the water.
                 if (!(yDistance < 0.0 && yDistance != 0.0 && lastMove.yDistance < 0.0 && lastMove.yDistance != 0.0)) {
@@ -1218,7 +1227,9 @@ public class SurvivalFly extends Check {
             tags.add("hliquid");
             // Moving close to the surface allows a higher speed (always use the lower modifier for lava)
             final double modSwim = (from.isSubmerged(0.701) || thisMove.from.inLava) ? Magic.modSwim[0] : Magic.modSwim[3];
-            hAllowedDistance = Bridge1_13.isSwimming(player) ? Magic.modSwim[1] : modSwim * thisMove.walkSpeed * cc.survivalFlySwimmingSpeed / 100D;
+            final boolean swimmingMove = isSwimmingMove(player, thisMove);
+            final double swimmingSpeedFactor = getSwimmingSpeedFactor(cc);
+            hAllowedDistance = swimmingMove ? Magic.modSwim[1] * swimmingSpeedFactor : modSwim * thisMove.walkSpeed * cc.survivalFlySwimmingSpeed / 100D;
             useBaseModifiers = false;
             useSneakModifier = true;
             if (sfDirty) friction = 0.0;
@@ -1297,7 +1308,7 @@ public class SurvivalFly extends Check {
                 && !from.isInWaterLogged()) {
             tags.add("hliquidexit");
             final int StriderLevel = BridgeEnchant.getDepthStriderLevel(player);
-            hAllowedDistance = Bridge1_13.isSwimming(player) ? Magic.modSwim[1] : Magic.modSwim[0] * thisMove.walkSpeed * Magic.modSurface[0] * cc.survivalFlySwimmingSpeed / 100D;
+            hAllowedDistance = isSwimmingMove(player, thisMove) ? Magic.modSwim[1] * getSwimmingSpeedFactor(cc) : Magic.modSwim[0] * thisMove.walkSpeed * Magic.modSurface[0] * cc.survivalFlySwimmingSpeed / 100D;
             useBaseModifiersSprint = false;
             friction = 0.0;
             // (Bubble streams are handled via velocity)
@@ -2107,7 +2118,9 @@ public class SurvivalFly extends Check {
 
         data.sfNoLowJump = true;
         final double yDistAbs = Math.abs(yDistance);
-        final double baseSpeed = thisMove.from.onGround ? Magic.swimBaseSpeedV(Bridge1_13.isSwimming(player)) + 0.1 : Magic.swimBaseSpeedV(Bridge1_13.isSwimming(player));
+        final boolean swimmingMove = isSwimmingMove(player, thisMove);
+        final double baseSpeed = (thisMove.from.onGround ? Magic.swimBaseSpeedV(swimmingMove) + 0.1 : Magic.swimBaseSpeedV(swimmingMove))
+                * getSwimmingSpeedFactor(cc);
         final PlayerMoveData pastMove2 = data.playerMoves.getSecondPastMove();
         
         ////////////////////////
@@ -2247,7 +2260,7 @@ public class SurvivalFly extends Check {
         double vDistanceAboveLimit = 0.0;
         double yDistAbs = Math.abs(yDistance);
         /** Climbing a ladder in water and exiting water for whatever reason speeds up the player a lot in that one transition ... */
-        boolean waterStep = lastMove.from.inLiquid && yDistAbs < Magic.swimBaseSpeedV(Bridge1_13.hasIsSwimming());
+        boolean waterStep = lastMove.from.inLiquid && yDistAbs < Magic.swimBaseSpeedV(isSwimmingMove(player, thisMove));
         double vAllowedDistance = waterStep ? yDistAbs : yDistance < 0.0 ? Magic.climbSpeedDescend : Magic.climbSpeedAscend;
         final double jumpHeight = LiftOffEnvelope.NORMAL.getMaxJumpHeight(0.0) + (data.jumpAmplifier > 0 ? (0.6 + data.jumpAmplifier - 1.0) : 0.0);
         final double maxJumpGain = data.liftOffEnvelope.getMaxJumpGain(data.jumpAmplifier) + 0.005;
