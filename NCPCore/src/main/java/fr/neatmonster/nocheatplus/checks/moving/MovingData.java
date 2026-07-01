@@ -233,6 +233,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public double noFallMaxY = 0;
     /** Indicate that NoFall is not to use next damage event for checking on-ground properties. */ 
     public boolean noFallSkipAirCheck = false;
+    /** Last location where a wind charge affected the player. */
+    public Location noFallCurrentLocOnWindChargeHit = null;
 
     // *----------Data of the SurvivalFly check----------*
     /** Default lift-off envelope, used after resetting. <br> TODO: Test, might be better ground. */
@@ -381,6 +383,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         clearAccounting();
         clearHAccounting();
         clearNoFallData();
+        clearWindChargeImpulse();
         removeAllPlayerSpeedModifiers();
         lostSprintCount = 0;
         sfHoverTicks = sfHoverLoginTicks = -1;
@@ -684,6 +687,11 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         noFallFallDistance = 0;
         noFallMaxY = BlockProperties.getMinWorldY();
         noFallSkipAirCheck = false;
+    }
+
+
+    public void clearWindChargeImpulse() {
+        noFallCurrentLocOnWindChargeHit = null;
     }
 
 

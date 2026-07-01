@@ -37,6 +37,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerBedEnterEvent;
@@ -94,6 +95,7 @@ import fr.neatmonster.nocheatplus.compat.BridgeEnchant;
 import fr.neatmonster.nocheatplus.compat.BridgeHealth;
 import fr.neatmonster.nocheatplus.compat.BridgeMisc;
 import fr.neatmonster.nocheatplus.compat.Folia;
+import fr.neatmonster.nocheatplus.compat.bukkit.BridgeEntityType;
 import fr.neatmonster.nocheatplus.compat.MCAccess;
 import fr.neatmonster.nocheatplus.compat.blocks.changetracker.BlockChangeTracker;
 import fr.neatmonster.nocheatplus.compat.blocks.changetracker.BlockChangeTracker.BlockChangeEntry;
@@ -382,6 +384,30 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
         // Just in case.
         if (cc.enforceLocation) playersEnforce.add(player.getName());
         useLoc.setWorld(null);
+    }
+
+
+    /**
+     * Wind charges reset fall damage origin to the explosion impulse point.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onWindChargeExplode(final EntityExplodeEvent event) {
+        if (BridgeEntityType.WIND_CHARGE == null || event.getEntity() == null
+            || event.getEntity().getType() != BridgeEntityType.WIND_CHARGE) {
+            return;
+        }
+        final Location loc = event.getLocation();
+        for (final Entity entity : loc.getWorld().getNearbyEntities(loc, 1.2, 1.2, 1.2)) {
+            if (entity.getType() != EntityType.PLAYER) {
+                continue;
+            }
+            final Player player = (Player) entity;
+            final IPlayerData pData = DataManager.getPlayerData(player);
+            if (!pData.isCheckActive(CheckType.MOVING, player)) {
+                continue;
+            }
+            pData.getGenericInstance(MovingData.class).noFallCurrentLocOnWindChargeHit = player.getLocation().clone();
+        }
     }
 
 
@@ -713,6 +739,15 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
         final PlayerLocation pFrom, pTo;
         pFrom = moveInfo.from;
         pTo = moveInfo.to;
+
+
+        ////////////////////////////////////
+        // Wind charge handling 1.21+.    //
+        ////////////////////////////////////
+        if (data.timeRiptiding + 1500 > System.currentTimeMillis() || pFrom.isInLiquid()
+            || pFrom.isOnClimbable() || Bridge1_9.isGlidingWithElytra(player)) {
+            data.clearWindChargeImpulse();
+        }
         
 
         ////////////////////////////////////

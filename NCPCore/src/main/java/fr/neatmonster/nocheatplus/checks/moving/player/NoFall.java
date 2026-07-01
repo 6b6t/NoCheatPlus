@@ -116,9 +116,12 @@ public class NoFall extends Check {
         // Damage to be dealt.
         final float fallDist = (float) getApplicableFallHeight(player, y, previousSetBackY, data);
         double maxD = getDamage(fallDist);
-        maxD = calcDamagewithfeatherfalling(player, calcReducedDamageByBlock(player, data, maxD), 
+        maxD = calcDamagewithfeatherfalling(player, calcReducedDamageByBlock(player, data, maxD),
                                             mcAccess.getHandle().dealFallDamageFiresAnEvent().decide());
         fallOn(player, fallDist);
+        if (data.noFallCurrentLocOnWindChargeHit != null && fallDist <= Magic.FALL_DAMAGE_DIST) {
+            data.clearWindChargeImpulse();
+        }
 
         if (maxD >= Magic.FALL_DAMAGE_MINIMUM) {
             // Check skipping conditions.
@@ -310,6 +313,11 @@ public class NoFall extends Check {
                 final float effectiveDistance = (float) Math.max(0.0, yDistance - correction);
                 return effectiveDistance;
             }
+        }
+        if (yDistance - Magic.FALL_DAMAGE_DIST > 0.0 && data.noFallCurrentLocOnWindChargeHit != null) {
+            final double lastImpulseY = data.noFallCurrentLocOnWindChargeHit.getY();
+            data.clearWindChargeImpulse();
+            return lastImpulseY < y ? 0.0 : lastImpulseY - y;
         }
         return yDistance;
     }
