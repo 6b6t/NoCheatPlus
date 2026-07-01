@@ -34,6 +34,7 @@ public final class BridgeEntityType {
     }
 
     public static final EntityType WIND_CHARGE = getFirst("wind_charge");
+    public static final EntityType BREEZE_WIND_CHARGE = getFirst("breeze_wind_charge");
 
     private BridgeEntityType() {
     }
@@ -50,5 +51,9 @@ public final class BridgeEntityType {
             }
         }
         return null;
+    }
+
+    public static boolean isWindCharge(final EntityType type) {
+        return type != null && (type == WIND_CHARGE || type == BREEZE_WIND_CHARGE);
     }
 }

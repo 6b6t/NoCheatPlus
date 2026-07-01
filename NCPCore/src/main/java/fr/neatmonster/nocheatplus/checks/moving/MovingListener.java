@@ -144,6 +144,9 @@ import fr.neatmonster.nocheatplus.worlds.WorldFactoryArgument;
  */
 public class MovingListener extends CheckListener implements TickListener, IRemoveData, IHaveCheckType, INeedConfig, JoinLeaveListener {
 
+    private static final double WIND_CHARGE_IMPULSE_RADIUS = 1.2;
+    private static final double WIND_CHARGE_MIN_VERTICAL_VELOCITY = 0.7;
+
     /** The no fall check. **/
     public final NoFall noFall = addCheck(new NoFall());
 
@@ -392,8 +395,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onWindChargeExplode(final EntityExplodeEvent event) {
-        if (BridgeEntityType.WIND_CHARGE == null || event.getEntity() == null
-            || event.getEntity().getType() != BridgeEntityType.WIND_CHARGE) {
+        if (event.getEntity() == null || !BridgeEntityType.isWindCharge(event.getEntity().getType())) {
             return;
         }
         final Location loc = event.getLocation();
@@ -406,8 +408,40 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
             if (!pData.isCheckActive(CheckType.MOVING, player)) {
                 continue;
             }
-            pData.getGenericInstance(MovingData.class).noFallCurrentLocOnWindChargeHit = player.getLocation().clone();
+            final MovingData data = pData.getGenericInstance(MovingData.class);
+            final Location playerLoc = player.getLocation();
+            data.noFallCurrentLocOnWindChargeHit = playerLoc.clone();
+            addWindChargeVelocity(player, loc, playerLoc, data, pData.isDebugActive(CheckType.MOVING));
         }
+    }
+
+
+    private void addWindChargeVelocity(final Player player, final Location explosionLoc, final Location playerLoc,
+                                       final MovingData data, final boolean debug) {
+        final Vector allowedVelocity = estimateWindChargeVelocity(explosionLoc, playerLoc);
+        data.shouldApplyExplosionVelocity = true;
+        data.explosionVelAxisX += allowedVelocity.getX();
+        data.explosionVelAxisY += allowedVelocity.getY();
+        data.explosionVelAxisZ += allowedVelocity.getZ();
+        if (debug) {
+            debug(player, "Wind charge impulse velocity allowance: " + allowedVelocity.getX()
+                    + ", " + allowedVelocity.getY() + ", " + allowedVelocity.getZ());
+        }
+    }
+
+
+    private Vector estimateWindChargeVelocity(final Location explosionLoc, final Location playerLoc) {
+        final Vector direction = playerLoc.toVector().add(new Vector(0.0, 0.5, 0.0)).subtract(explosionLoc.toVector());
+        if (direction.lengthSquared() < 1.0E-6) {
+            direction.setY(1.0);
+        }
+        final double distance = Math.min(WIND_CHARGE_IMPULSE_RADIUS, direction.length());
+        final double strength = 0.8 + (1.0 - distance / WIND_CHARGE_IMPULSE_RADIUS) * 0.7;
+        direction.normalize().multiply(strength);
+        if (direction.getY() < WIND_CHARGE_MIN_VERTICAL_VELOCITY) {
+            direction.setY(WIND_CHARGE_MIN_VERTICAL_VELOCITY);
+        }
+        return direction;
     }
 
 
