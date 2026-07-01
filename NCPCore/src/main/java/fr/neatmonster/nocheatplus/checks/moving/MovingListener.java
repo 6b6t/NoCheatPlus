@@ -23,12 +23,14 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
@@ -47,6 +49,7 @@ import org.bukkit.event.player.PlayerGameModeChangeEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerRiptideEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
 import org.bukkit.event.player.PlayerToggleFlightEvent;
@@ -55,6 +58,7 @@ import org.bukkit.event.player.PlayerToggleSprintEvent;
 import org.bukkit.event.player.PlayerVelocityEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Vector;
 
@@ -96,6 +100,7 @@ import fr.neatmonster.nocheatplus.compat.BridgeHealth;
 import fr.neatmonster.nocheatplus.compat.BridgeMisc;
 import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.compat.bukkit.BridgeEntityType;
+import fr.neatmonster.nocheatplus.compat.bukkit.BridgePotionEffect;
 import fr.neatmonster.nocheatplus.compat.MCAccess;
 import fr.neatmonster.nocheatplus.compat.blocks.changetracker.BlockChangeTracker;
 import fr.neatmonster.nocheatplus.compat.blocks.changetracker.BlockChangeTracker.BlockChangeEntry;
@@ -146,6 +151,9 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
 
     private static final double WIND_CHARGE_IMPULSE_RADIUS = 1.2;
     private static final double WIND_CHARGE_MIN_VERTICAL_VELOCITY = 0.7;
+    private static final double RIPTIDE_STRENGTH_PER_LEVEL = 0.75;
+    private static final double RIPTIDE_GROUND_LAUNCH_Y = 1.2;
+    private static final long RIPTIDE_VERTICAL_FLAGS = VelocityFlags.SPLIT_ABOVE_0_42 | VelocityFlags.SPLIT_RETAIN_ACTCOUNT;
 
     /** The no fall check. **/
     public final NoFall noFall = addCheck(new NoFall());
@@ -173,6 +181,8 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
 
     /** Player names to check enforcing the location for in onTick, case insensitive. */
     private final Set<String> playersEnforce = ConcurrentHashMap.newKeySet(30);
+
+    private final Plugin plugin = Bukkit.getPluginManager().getPlugin("NoCheatPlus");
 
     private int hoverTicksStep = 5;
 
@@ -395,7 +405,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onWindChargeExplode(final EntityExplodeEvent event) {
-        if (event.getEntity() == null || !BridgeEntityType.isWindCharge(event.getEntity().getType())) {
+        if (event.getEntity() == null || !isWindChargeExplosion(event.getEntity())) {
             return;
         }
         final Location loc = event.getLocation();
@@ -416,6 +426,16 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     }
 
 
+    private boolean isWindChargeExplosion(final Entity entity) {
+        if (BridgeEntityType.isWindCharge(entity.getType())) {
+            return true;
+        }
+        return entity instanceof LivingEntity
+                && BridgePotionEffect.WIND_CHARGED != null
+                && ((LivingEntity) entity).hasPotionEffect(BridgePotionEffect.WIND_CHARGED);
+    }
+
+
     private void addWindChargeVelocity(final Player player, final Location explosionLoc, final Location playerLoc,
                                        final MovingData data, final boolean debug) {
         final Vector allowedVelocity = estimateWindChargeVelocity(explosionLoc, playerLoc);
@@ -427,6 +447,66 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
             debug(player, "Wind charge impulse velocity allowance: " + allowedVelocity.getX()
                     + ", " + allowedVelocity.getY() + ", " + allowedVelocity.getZ());
         }
+    }
+
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onPlayerRiptide(final PlayerRiptideEvent event) {
+        if (!Bridge1_13.hasPlayerRiptideEvent()) {
+            return;
+        }
+        final Player player = event.getPlayer();
+        final IPlayerData pData = DataManager.getPlayerData(player);
+        if (!pData.isCheckActive(CheckType.MOVING, player)) {
+            return;
+        }
+        final int riptideLevel = Math.max(BridgeEnchant.getRiptideLevel(event.getItem()), BridgeEnchant.getRiptideLevel(player));
+        if (riptideLevel <= 0) {
+            return;
+        }
+        final MovingData data = pData.getGenericInstance(MovingData.class);
+        final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+        addRiptideVelocity(player, riptideLevel, data, cc, pData.isDebugActive(CheckType.MOVING));
+    }
+
+
+    private void addRiptideVelocity(final Player player, final int riptideLevel, final MovingData data,
+                                    final MovingConfig cc, final boolean debug) {
+        final int tick = TickTask.getTick();
+        final boolean onGround = player.isOnGround();
+        final Vector velocity = estimateRiptideVelocity(player, riptideLevel);
+        data.timeRiptiding = System.currentTimeMillis();
+        if (onGround) {
+            data.addVerticalVelocity(new SimpleEntry(tick, RIPTIDE_GROUND_LAUNCH_Y, RIPTIDE_VERTICAL_FLAGS, cc.velocityActivationCounter));
+        }
+        data.addVelocity(player, cc, velocity.getX(), velocity.getY(), velocity.getZ());
+        if (onGround) {
+            final double combinedY = RIPTIDE_GROUND_LAUNCH_Y + velocity.getY();
+            if (Math.abs(combinedY) > 0.005) {
+                data.addVerticalVelocity(new SimpleEntry(tick, combinedY, RIPTIDE_VERTICAL_FLAGS, cc.velocityActivationCounter));
+            }
+        }
+        if (debug) {
+            debug(player, "Riptide impulse velocity allowance: level=" + riptideLevel + " ground=" + onGround
+                    + " velocity=" + velocity.getX() + ", " + velocity.getY() + ", " + velocity.getZ());
+        }
+    }
+
+
+    private Vector estimateRiptideVelocity(final Player player, final int riptideLevel) {
+        final Location loc = player.getLocation(useLoc);
+        final Vector direction = loc.getDirection();
+        useLoc.setWorld(null);
+        if (direction.lengthSquared() < 1.0E-6) {
+            direction.setY(1.0);
+        }
+        return direction.normalize().multiply(RIPTIDE_STRENGTH_PER_LEVEL * (1.0 + riptideLevel));
+    }
+
+
+    private boolean shouldSkipNoFallForActiveEffect(final Player player) {
+        return !Double.isInfinite(Bridge1_13.getSlowfallingAmplifier(player))
+                || !Double.isInfinite(Bridge1_9.getLevitationAmplifier(player));
     }
 
 
@@ -1004,6 +1084,14 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
             // TODO: Might still allow block change tracker with only passable enabled.
             useBlockChangeTracker = false;
             previousSetBackY = Double.NEGATIVE_INFINITY;
+        }
+
+        if (checkNf && shouldSkipNoFallForActiveEffect(player)) {
+            checkNf = false;
+            data.clearNoFallData();
+            if (debug) {
+                debug(player, "Skip NoFall due to active vertical effect.");
+            }
         }
 
         // 6: Check passable first to prevent set back override.
@@ -2461,7 +2549,13 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
         data.clearMostMovingCheckData();
         data.resetSetBack(); // To force dataOnJoin to set it to loc.
         // Handle respawn like join.
-        dataOnJoin(player, event.getRespawnLocation(), true, data, pData.getGenericInstance(MovingConfig.class), pData.isDebugActive(checkType));
+        final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+        final boolean debug = pData.isDebugActive(checkType);
+        if (Folia.isFoliaServer()) {
+            scheduleDataOnJoin(player, true, data, cc, debug);
+            return;
+        }
+        dataOnJoin(player, event.getRespawnLocation(), true, data, cc, debug);
         // Patch up issues.
         if (Bridge1_9.hasGetItemInOffHand() && player.isBlocking()) {
             // Attempt to fix server-side-only blocking after respawn.
@@ -2499,10 +2593,34 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
 
         final IPlayerData pData = DataManager.getPlayerData(player);
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
+        if (Folia.isFoliaServer()) {
+            scheduleDataOnJoin(player, false, pData.getGenericInstance(MovingData.class),
+                    pData.getGenericInstance(MovingConfig.class), pData.isDebugActive(checkType));
+            return;
+        }
         dataOnJoin(player, player.getLocation(useLoc), false, pData.getGenericInstance(MovingData.class), 
                   pData.getGenericInstance(MovingConfig.class), pData.isDebugActive(checkType));
         // Cleanup.
         useLoc.setWorld(null);
+    }
+
+    private void scheduleDataOnJoin(final Player player, final boolean isRespawn, final MovingData data,
+                                    final MovingConfig cc, final boolean debug) {
+        Folia.runSyncTaskForEntity(player, plugin, (arg) -> {
+            if (!player.isOnline()) {
+                return;
+            }
+            final Location loc = player.getLocation(new Location(null, 0, 0, 0));
+            try {
+                dataOnJoin(player, loc, isRespawn, data, cc, debug);
+                if (isRespawn && Bridge1_9.hasGetItemInOffHand() && player.isBlocking()) {
+                    redoShield(player);
+                }
+            }
+            finally {
+                loc.setWorld(null);
+            }
+        }, null);
     }
 
 

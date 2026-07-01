@@ -28,7 +28,14 @@ public final class BridgePotionEffect {
     public static final PotionEffectType HASTE = getFirstNotNull("HASTE", "FAST_DIGGING");
     public static final PotionEffectType MINING_FATIGUE = getFirstNotNull("MINING_FATIGUE", "SLOW_DIGGING");
     public static final PotionEffectType JUMP_BOOST = getFirstNotNull("JUMP_BOOST", "JUMP");
+    public static final PotionEffectType LEVITATION = getFirst("LEVITATION");
+    public static final PotionEffectType SLOW_FALLING = getFirst("SLOW_FALLING");
     public static final PotionEffectType WEAVING = getFirst("WEAVING");
+    public static final PotionEffectType WIND_CHARGED = getFirst("WIND_CHARGED");
+    public static final PotionEffectType OOZING = getFirst("OOZING");
+    public static final PotionEffectType INFESTED = getFirst("INFESTED");
+    public static final PotionEffectType RAID_OMEN = getFirst("RAID_OMEN");
+    public static final PotionEffectType TRIAL_OMEN = getFirst("TRIAL_OMEN");
 
     private BridgePotionEffect() {
     }

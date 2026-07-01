@@ -46,6 +46,7 @@ import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.compat.Bridge1_9;
+import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
 import fr.neatmonster.nocheatplus.compat.versions.ServerVersion;
 import fr.neatmonster.nocheatplus.components.NoCheatPlusAPI;
 import fr.neatmonster.nocheatplus.components.registry.order.RegistrationOrder.RegisterMethodWithOrder;
@@ -193,7 +194,7 @@ public class NoSlow extends BaseAdapter {
                 return;
             }
 
-            if (Bridge1_13.hasIsRiptiding() && m == Material.TRIDENT) {
+            if (Bridge1_13.hasIsRiptiding() && BridgeMaterial.TRIDENT != null && m == BridgeMaterial.TRIDENT) {
                 //data.isUsingItem = true;
                 data.offHandUse = e.getHand() == EquipmentSlot.OFF_HAND;
                 return;

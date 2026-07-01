@@ -349,18 +349,33 @@ public final class BridgeEnchant {
         // Find the maximum level for the given enchantment.
         final ItemStack mainhand = player.getInventory().getItemInMainHand();
         final ItemStack offhand = player.getInventory().getItemInOffHand();
-        if (mainhand.getType().toString().equals("TRIDENT")) {
+        if (isTrident(mainhand)) {
             // Found in main hand already, return.
             return Math.max(mainhand.getEnchantmentLevel(enchantment), level);
         }
-        if (offhand.getType().toString().equals("TRIDENT")) {
+        if (isTrident(offhand)) {
             level = Math.max(offhand.getEnchantmentLevel(enchantment), level);
         }
         return level;
     }
+
+    private static boolean isTrident(final ItemStack item) {
+        return BridgeMaterial.TRIDENT != null && !BlockProperties.isAir(item) && item.getType().equals(BridgeMaterial.TRIDENT);
+    }
+
+    private static int getItemLevel(final ItemStack item, final Enchantment enchantment) {
+        if (enchantment == null || !isTrident(item)) {
+            return 0;
+        }
+        return item.getEnchantmentLevel(enchantment);
+    }
     
     public static int getRiptideLevel(final Player player) {
-    	return Math.min(3, getTrident(player, RIPTIDE));
+        return Math.min(3, getTrident(player, RIPTIDE));
+    }
+
+    public static int getRiptideLevel(final ItemStack item) {
+        return Math.min(3, getItemLevel(item, RIPTIDE));
     }
 
 }
