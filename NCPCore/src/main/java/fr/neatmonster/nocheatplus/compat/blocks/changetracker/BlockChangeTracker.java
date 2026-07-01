@@ -74,6 +74,9 @@ public class BlockChangeTracker {
         Z_NEG(MapUtil.matchBlockFace(0, 0, -1));
 
         public static Direction getDirection(final BlockFace blockFace) {
+            if (blockFace == null) {
+                return NONE;
+            }
             final int x = blockFace.getModX();
             if (x == 1) {
                 return X_POS;
@@ -328,31 +331,42 @@ public class BlockChangeTracker {
      *            Unless null, each block and the relative block in the given
      *            direction (!) are added.
      */
-    public void addPistonBlocks(final Block pistonBlock, final BlockFace blockFace, final List<Block> movedBlocks) {
+    public synchronized void addPistonBlocks(final Block pistonBlock, final BlockFace blockFace, final List<Block> movedBlocks) {
+        if (pistonBlock == null || blockFace == null) {
+            return;
+        }
         checkProcessBlocks(); // TODO: Remove, once sure, that processing never ever generates an exception.
         final int tick = TickTask.getTick();
         final World world = pistonBlock.getWorld();
         final WorldNode worldNode = getOrCreateWorldNode(world, tick);
         final long changeId = getNewChangeId(tick, false); // TODO: Could set preferKeep.
-        // Avoid duplicates by adding to a set.
-        if (pistonBlock != null) {
+        BlockCache blockCache = null;
+        try {
+            // Avoid duplicates by adding to a set.
             processBlocks.add(pistonBlock);
-        }
-        if (movedBlocks != null) {
-            for (final Block movedBlock : movedBlocks) {
-                processBlocks.add(movedBlock);
-                processBlocks.add(movedBlock.getRelative(blockFace));
+            if (movedBlocks != null) {
+                for (final Block movedBlock : movedBlocks) {
+                    if (movedBlock == null) {
+                        continue;
+                    }
+                    processBlocks.add(movedBlock);
+                    processBlocks.add(movedBlock.getRelative(blockFace));
+                }
+            }
+            // Process queued blocks.
+            blockCache = blockCacheHandle.getHandle();
+            blockCache.setAccess(world); // Assume all users always clean up after use :).
+            for (final Block block : processBlocks) {
+                addPistonBlock(changeId, tick, worldNode, block.getX(), block.getY(), block.getZ(),
+                        blockFace, blockCache);
             }
         }
-        // Process queued blocks.
-        final BlockCache blockCache = blockCacheHandle.getHandle();
-        blockCache.setAccess(world); // Assume all users always clean up after use :).
-        for (final Block block : processBlocks) {
-            addPistonBlock(changeId, tick, worldNode, block.getX(), block.getY(), block.getZ(), 
-                    blockFace, blockCache);
+        finally {
+            if (blockCache != null) {
+                blockCache.cleanup();
+            }
+            processBlocks.clear();
         }
-        blockCache.cleanup();
-        processBlocks.clear();
     }
 
     /**
@@ -387,7 +401,7 @@ public class BlockChangeTracker {
      *            Could be/have empty / null / null entries, duplicate blocks
      *            will be ignored.
      */
-    public void addBlocks(final Block... blocks) {
+    public synchronized void addBlocks(final Block... blocks) {
         if (blocks == null || blocks.length == 0) {
             return;
         }
@@ -403,7 +417,7 @@ public class BlockChangeTracker {
      *            Could be/have empty / null / null entries, duplicate blocks
      *            will be ignored.
      */
-    public void addBlocks(final Collection<Block> blocks) {
+    public synchronized void addBlocks(final Collection<Block> blocks) {
         if (blocks == null || blocks.isEmpty()) {
             return;
         }
@@ -422,18 +436,25 @@ public class BlockChangeTracker {
             processBlocks.clear(); // In case the world is null (unlikely).
             return;
         }
-        // Add blocks.
-        final int tick = TickTask.getTick();
-        final WorldNode worldNode = getOrCreateWorldNode(world, tick);
-        final long changeId = getNewChangeId(tick, false); // TODO: Could set preferKeep.
-        // Process queued blocks.
-        final BlockCache blockCache = blockCacheHandle.getHandle();
-        blockCache.setAccess(world); // Assume all users always clean up after use :).
-        for (final Block block : processBlocks) {
-            addBlock(changeId, tick, worldNode, block.getX(), block.getY(), block.getZ(), blockCache);
+        BlockCache blockCache = null;
+        try {
+            // Add blocks.
+            final int tick = TickTask.getTick();
+            final WorldNode worldNode = getOrCreateWorldNode(world, tick);
+            final long changeId = getNewChangeId(tick, false); // TODO: Could set preferKeep.
+            // Process queued blocks.
+            blockCache = blockCacheHandle.getHandle();
+            blockCache.setAccess(world); // Assume all users always clean up after use :).
+            for (final Block block : processBlocks) {
+                addBlock(changeId, tick, worldNode, block.getX(), block.getY(), block.getZ(), blockCache);
+            }
         }
-        blockCache.cleanup();
-        processBlocks.clear();
+        finally {
+            if (blockCache != null) {
+                blockCache.cleanup();
+            }
+            processBlocks.clear();
+        }
     }
 
     /**
@@ -446,7 +467,7 @@ public class BlockChangeTracker {
      *            one is used.
      * @return
      */
-    public long getNewChangeId(final int tick, final boolean preferKeep) {
+    public synchronized long getNewChangeId(final int tick, final boolean preferKeep) {
         if (preferKeep && tick == maxChangeIdTick) {
             return maxChangeId;
         }
@@ -477,7 +498,7 @@ public class BlockChangeTracker {
      *            replaced with will be on the actual map, which is not the case
      *            with per-player fake blocks.
      */
-    public void addBlockChange(final UUID worldId, final int x, final int y, final int z, 
+    public synchronized void addBlockChange(final UUID worldId, final int x, final int y, final int z,
             final IBlockCacheNode previousState) {
         final int tick = TickTask.getTick();
         addBlockChange(getNewChangeId(tick, true), tick, getOrCreateWorldNode(worldId, tick), 
@@ -513,7 +534,7 @@ public class BlockChangeTracker {
      *            replaced with will be on the actual map, which is not the case
      *            with per-player fake blocks.
      */
-    public void addBlockChange(final long changeId, final int tick, final UUID worldId,
+    public synchronized void addBlockChange(final long changeId, final int tick, final UUID worldId,
             final int x, final int y, final int z, 
             final Direction direction, final IBlockCacheNode previousState) {
         addBlockChange(changeId, tick, getOrCreateWorldNode(worldId, tick), x, y, z, direction, previousState);
@@ -528,7 +549,7 @@ public class BlockChangeTracker {
      * @param z
      * @return
      */
-    public int removeAllEntries(final UUID worldId, final int x, final int y, final int z) {
+    public synchronized int removeAllEntries(final UUID worldId, final int x, final int y, final int z) {
         final WorldNode worldNode = worldMap.get(worldId);
         if (worldNode == null) {
             return 0;
@@ -676,7 +697,7 @@ public class BlockChangeTracker {
      * 
      * @param currentTick
      */
-    public void checkExpiration(final int currentTick) {
+    public synchronized void checkExpiration(final int currentTick) {
         final int expireOlderThanTick = currentTick - expirationAgeTicks;
         final Iterator<Entry<UUID, WorldNode>> it = worldMap.entrySet().iterator();
         while (it.hasNext()) {
@@ -736,7 +757,7 @@ public class BlockChangeTracker {
      *            direction.
      * @return The matching entry, or null if there is no matching entry.
      */
-    public BlockChangeEntry getBlockChangeEntry(final BlockChangeReference ref, final int tick, final UUID worldId, 
+    public synchronized BlockChangeEntry getBlockChangeEntry(final BlockChangeReference ref, final int tick, final UUID worldId,
             final int x, final int y, final int z, final Direction direction) {
         final WorldNode worldNode = getValidWorldNode(tick, worldId);
         if (worldNode == null) {
@@ -777,7 +798,7 @@ public class BlockChangeTracker {
      *            matchFlags is zero, the parameter is ignored.
      * @return The matching entry, or null if there is no matching entry.
      */
-    public BlockChangeEntry getBlockChangeEntryMatchFlags(final BlockChangeReference ref, final int tick, 
+    public synchronized BlockChangeEntry getBlockChangeEntryMatchFlags(final BlockChangeReference ref, final int tick,
             final UUID worldId, final int x, final int y, final int z, final Direction direction, 
             final long matchFlags) {
         final WorldNode worldNode = getValidWorldNode(tick, worldId);
@@ -820,7 +841,7 @@ public class BlockChangeTracker {
      * @param ignoreFlags
      * @return
      */
-    public boolean isOnGround(final BlockCache blockCache,
+    public synchronized boolean isOnGround(final BlockCache blockCache,
                               final BlockChangeReference ref, final int tick, final UUID worldId,
                               final double minX, final double minY, final double minZ,
                               final double maxX, final double maxY, final double maxZ,
@@ -970,7 +991,7 @@ public class BlockChangeTracker {
      * @param margin
      * @return
      */
-    public boolean hasActivityShuffled(final UUID worldId,
+    public synchronized boolean hasActivityShuffled(final UUID worldId,
             final IGetPosition pos1, final IGetPosition pos2, final double margin) {
         return hasActivityShuffled(worldId, pos1.getX(), pos1.getY(), pos1.getZ(), 
                 pos2.getX(), pos2.getY(), pos2.getZ(), margin);
@@ -991,7 +1012,7 @@ public class BlockChangeTracker {
      * @param margin Margin to add towards all sides.
      * @return
      */
-    public boolean hasActivityShuffled(final UUID worldId, final double x1, final double y1, final double z1,
+    public synchronized boolean hasActivityShuffled(final UUID worldId, final double x1, final double y1, final double z1,
             final double x2, final double y2, final double z2, final double margin) {
         final double minX = Math.min(x1, x2) - margin;
         final double minY = Math.min(y1, y2) - margin;
@@ -1016,7 +1037,7 @@ public class BlockChangeTracker {
      * @param z2
      * @return
      */
-    public boolean hasActivityShuffled(final UUID worldId, final double x1, final double y1, final double z1,
+    public synchronized boolean hasActivityShuffled(final UUID worldId, final double x1, final double y1, final double z1,
             final double x2, final double y2, final double z2) {
         return hasActivityShuffled(worldId, 
                 Location.locToBlock(x1), Location.locToBlock(y1), Location.locToBlock(z1),
@@ -1037,7 +1058,7 @@ public class BlockChangeTracker {
      * @param z2
      * @return
      */
-    public boolean hasActivity(final UUID worldId, final double minX, final double minY, final double minZ,
+    public synchronized boolean hasActivity(final UUID worldId, final double minX, final double minY, final double minZ,
             final double maxX, final double maxY, final double maxZ) {
         return hasActivity(worldId, 
                 Location.locToBlock(minX), Location.locToBlock(minY), Location.locToBlock(minZ),
@@ -1058,7 +1079,7 @@ public class BlockChangeTracker {
      * @param z2
      * @return
      */
-    public boolean hasActivityShuffled(final UUID worldId, final int x1, final int y1, final int z1,
+    public synchronized boolean hasActivityShuffled(final UUID worldId, final int x1, final int y1, final int z1,
             final int x2, final int y2, final int z2) {
         final int minX = Math.min(x1, x2);
         final int minY = Math.min(y1, y2);
@@ -1083,7 +1104,7 @@ public class BlockChangeTracker {
      * @param maxZ
      * @return
      */
-    public boolean hasActivity(final UUID worldId, final int minX, final int minY, final int minZ,
+    public synchronized boolean hasActivity(final UUID worldId, final int minX, final int minY, final int minZ,
             final int maxX, final int maxY, final int maxZ) {
         final WorldNode worldNode = worldMap.get(worldId);
         if (worldNode == null) {
@@ -1104,14 +1125,14 @@ public class BlockChangeTracker {
         return false;
     }
 
-    public void clear() {
+    public synchronized void clear() {
         for (final WorldNode worldNode : worldMap.values()) {
             worldNode.clear();
         }
         worldMap.clear();
     }
 
-    public int size() {
+    public synchronized int size() {
         int size = 0;
         for (final WorldNode worldNode : worldMap.values()) {
             size += worldNode.size;
@@ -1123,7 +1144,7 @@ public class BlockChangeTracker {
         return expirationAgeTicks;
     }
 
-    public void setExpirationAgeTicks(int expirationAgeTicks) {
+    public synchronized void setExpirationAgeTicks(int expirationAgeTicks) {
         this.expirationAgeTicks = expirationAgeTicks;
     }
 
@@ -1131,11 +1152,11 @@ public class BlockChangeTracker {
         return worldNodeSkipSize;
     }
 
-    public void setWorldNodeSkipSize(int worldNodeSkipSize) {
+    public synchronized void setWorldNodeSkipSize(int worldNodeSkipSize) {
         this.worldNodeSkipSize = worldNodeSkipSize;
     }
 
-    public void updateBlockCacheHandle() {
+    public synchronized void updateBlockCacheHandle() {
         final IGenericInstanceHandle<BlockCache> newHandle = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstanceHandle(BlockCache.class);
         // TODO: Doesn't make much sense to disable, until reference counting is fixed/implemented.
         if (this.blockCacheHandle != null 

@@ -32,7 +32,7 @@ public abstract class AbstractPool <O> implements GenericPool <O> {
     }
 
     @Override
-    public O getInstance() {
+    public synchronized O getInstance() {
         if (!pool.isEmpty()) {
             return pool.remove(pool.size() - 1); // Prevent re-size.
         }
@@ -42,7 +42,7 @@ public abstract class AbstractPool <O> implements GenericPool <O> {
     }
 
     @Override
-    public void returnInstance(O instance) {
+    public synchronized void returnInstance(O instance) {
         if (instance == null) {
             throw new NullPointerException("The passed instance must not be null.");
         }

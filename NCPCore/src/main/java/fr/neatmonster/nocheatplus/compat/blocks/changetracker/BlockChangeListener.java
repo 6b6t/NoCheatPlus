@@ -267,6 +267,9 @@ public class BlockChangeListener implements Listener {
         // TODO: Special cases (don't push upwards on retract, with the resulting location being a solid block).
         final Block pistonBlock = event.getBlock();
         final BlockFace direction = getRetractDirection(pistonBlock, event.getDirection());
+        if (direction == null) {
+            return;
+        }
         tracker.addPistonBlocks(pistonBlock.getRelative(direction.getOppositeFace()), direction, blocks);
     }
 
