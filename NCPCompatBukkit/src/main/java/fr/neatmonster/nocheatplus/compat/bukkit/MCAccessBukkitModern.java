@@ -35,7 +35,6 @@ import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
 import fr.neatmonster.nocheatplus.utilities.map.BlockFlags;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
-import fr.neatmonster.nocheatplus.utilities.map.BlockFlags;
 import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 
 public class MCAccessBukkitModern extends MCAccessBukkit {
@@ -90,6 +89,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
     private static final BukkitShapeModel MODEL_SEA_PICKLE = new BukkitSeaPickle();
     private static final BukkitShapeModel MODEL_COCOA = new BukkitCocoa();
     private static final BukkitShapeModel MODEL_TURTLE_EGG = new BukkitTurtleEgg();
+    private static final BukkitShapeModel MODEL_POWDER_SNOW = new BukkitPowderSnow();
 
     // Blocks that have a different shape, based on how they have been placed.
     private static final BukkitShapeModel MODEL_CAKE = new BukkitCake();
@@ -112,6 +112,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
     private static final BukkitShapeModel MODEL_CAMPFIRE = new BukkitStatic(0.0, 0.4375);
     private static final BukkitShapeModel MODEL_BAMBOO = new BukkitBamboo();
     private static final BukkitShapeModel MODEL_POINTED_DRIPSTONE = new BukkitDripStone();
+    private static final BukkitShapeModel MODEL_SCAFFOLDING = new BukkitScaffolding();
     private static final BukkitShapeModel MODEL_WATER_PLANTS = new BukkitWaterPlant();
     private static final BukkitShapeModel MODEL_LILY_PAD = new BukkitLilyPad();
     private static final BukkitShapeModel MODEL_FLOWER_POT = new BukkitStatic(0.3125, 0.375);
@@ -203,9 +204,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         }
 
         for (final Material mat : BridgeMaterial.getAllBlocks(
-            "light", "glow_lichen", "big_dripleaf_stem",
-            // TODO: Not fully tested
-            "scaffolding", "powder_snow")) {
+            "light", "glow_lichen", "big_dripleaf_stem")) {
             processedBlocks.add(mat);
         }
 
@@ -443,6 +442,9 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
             "lantern", "soul_lantern")) {
             addModel(mat, MODEL_LANTERN);
         }
+        for (Material mat : MaterialUtil.COPPER_LANTERNS) {
+            addModel(mat, MODEL_LANTERN);
+        }
 
         // Piston.
         for (Material mat : BridgeMaterial.getAllBlocks(
@@ -483,9 +485,17 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         Material mt = BridgeMaterial.getBlock("lectern");
         if (mt != null) addModel(mt, MODEL_LECTERN);
 
+        // Powder snow.
+        mt = BridgeMaterial.getBlock("powder_snow");
+        if (mt != null) addModel(mt, MODEL_POWDER_SNOW);
+
         // Bamboo.      
         mt = BridgeMaterial.getBlock("bamboo");
         if (mt != null) addModel(mt, MODEL_BAMBOO);
+
+        // Scaffolding.
+        mt = BridgeMaterial.getBlock("scaffolding");
+        if (mt != null) addModel(mt, MODEL_SCAFFOLDING);
 
         // Dripstone.
         mt = BridgeMaterial.getBlock("pointed_dripstone");
