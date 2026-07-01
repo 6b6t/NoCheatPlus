@@ -67,6 +67,7 @@ public class TestMinecraftVersion {
         assertEquals(0, ServerVersion.compareMinecraftVersion("26.1.2"));
         assertEquals(-1, ServerVersion.compareMinecraftVersion("26.2"));
         assertEquals(ClientVersion.V_26_1_2, ClientVersion.getById(775));
+        assertEquals(ClientVersion.V_26_1_2, ClientVersion.getByString("26.1.2"));
         assertEquals("26.1.2", ClientVersion.getById(775).getReleaseName());
     }
 

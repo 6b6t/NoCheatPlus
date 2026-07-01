@@ -71,7 +71,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
     );
     private static final BukkitShapeModel MODEL_HOPPER = new BukkitHopper();
     private static final BukkitShapeModel MODEL_CAULDRON = new BukkitCauldron(0.1875, 0.125, 0.8125, 0.0625);
-    private static final BukkitShapeModel MODEL_COMPOSTER = new BukkitCauldron(0.0, 0.125, 1.0, 0.125);
+    private static final BukkitShapeModel MODEL_COMPOSTER = new BukkitComposter(0.0, 0.125, 1.0, 0.125);
     private static final BukkitShapeModel MODEL_PISTON_HEAD = new BukkitPistonHead();
     private static final BukkitShapeModel MODEL_BELL = new BukkitBell();
     private static final BukkitShapeModel MODEL_ANVIL = new BukkitAnvil();
@@ -111,8 +111,9 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
     // Static blocks (various height and inset values).
     private static final BukkitShapeModel MODEL_CAMPFIRE = new BukkitStatic(0.0, 0.4375);
     private static final BukkitShapeModel MODEL_BAMBOO = new BukkitBamboo();
+    private static final BukkitShapeModel MODEL_POINTED_DRIPSTONE = new BukkitDripStone();
     private static final BukkitShapeModel MODEL_WATER_PLANTS = new BukkitWaterPlant();
-    private static final BukkitShapeModel MODEL_LILY_PAD = new BukkitStatic(0.09375);
+    private static final BukkitShapeModel MODEL_LILY_PAD = new BukkitLilyPad();
     private static final BukkitShapeModel MODEL_FLOWER_POT = new BukkitStatic(0.3125, 0.375);
     private static final BukkitShapeModel MODEL_LANTERN = new BukkitLantern();
     private static final BukkitShapeModel MODEL_CONDUIT = new BukkitStatic(0.3125, 0.3125, 0.3125, 0.6875, 0.6875, 0.6875);
@@ -120,6 +121,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
     private static final BukkitShapeModel MODEL_SINGLE_CHEST = new BukkitStatic(0.0625, 0.875);
     private static final BukkitShapeModel MODEL_HONEY_BLOCK = new BukkitStatic(0.0625, 0.9375);
     private static final BukkitShapeModel MODEL_SCULK_SHRIEKER = new BukkitStatic(0.0, 0.5);
+    private static final BukkitShapeModel MODEL_DRIED_GHAST = new BukkitStatic(0.1875, 0.0, 0.1875, 0.8125, 0.625, 0.8125);
 
     // Static blocks with full height sorted by inset.
     private static final BukkitShapeModel MODEL_INSET16_1_HEIGHT100 = new BukkitStatic(0.0625, 1.0);
@@ -130,7 +132,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
     private static final BukkitShapeModel MODEL_XZ100_HEIGHT8_3 = new BukkitStatic(0.375);
     private static final BukkitShapeModel MODEL_XZ100_HEIGHT16_9 = new BukkitStatic(0.5625);
     private static final BukkitShapeModel MODEL_XZ100_HEIGHT4_3 = new BukkitStatic(0.75);
-    private static final BukkitShapeModel MODEL_XZ100_HEIGHT16_15 = new BukkitStatic(0.9375);
+    private static final BukkitShapeModel MODEL_XZ100_HEIGHT16_15 = new BukkitDirtLike();
     private static final BukkitShapeModel MODEL_XZ100_HEIGHT8_7 = new BukkitStatic(0.875);
 
     public MCAccessBukkitModern() {
@@ -217,11 +219,18 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
             addModel(mat, MODEL_AUTO_FETCH);
         }
 
+        // Shelves
+        for (Material mat : MaterialUtil.WOODEN_SHELVES) {
+            addModel(mat, MODEL_AUTO_FETCH);
+        }
+
         // new flower, and others
         for (Material mat : BridgeMaterial.getAllBlocks(
             "azalea", "flowering_azalea",
-            "sculk_sensor", "pointed_dripstone", "frogspawn",
-            "sniffer_egg", "decorated_pot", "pitcher_crop", "calibrated_sculk_sensor")) {
+            "sculk_sensor", "frogspawn",
+            "sniffer_egg", "decorated_pot", "pitcher_crop", "calibrated_sculk_sensor", "bubble_column",
+            "closed_eyeblossom", "open_eyeblossom", "pale_hanging_moss", "resin_clump", "cactus_flower",
+            "short_dry_grass", "tall_dry_grass", "golden_dandelion")) {
             addModel(mat, MODEL_AUTO_FETCH);
         }
         
@@ -234,6 +243,21 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         for (Material mat : BridgeMaterial.getAllBlocks(
             "stonecutter", "chain")) {
             addModel(mat, MODEL_AUTO_FETCH_LEGACY);
+        }
+
+        // Modern iron chains
+        if (BridgeMaterial.IRON_CHAIN != null) {
+            addModel(BridgeMaterial.IRON_CHAIN, MODEL_AUTO_FETCH);
+        }
+
+        // Copper chains
+        for (Material mat : MaterialUtil.COPPER_CHAINS) {
+            addModel(mat, MODEL_AUTO_FETCH_LEGACY);
+        }
+
+        // Copper golem statues
+        for (Material mat : MaterialUtil.COPPER_GOLEM_STATUES) {
+            addModel(mat, MODEL_AUTO_FETCH);
         }
 
         // Camp fire
@@ -325,6 +349,9 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
             BridgeMaterial.IRON_BARS)) {
             addModel(mat, MODEL_THIN_FENCE);
         }
+        for (final Material mat : MaterialUtil.COPPER_BARS) {
+            addModel(mat, MODEL_THIN_FENCE);
+        }
 
         // Slabs
         for (final Material mat : MaterialUtil.SLABS) {
@@ -340,6 +367,9 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         // TOOD: Might add a facing/directional extension for double chests.
         for (Material mat : BridgeMaterial.getAllBlocks(
             "chest", "trapped_chest", "ender_chest")) {
+            addModel(mat, MODEL_SINGLE_CHEST);
+        }
+        for (Material mat : MaterialUtil.COPPER_CHESTS) {
             addModel(mat, MODEL_SINGLE_CHEST);
         }
 
@@ -457,6 +487,14 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         mt = BridgeMaterial.getBlock("bamboo");
         if (mt != null) addModel(mt, MODEL_BAMBOO);
 
+        // Dripstone.
+        mt = BridgeMaterial.getBlock("pointed_dripstone");
+        if (mt != null) addModel(mt, MODEL_POINTED_DRIPSTONE);
+
+        // Sulfur spike.
+        mt = BridgeMaterial.getBlock("sulfur_spike");
+        if (mt != null) addModel(mt, MODEL_POINTED_DRIPSTONE);
+
         // Bell.
         mt = BridgeMaterial.getBlock("bell");
         if (mt != null) addModel(mt, MODEL_BELL);
@@ -484,6 +522,14 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         // Mud
         mt = BridgeMaterial.getBlock("mud");
         if (mt != null) addModel(mt, MODEL_XZ100_HEIGHT8_7);
+
+        // Heavy core.
+        mt = BridgeMaterial.getBlock("heavy_core");
+        if (mt != null) addModel(mt, MODEL_GROUND_HEAD);
+
+        // Dried ghast.
+        mt = BridgeMaterial.getBlock("dried_ghast");
+        if (mt != null) addModel(mt, MODEL_DRIED_GHAST);
 
         // Sort to processed by flags.
         for (final Material mat : Material.values()) {

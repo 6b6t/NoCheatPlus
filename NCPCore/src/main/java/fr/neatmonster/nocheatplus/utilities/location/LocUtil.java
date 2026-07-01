@@ -475,4 +475,26 @@ public class LocUtil {
         return "x=" + block.getBlockX() + ",y=" + block.getBlockY() + ",z=" + block.getBlockZ();
     }
 
+    /**
+     * Taken from NMS offset/noise logic.
+     */
+    public static long randomSeedJava(int x, int y, int z) {
+        long i = (x * 3129871L) ^ z * 116129781L ^ y;
+        i = i * i * 42317861L + i * 11L;
+        return i >> 16;
+    }
+
+    /**
+     * Bedrock offset/noise equivalent.
+     */
+    public static long randomSeedBedrock(int x, int y, int z) {
+        long a1 = x * 3129871 & 0xFFFFFFFFL;
+        long a2 = z * 116129781 & 0xFFFFFFFFL;
+        long a3 = y & 0xFFFFFFFFL;
+        long i = a1 ^ a2 ^ a3;
+        long mul = ((i * i) & 0xFFFFFFFFL) * 42317861 & 0xFFFFFFFFL;
+        long add = i * 11 & 0xFFFFFFFFL;
+        return (mul + add) & 0xFFFFFFFFL;
+    }
+
 }

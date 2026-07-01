@@ -144,6 +144,21 @@ public enum ClientVersion {
     }
 
     /**
+     * Get a ClientVersion enum by release name.
+     *
+     * @param versionName the version name, for example "1.19.4".
+     * @return ClientVersion.UNKNOWN if unable to determine the version.
+     */
+    public static ClientVersion getByString(String versionName) {
+        for (ClientVersion version : VALUES) {
+            if (version.name.equals(versionName)) {
+                return version;
+            }
+        }
+        return UNKNOWN;
+    }
+
+    /**
      * Get the release name of this client version.
      * For example, for the V_1_19_4 enum constant, it would return "1.19.4".
      *

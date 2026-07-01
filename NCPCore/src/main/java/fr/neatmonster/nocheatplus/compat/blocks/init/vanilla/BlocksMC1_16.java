@@ -5,6 +5,7 @@ import org.bukkit.Material;
 import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
 import fr.neatmonster.nocheatplus.compat.blocks.BlockPropertiesSetup;
 import fr.neatmonster.nocheatplus.compat.blocks.init.BlockInit;
+import fr.neatmonster.nocheatplus.compat.versions.ServerVersion;
 import fr.neatmonster.nocheatplus.config.*;
 import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.utilities.map.BlockFlags;
@@ -15,7 +16,6 @@ import fr.neatmonster.nocheatplus.utilities.map.BlockProperties.BlockProps;
 public class BlocksMC1_16 implements BlockPropertiesSetup{
     public BlocksMC1_16() {
         BlockInit.assertMaterialExists("SOUL_CAMPFIRE");
-        BlockInit.assertMaterialExists("CHAIN");
     }
     @SuppressWarnings("deprecation")
     @Override
@@ -89,8 +89,11 @@ public class BlocksMC1_16 implements BlockPropertiesSetup{
         BlockInit.setAs("SOUL_LANTERN", "LANTERN");
 
         // Chain
-        BlockFlags.addFlags("CHAIN", BlockFlags.SOLID_GROUND);
-        BlockInit.setPropsAs("CHAIN", Material.IRON_BLOCK);
+        // In 1.21.8 chain got distinguished and renamed into two types: copper and iron.
+        if (ServerVersion.isAtMost("1.21.8") && BridgeMaterial.IRON_CHAIN == null) {
+            BlockFlags.addFlags("CHAIN", BlockFlags.SOLID_GROUND);
+            BlockInit.setPropsAs("CHAIN", Material.IRON_BLOCK);
+        }
 
         // Ancient Debris
         BlockFlags.addFlags("ANCIENT_DEBRIS", BlockFlags.FULLY_SOLID_BOUNDS);

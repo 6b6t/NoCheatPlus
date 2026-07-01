@@ -100,6 +100,8 @@ public class BlockProperties {
         PICKAXE,
         /** The hoe. */
         HOE,
+        /** The spear. */
+        SPEAR,
     }
 
     /**
@@ -1031,6 +1033,14 @@ public class BlockProperties {
             tools.put(BridgeMaterial.NETHERITE_AXE, new ToolProps(ToolType.AXE, MaterialBase.NETHERITE));
             tools.put(BridgeMaterial.NETHERITE_HOE, new ToolProps(ToolType.HOE, MaterialBase.NETHERITE));
         }
+
+        putToolIfPresent(BridgeMaterial.WOODEN_SPEAR, ToolType.SPEAR, MaterialBase.WOOD);
+        putToolIfPresent(BridgeMaterial.STONE_SPEAR, ToolType.SPEAR, MaterialBase.STONE);
+        putToolIfPresent(BridgeMaterial.COPPER_SPEAR, ToolType.SPEAR, MaterialBase.IRON);
+        putToolIfPresent(BridgeMaterial.IRON_SPEAR, ToolType.SPEAR, MaterialBase.IRON);
+        putToolIfPresent(BridgeMaterial.GOLDEN_SPEAR, ToolType.SPEAR, MaterialBase.GOLD);
+        putToolIfPresent(BridgeMaterial.DIAMOND_SPEAR, ToolType.SPEAR, MaterialBase.DIAMOND);
+        putToolIfPresent(BridgeMaterial.NETHERITE_SPEAR, ToolType.SPEAR, MaterialBase.NETHERITE);
 
         tools.put(Material.SHEARS, new ToolProps(ToolType.SHEARS, MaterialBase.NONE));
     }

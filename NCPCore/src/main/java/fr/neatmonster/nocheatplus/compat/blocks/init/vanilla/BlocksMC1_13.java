@@ -47,6 +47,11 @@ public class BlocksMC1_13 implements BlockPropertiesSetup {
         // Cave air.
         BlockInit.setAs("CAVE_AIR", Material.AIR);
 
+        // Remove this flag from lava, as Mojang altered the collision logic for it in 1.13.
+        for (final Material mat : MaterialUtil.LAVA) {
+            BlockFlags.removeFlags(mat, BlockFlags.F_HEIGHT_8SIM_DEC);
+        }
+
         // Dirt like.
         BlockInit.setAs("PODZOL", Material.DIRT);
         BlockInit.setAs("COARSE_DIRT", Material.DIRT);
@@ -72,7 +77,8 @@ public class BlocksMC1_13 implements BlockPropertiesSetup {
 
         // Bubble column.
         BlockInit.setAs("BUBBLE_COLUMN", Material.WATER);
-        BlockFlags.addFlags("BUBBLE_COLUMN", BlockFlags.F_BUBBLECOLUMN);
+        // Like water but don't have flag F_HEIGHT_8SIM_DEC.
+        BlockFlags.setBlockFlags("BUBBLE_COLUMN", BlockFlags.F_BUBBLECOLUMN | BlockFlags.F_LIQUID | BlockFlags.F_WATER);
 
         // Further melon/pumpkin stems.
 
@@ -190,14 +196,14 @@ public class BlocksMC1_13 implements BlockPropertiesSetup {
         
         // Sea Pickle.
         BlockProperties.setBlockProps("SEA_PICKLE", BlockProperties.instantType);
-        BlockFlags.addFlags("SEA_PICKLE", BlockFlags.F_GROUND | BlockFlags.F_GROUND_HEIGHT);
+        BlockFlags.addFlags("SEA_PICKLE", BlockFlags.F_GROUND);
 
         // Turtle egg.
         BlockProperties.setBlockProps("TURTLE_EGG", new BlockProps(BlockProperties.noTool, 0.5f));
 
         // Farm land. (Just in case not having multiversion plugin installed)
         BlockFlags.removeFlags(BridgeMaterial.FARMLAND, BlockFlags.F_HEIGHT100);
-        BlockFlags.addFlags(BridgeMaterial.FARMLAND, BlockFlags.F_XZ100 | BlockFlags.F_MIN_HEIGHT16_15);
+        BlockFlags.addFlags(BridgeMaterial.FARMLAND, BlockFlags.F_XZ100);
         
         ConfigFile config = ConfigManager.getConfigFile();
         if (config.getBoolean(ConfPaths.BLOCKBREAK_DEBUG, config.getBoolean(ConfPaths.CHECKS_DEBUG, false)))

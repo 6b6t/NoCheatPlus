@@ -23,7 +23,6 @@ public class BlocksMC1_14 implements BlockPropertiesSetup{
     public void setupBlockProperties(WorldConfigProvider<?> worldConfigProvider) {
         // TODO: Clean up the mess
 
-        BlockFlags.addFlags("VINE", BlockFlags.F_CLIMBUPABLE);
         final BlockProperties.BlockProps instant = BlockProperties.instantType;
         BlockInit.setPropsAs("END_STONE_BRICK_WALL", BridgeMaterial.END_STONE_BRICKS);
         BlockInit.setPropsAs("END_STONE_BRICK_STAIRS", BridgeMaterial.END_STONE_BRICKS);
@@ -138,7 +137,7 @@ public class BlocksMC1_14 implements BlockPropertiesSetup{
         }
 
         BlockInit.setPropsAs("GRINDSTONE", Material.COBBLESTONE);
-        BlockFlags.addFlags("GRINDSTONE", BlockFlags.SOLID_GROUND | BlockFlags.F_VARIABLE);
+        BlockFlags.addFlags("GRINDSTONE", BlockFlags.SOLID_GROUND);
 
         BlockInit.setPropsAs("CAMPFIRE", Material.OAK_PLANKS);
         BlockFlags.addFlags("CAMPFIRE", BlockFlags.SOLID_GROUND);
@@ -146,7 +145,7 @@ public class BlocksMC1_14 implements BlockPropertiesSetup{
         BlockFlags.addFlags("BELL", BlockFlags.SOLID_GROUND);
         BlockProperties.setBlockProps("BELL", new BlockProperties.BlockProps(BlockProperties.woodPickaxe, 5f, true));
 
-        BlockProperties.setBlockProps("LANTERN", new BlockProperties.BlockProps(BlockProperties.woodPickaxe, 3.5f, true));
+        BlockProperties.setBlockProps("LANTERN", new BlockProperties.BlockProps(BlockProperties.woodPickaxe, 3.5f, false));
         BlockFlags.addFlags("LANTERN", BlockFlags.F_GROUND);
 
         BlockFlags.addFlags("SWEET_BERRY_BUSH", BlockFlags.F_BERRY_BUSH);
