@@ -28,6 +28,8 @@ import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
 
 public class BukkitAttributeAccess implements IAttributeAccess {
 
+    private static final Attribute LEGACY_MOVEMENT_SPEED = BridgeAttribute.get("generic_movement_speed");
+
     public BukkitAttributeAccess() {
         if (ReflectionUtil.getClass("org.bukkit.attribute.AttributeInstance") == null) {
             throw new RuntimeException("Service not available.");
@@ -99,7 +101,7 @@ public class BukkitAttributeAccess implements IAttributeAccess {
 
     @Override
     public double getSpeedAttributeMultiplier(final Player player) {
-        final AttributeInstance attrInst = getAttributeInstance(player, BridgeAttribute.MOVEMENT_SPEED);
+        final AttributeInstance attrInst = getAttributeInstance(player, LEGACY_MOVEMENT_SPEED);
         if (attrInst == null || attrInst.getBaseValue() == 0.0) {
             return Double.MAX_VALUE;
         }
@@ -110,7 +112,7 @@ public class BukkitAttributeAccess implements IAttributeAccess {
 
     @Override
     public double getSprintAttributeMultiplier(final Player player) {
-        final AttributeInstance attrInst = getAttributeInstance(player, BridgeAttribute.MOVEMENT_SPEED);
+        final AttributeInstance attrInst = getAttributeInstance(player, LEGACY_MOVEMENT_SPEED);
         if (attrInst == null) {
             return Double.MAX_VALUE;
         }
