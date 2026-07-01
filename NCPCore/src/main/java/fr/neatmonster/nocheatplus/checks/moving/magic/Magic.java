@@ -63,6 +63,7 @@ public class Magic {
     // Horizontal speeds/modifiers. 
     public static final double WALK_SPEED           = 0.221D;
     public static final double modWeb               = 0.09D / WALK_SPEED; // Actual would be 0.03. Takes into account lift-off acceleration directly.
+    public static final double modWebWeaving        = modWeb * 2.0D;
     public static final double modPowderSnow        = 0.1252 / WALK_SPEED; // Adjust 
     public static final double modBlock             = 0.1277D / WALK_SPEED; // (OK)
     public static final double modSneak             = 0.13D / WALK_SPEED; // Test
@@ -109,6 +110,7 @@ public class Magic {
     public static final double snowClimbSpeedDescend   = 0.118;
     public static final double webSpeedDescendH        = -0.062;
     public static final double webSpeedDescendDefault  = -0.032;
+    public static final double webSpeedDescendWeaving  = -GRAVITY_MIN * FRICTION_MEDIUM_AIR * 5.0D;
     public static final double bushSpeedAscend         = 0.315;
     public static final double bushSpeedDescend        = -0.09;
     public static final double bubbleStreamDescend     = 0.49; // from wiki.
