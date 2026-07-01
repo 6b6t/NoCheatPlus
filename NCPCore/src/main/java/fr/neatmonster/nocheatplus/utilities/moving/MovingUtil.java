@@ -115,8 +115,10 @@ public class MovingUtil {
      */
     public static boolean canStillGlide(final Player player, final PlayerLocation loc, final MovingData data) {
         // Only stuck-speed blocks (webs/berry bushes/powder snow?) can stop a player who isn't propelled by a rocket.
-        return data.fireworksBoostDuration > 0 && !loc.isResetCond()
-               || !loc.isResetCond() && !player.isDead() && !player.isSleeping() && !InventoryUtil.isItemBroken(player.getInventory().getChestplate());
+        final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
+        final boolean groundedSinceLastMove = loc.isOnGround() && lastMove.to.onGround;
+        return data.fireworksBoostDuration > 0 && !loc.isResetCond() && !groundedSinceLastMove
+               || !loc.isResetCond() && !groundedSinceLastMove && !player.isDead() && !player.isSleeping() && !InventoryUtil.isItemBroken(player.getInventory().getChestplate());
     }
 
     /**

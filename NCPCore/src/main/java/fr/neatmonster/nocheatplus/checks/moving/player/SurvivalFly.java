@@ -179,9 +179,10 @@ public class SurvivalFly extends Check {
         // Horizontal move                ///
         /////////////////////////////////////
         double hAllowedDistance, hDistanceAboveLimit, hFreedom;
-        double[] resGlide = processGliding(from, to, pData, data, player, isNormalOrPacketSplitMove, fromOnGround, toOnGround, debug);
+        final boolean useGlidingModel = shouldUseGlidingModel(player, from, to, data, fromOnGround);
+        double[] resGlide = useGlidingModel ? processGliding(from, to, pData, data, player, isNormalOrPacketSplitMove, fromOnGround, toOnGround, debug) : null;
         // Set the allowed distance and determine the distance above limit
-        double[] hRes = Bridge1_9.isGliding(player) ? resGlide : prepareSpeedEstimation(from, to, pData, player, data, thisMove, lastMove, fromOnGround, toOnGround, debug, isNormalOrPacketSplitMove, false, false);
+        double[] hRes = useGlidingModel ? resGlide : prepareSpeedEstimation(from, to, pData, player, data, thisMove, lastMove, fromOnGround, toOnGround, debug, isNormalOrPacketSplitMove, false, false);
         hAllowedDistance = hRes[0];
         hDistanceAboveLimit = hRes[1];
         // Beyond limit? Check if there may have been a reason for this (and try to re-estimate if needed)
@@ -204,7 +205,7 @@ public class SurvivalFly extends Check {
         // Order of checking in EntityLiving.java water -> lava -> gliding -> air
         // TODO: Clean-up this left-over bit of the old implementation (respect MC's order)
         double yAllowedDistance, yDistanceAboveLimit;
-        if (Bridge1_9.isGliding(player)) {
+        if (useGlidingModel) {
             yAllowedDistance = resGlide[2];
             yDistanceAboveLimit = resGlide[3];
         }
@@ -337,7 +338,7 @@ public class SurvivalFly extends Check {
         data.lastLevitationLevel = !Double.isInfinite(Bridge1_9.getLevitationAmplifier(player)) ? Bridge1_9.getLevitationAmplifier(player) + 1 : 0.0;
         data.lastGravity = data.nextGravity;
         data.lastCollidingEntitiesLocations = CollisionUtil.getCollidingEntitiesLocations(player);
-        cData.wasSprinting = pData.isSprinting();
+        cData.wasSprinting = player.isSprinting();
         cData.wasPressingShift = pData.isShiftKeyPressed();
         cData.wasSlowFalling = !Double.isInfinite(Bridge1_13.getSlowfallingAmplifier(player));
         cData.wasLevitating = !Double.isInfinite(Bridge1_9.getLevitationAmplifier(player));
@@ -594,6 +595,19 @@ public class SurvivalFly extends Check {
         }
         return new double[]{thisMove.hAllowedDistance, hDistanceAboveLimit, thisMove.yAllowedDistance, yDistanceAboveLimit};
     }
+
+    private boolean shouldUseGlidingModel(final Player player, final PlayerLocation from, final PlayerLocation to,
+                                          final MovingData data, final boolean fromOnGround) {
+        if (!Bridge1_9.isGliding(player)) {
+            return false;
+        }
+        if (fromOnGround || from.isResetCond() || to.isResetCond() || !MovingUtil.canStillGlide(player, from, data)) {
+            player.setGliding(false);
+            tags.add("glide_reset");
+            return false;
+        }
+        return true;
+    }
     
     /**
      * Reset the given speed upon wall collision.
@@ -736,7 +750,7 @@ public class SurvivalFly extends Check {
             // 1.12 (and below) clients will use cubed inertia, not cubed friction here. The difference isn't significant except for blocking speed and bunnyhopping on soul sand, which are both slower on 1.8
             float frictionMediumFactor = pData.getClientVersion().isAtLeast(ClientVersion.V_1_13) ? data.nextFrictionHorizontal : data.nextFrictionHorizontal * Magic.AIR_HORIZONTAL_INERTIA;
             float acceleration = onGround ? data.walkSpeed * ((pData.getClientVersion().isAtLeast(ClientVersion.V_1_13) ? Magic.DEFAULT_FRICTION_CUBED : Magic.DEFAULT_FRICTION_MULTIPLIED_BY_091_CUBED) / (frictionMediumFactor * frictionMediumFactor * frictionMediumFactor)) : Magic.AIR_ACCELERATION;
-            if (pData.isSprinting()) {
+            if (player.isSprinting()) {
                 // (We don't use the attribute here due to desync issues, just detect when the player is sprinting and apply the multiplier manually)
                 acceleration += acceleration * 0.3f; // 0.3 is the effective sprinting speed (EntityLiving).
             }
@@ -882,7 +896,7 @@ public class SurvivalFly extends Check {
             return true;
         }
         // If impulses don't need to be inferred from the prediction, illegal sprinting checks can be performed here.
-        if (BridgeMisc.isWASDImpulseKnown(player) && pData.isSprinting()
+        if (BridgeMisc.isWASDImpulseKnown(player) && player.isSprinting()
             && (data.input.getForwardDir() != ForwardDirection.FORWARD && data.input.getStrafeDir() != StrafeDirection.NONE && data.input.getForwardDir() != ForwardDirection.NONE
                 || player.getFoodLevel() <= 5) // must be checked here as well (besides on toggle sprinting) because players will immediately lose the ability to sprint if food level drops below 5
             ) { 
@@ -1490,7 +1504,7 @@ public class SurvivalFly extends Check {
             boolean forceViolation = false;
             if (found) {
                 // These checks must be performed ex-post because they rely on data that is set after the prediction.
-                if (pData.isSprinting() 
+                if (player.isSprinting()
                     && (theorInputs[i].getForwardDir() != ForwardDirection.FORWARD && theorInputs[i].getStrafeDir() != StrafeDirection.NONE && theorInputs[i].getForwardDir() != ForwardDirection.NONE
                         || player.getFoodLevel() <= 5)) { 
                     tags.add("illegalsprint");

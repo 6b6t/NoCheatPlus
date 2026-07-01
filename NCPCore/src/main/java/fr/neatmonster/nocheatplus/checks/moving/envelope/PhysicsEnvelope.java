@@ -56,7 +56,7 @@ public class PhysicsEnvelope {
      * @return True, if isJump() returned true while the player is sprinting.
      */
     public static boolean isBunnyhop(final PlayerLocation from, final PlayerLocation to, final IPlayerData pData, boolean fromOnGround, boolean toOnGround, final Player player, boolean forceSetOffGround) {
-        if (!pData.isSprinting()) {
+        if (!player.isSprinting()) {
             return false;
         }
         final MovingData data = pData.getGenericInstance(MovingData.class);
