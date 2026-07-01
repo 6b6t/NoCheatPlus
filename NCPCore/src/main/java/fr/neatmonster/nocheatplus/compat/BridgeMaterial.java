@@ -162,6 +162,13 @@ public class BridgeMaterial {
     /////////////////////////////////////////////////////////
     // Specific unique material instances for items (only).
     /////////////////////////////////////////////////////////
+    public static final Material WOODEN_SPEAR = getFirst("wooden_spear");
+    public static final Material STONE_SPEAR = getFirst("stone_spear");
+    public static final Material COPPER_SPEAR = getFirst("copper_spear");
+    public static final Material IRON_SPEAR = getFirst("iron_spear");
+    public static final Material GOLDEN_SPEAR = getFirst("golden_spear");
+    public static final Material DIAMOND_SPEAR = getFirst("diamond_spear");
+    public static final Material NETHERITE_SPEAR = getFirst("netherite_spear");
 
     public static final Material DIAMOND_SHOVEL = getFirstNotNull("diamond_shovel", "diamond_spade");
 
@@ -170,6 +177,12 @@ public class BridgeMaterial {
     public static final Material NETHERITE_PICKAXE = getFirst("netherite_pickaxe");
     public static final Material NETHERITE_SHOVEL = getFirst("netherite_shovel");
     public static final Material NETHERITE_SWORD = getFirst("netherite_sword");
+
+    public static final Material COPPER_AXE = getFirst("copper_axe");
+    public static final Material COPPER_HOE = getFirst("copper_hoe");
+    public static final Material COPPER_PICKAXE = getFirst("copper_pickaxe");
+    public static final Material COPPER_SHOVEL = getFirst("copper_shovel");
+    public static final Material COPPER_SWORD = getFirst("copper_sword");
 
     public static final Material GOLDEN_AXE = getFirstNotNull("golden_axe", "gold_axe");
     public static final Material GOLDEN_HOE = getFirstNotNull("golden_hoe", "gold_hoe");
@@ -191,6 +204,12 @@ public class BridgeMaterial {
     ///////////////////////////////////////////////////
     // Specific unique material instances for blocks.
     ///////////////////////////////////////////////////
+    public static final Material SEA_LANTERN = get("sea_lantern");
+
+    public static final Material IRON_CHAIN = get("iron_chain");
+
+    public static final Material LEGACY_CHAIN = get("chain");
+
     public static final Material BARREL = get("barrel"); // null for legacy servers
 
     public static final Material BEETROOTS = getFirst("beetroots", "beetroot_block");
@@ -233,7 +252,7 @@ public class BridgeMaterial {
     public static final Material FIREWORK_ROCKET = getFirst("firework_rocket", "firework");
 
     /** Passable (long) grass block. */
-    public static final Material GRASS = getFirstNotNull("long_grass", "grass");
+    public static final Material GRASS = getFirstNotNull("short_grass", "long_grass", "grass");
 
     /** Classic dirt-like grass block. */
     public static final Material GRASS_BLOCK = getFirstNotNull("grass_block", "grass");
@@ -390,6 +409,59 @@ public class BridgeMaterial {
                 if (isBlock == AlmostBoolean.MAYBE || !(isBlock.decide() ^ value.isBlock())) {
                     res.add(value);
                 }
+            }
+        }
+        return res;
+    }
+
+    /**
+     * Return materials that contain all required fragments but none of the
+     * excluded fragments, respecting the block filter.
+     *
+     * @param isBlock
+     *            If to match only blocks, only non-blocks, or either.
+     * @param contains
+     *            Required lower-case name fragments.
+     * @param excludeContains
+     *            Fragments that must not be present.
+     * @return Matching materials.
+     */
+    public static Set<Material> getByContains(final AlmostBoolean isBlock,
+            final Collection<String> contains, final String... excludeContains) {
+        final Set<Material> res = new LinkedHashSet<Material>();
+        final List<String> useContains = new LinkedList<String>();
+        for (final String fragment : contains) {
+            useContains.add(fragment.toLowerCase());
+        }
+        final List<String> useExcludeContains = new LinkedList<String>();
+        for (final String fragment : excludeContains) {
+            useExcludeContains.add(fragment.toLowerCase());
+        }
+        final boolean isBlockDecided = isBlock.decide();
+        for (final Entry<String, Material> entry : all.entrySet()) {
+            final String key = entry.getKey();
+            final Material value = entry.getValue();
+            if (isBlock != AlmostBoolean.MAYBE && (isBlockDecided ^ value.isBlock())) {
+                continue;
+            }
+            boolean match = true;
+            for (final String fragment : useContains) {
+                if (!key.contains(fragment)) {
+                    match = false;
+                    break;
+                }
+            }
+            if (!match) {
+                continue;
+            }
+            for (final String fragment : useExcludeContains) {
+                if (key.contains(fragment)) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) {
+                res.add(value);
             }
         }
         return res;

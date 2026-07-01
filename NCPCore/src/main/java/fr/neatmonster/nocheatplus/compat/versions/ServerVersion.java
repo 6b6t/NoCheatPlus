@@ -186,6 +186,34 @@ public class ServerVersion {
     }
 
     /**
+     * Convenience for compareMinecraftVersion(String).
+     */
+    public static boolean isLowerThan(String version) {
+        return compareMinecraftVersion(version) == -1;
+    }
+
+    /**
+     * Convenience for compareMinecraftVersion(String).
+     */
+    public static boolean isHigherThan(String version) {
+        return compareMinecraftVersion(version) == 1;
+    }
+
+    /**
+     * Convenience for compareMinecraftVersion(String).
+     */
+    public static boolean isAtLeast(String version) {
+        return compareMinecraftVersion(version) >= 0;
+    }
+
+    /**
+     * Convenience for compareMinecraftVersion(String).
+     */
+    public static boolean isAtMost(String version) {
+        return compareMinecraftVersion(version) <= 0;
+    }
+
+    /**
      * Test if the Minecraft version is between the two given ones.
      * 
      * @param versionLow

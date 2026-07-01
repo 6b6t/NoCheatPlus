@@ -634,6 +634,8 @@ public class BlockProperties {
                             || mat == Material.TRAPPED_CHEST
                             || mat == Material.HOPPER
                             || mat == BridgeMaterial.BARREL
+                            || MaterialUtil.COPPER_CHESTS.contains(mat)
+                            || MaterialUtil.WOODEN_SHELVES.contains(mat)
                             // Ugly.
                             || mat.toString().endsWith("SHULKER_BOX"));
     }
@@ -998,6 +1000,12 @@ public class BlockProperties {
         tools.put(Material.STONE_AXE, new ToolProps(ToolType.AXE, MaterialBase.STONE));
         tools.put(Material.STONE_HOE, new ToolProps(ToolType.HOE, MaterialBase.STONE));
 
+        putToolIfPresent(BridgeMaterial.COPPER_SWORD, ToolType.SWORD, MaterialBase.IRON);
+        putToolIfPresent(BridgeMaterial.COPPER_SHOVEL, ToolType.SPADE, MaterialBase.IRON);
+        putToolIfPresent(BridgeMaterial.COPPER_PICKAXE, ToolType.PICKAXE, MaterialBase.IRON);
+        putToolIfPresent(BridgeMaterial.COPPER_AXE, ToolType.AXE, MaterialBase.IRON);
+        putToolIfPresent(BridgeMaterial.COPPER_HOE, ToolType.HOE, MaterialBase.IRON);
+
         tools.put(Material.IRON_SWORD, new ToolProps(ToolType.SWORD, MaterialBase.IRON));
         tools.put(BridgeMaterial.IRON_SHOVEL, new ToolProps(ToolType.SPADE, MaterialBase.IRON));
         tools.put(Material.IRON_PICKAXE, new ToolProps(ToolType.PICKAXE, MaterialBase.IRON));
@@ -1025,6 +1033,12 @@ public class BlockProperties {
         }
 
         tools.put(Material.SHEARS, new ToolProps(ToolType.SHEARS, MaterialBase.NONE));
+    }
+
+    private static void putToolIfPresent(final Material material, final ToolType toolType, final MaterialBase materialBase) {
+        if (material != null) {
+            tools.put(material, new ToolProps(toolType, materialBase));
+        }
     }
 
     private static void setBlock(Material material, BlockProps props) {

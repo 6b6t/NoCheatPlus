@@ -50,7 +50,7 @@ public class MaterialUtil {
     ///////////////////////
 
     private static final List<String> woodTypes = Arrays.asList(
-            "acacia", "birch", "dark_oak", "jungle", "oak", "spruce", "warped", "crimson", "mangrove", "bamboo", "cherry",
+            "acacia", "birch", "dark_oak", "jungle", "oak", "spruce", "warped", "crimson", "mangrove", "bamboo", "cherry", "pale",
             "wood" // Legacy
             );
 
@@ -168,6 +168,49 @@ public class MaterialUtil {
 
     public static final Set<Material> COPPER_BLOCKS = Collections.unmodifiableSet(addBlocks(
             BridgeMaterial.getBySuffix("_copper", AlmostBoolean.YES), "copper_block", "waxed_copper_block"));
+
+    /**
+     * Includes all cinnabar block variants using the same breaking properties.
+     */
+    public static final Set<Material> CINNABAR_BLOCKS = Collections.unmodifiableSet(
+            BridgeMaterial.getByContains(AlmostBoolean.YES, Arrays.asList("cinnabar"), "legacy"));
+
+    /**
+     * Includes all sulfur block variants using the same breaking properties,
+     * except sulfur spikes, which have their own shape flags.
+     */
+    public static final Set<Material> SULFUR_BLOCKS = Collections.unmodifiableSet(
+            BridgeMaterial.getByContains(AlmostBoolean.YES, Arrays.asList("sulfur"), "legacy", "sulfur_spike"));
+
+    public static final Set<Material> ALL_REFINED_COPPER_BLOCKS = Collections.unmodifiableSet(
+            BridgeMaterial.getByContains(AlmostBoolean.YES, Arrays.asList("copper"), "ore", "raw"));
+
+    public static final Set<Material> COPPER_BULBS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("copper_bulb", AlmostBoolean.YES));
+
+    public static final Set<Material> COPPER_GRATES = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("copper_grate", AlmostBoolean.YES));
+
+    public static final Set<Material> COPPER_BARS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("copper_bars", AlmostBoolean.YES));
+
+    public static final Set<Material> COPPER_CHESTS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("copper_chest", AlmostBoolean.YES));
+
+    public static final Set<Material> COPPER_CHAINS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("copper_chain", AlmostBoolean.YES));
+
+    public static final Set<Material> COPPER_LANTERNS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("copper_lantern", AlmostBoolean.YES));
+
+    public static final Set<Material> COPPER_LIGHTNING_RODS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("lightning_rod", AlmostBoolean.YES));
+
+    public static final Set<Material> COPPER_GOLEM_STATUES = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("copper_golem_statue", AlmostBoolean.YES));
+
+    public static final Set<Material> ALL_TUFF = Collections.unmodifiableSet(
+            BridgeMaterial.getByContains(AlmostBoolean.YES, Arrays.asList("tuff")));
 
     public static final Set<Material> ALL_CANDLES = Collections.unmodifiableSet(
             BridgeMaterial.getBySuffix("candle", AlmostBoolean.YES));
@@ -402,7 +445,7 @@ public class MaterialUtil {
             "cobblestone", "mossy_cobblestone",
             "sea_lantern", "redstone_lamp", "glowstone", "sponge", "wet_sponge",
             "budding_amethyst", "amethyst_block",
-            "calcite", "tuff", "moss_block", "rooted_dirt", "dripstone_block"
+            "calcite", "tuff", "moss_block", "rooted_dirt", "dripstone_block", "pale_moss_block"
             ));
 
     public static final Set<Material> WALL_BANNERS = Collections.unmodifiableSet(addBlocks(
@@ -427,6 +470,13 @@ public class MaterialUtil {
                     AlmostBoolean.YES
                     // , ...
                     ), "wood"));
+
+    public static final Set<Material> WOODEN_SHELVES = Collections.unmodifiableSet(addBlocks(
+            BridgeMaterial.getByPrefixAndSuffix(
+                    woodTypes,
+                    Arrays.asList("_shelf"),
+                    AlmostBoolean.YES
+                    ), "shelf"));
 
     public static final Set<Material> WOODEN_SIGNS = Collections.unmodifiableSet(addBlocks(
             BridgeMaterial.getByPrefixAndSuffix(
@@ -541,7 +591,9 @@ public class MaterialUtil {
                     "weeping_vines", "weeping_vines_plant",
                     "twisting_vines", "twisting_vines_plant",
                     "mangrove_propagule", "pink_petals", "torchflower", "torchflower_crop",
-                    "pitcher_plant"
+                    "pitcher_plant", "open_eyeblossom", "closed_eyeblossom", "pale_hanging_moss",
+                    "leaf_litter", "cactus_flower", "short_dry_grass", "tall_dry_grass", "wildflowers",
+                    "golden_dandelion"
                     ),
             new HashSet<Material>(Arrays.asList(BridgeMaterial.TALL_GRASS, 
                     BridgeMaterial.WHEAT_CROPS, BridgeMaterial.CARROTS, 
@@ -573,6 +625,8 @@ public class MaterialUtil {
             CONCRETE_POWDER_BLOCKS,
             CORAL_BLOCKS,
             COPPER_BLOCKS,
+            COPPER_GRATES,
+            COPPER_BULBS,
             GLASS_BLOCKS,
             GLAZED_TERRACOTTA_BLOCKS,
             INFESTED_BLOCKS,

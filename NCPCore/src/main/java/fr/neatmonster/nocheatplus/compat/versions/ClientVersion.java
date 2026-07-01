@@ -60,13 +60,43 @@ public enum ClientVersion {
 
     V_1_19(759), V_1_19_1(760), V_1_19_3(761), V_1_19_4(762),
     /**
-     * 1.20.1 has the same protocol version.
+     * 1.20 or 1.20.1 have the same protocol version.
      */
-    V_1_20(763),
+    V_1_20(763), V_1_20_2(764),
+    /**
+     * 1.20.3 or 1.20.4 have the same protocol version.
+     */
+    V_1_20_3(765),
+    /**
+     * 1.20.5 or 1.20.6 have the same protocol version.
+     */
+    V_1_20_6(766),
+    /**
+     * 1.21 or 1.21.1 have the same protocol version.
+     */
+    V_1_21(767),
+    /**
+     * 1.21.2 or 1.21.3 have the same protocol version.
+     */
+    V_1_21_2(768),
+    V_1_21_4(769), V_1_21_5(770), V_1_21_6(771),
+    /**
+     * 1.21.7 or 1.21.8 have the same protocol version.
+     */
+    V_1_21_7(772),
+    /**
+     * 1.21.9 or 1.21.10 have the same protocol version.
+     */
+    V_1_21_9(773),
+    V_1_21_11(774),
+    /**
+     * 26.1 and 26.1.2 use the new year-based version naming.
+     */
+    V_26_1_2(775),
 
 
     LOWER_THAN_KNOWN_VERSIONS(V_1_7_2.protocolID - 1, false),
-    HIGHER_THAN_KNOWN_VERSIONS(V_1_20.protocolID + 1, false),
+    HIGHER_THAN_KNOWN_VERSIONS(V_26_1_2.protocolID + 1, false),
     UNKNOWN(-1, false);
 
     private final int protocolID;
