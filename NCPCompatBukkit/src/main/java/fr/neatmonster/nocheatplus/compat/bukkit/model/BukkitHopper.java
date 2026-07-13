@@ -20,6 +20,7 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.Directional;
 
+import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
 
 public class BukkitHopper implements BukkitShapeModel {
@@ -27,6 +28,9 @@ public class BukkitHopper implements BukkitShapeModel {
     @Override
     public double[] getShape(BlockCache blockCache, World world, int x, int y, int z) {
         final Block block = world.getBlockAt(x, y, z);
+        if (Bridge1_13.hasBoundingBox()) {
+            return BukkitFetchableBounds.getBounds(block);
+        }
         final BlockData blockData = block.getBlockData();
         if (blockData instanceof Directional) {
             Directional b = (Directional) blockData;

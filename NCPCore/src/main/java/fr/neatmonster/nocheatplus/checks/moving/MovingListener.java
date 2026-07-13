@@ -14,6 +14,7 @@
  */
 package fr.neatmonster.nocheatplus.checks.moving;
 
+import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -32,6 +33,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
+import org.bukkit.event.Event;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
@@ -111,6 +113,7 @@ import fr.neatmonster.nocheatplus.components.modifier.IAttributeAccess;
 import fr.neatmonster.nocheatplus.components.registry.event.IGenericInstanceHandle;
 import fr.neatmonster.nocheatplus.components.registry.factory.IFactoryOne;
 import fr.neatmonster.nocheatplus.components.registry.feature.IHaveCheckType;
+import fr.neatmonster.nocheatplus.event.mini.MiniListener;
 import fr.neatmonster.nocheatplus.components.registry.feature.INeedConfig;
 import fr.neatmonster.nocheatplus.components.registry.feature.IRemoveData;
 import fr.neatmonster.nocheatplus.components.registry.feature.JoinLeaveListener;
@@ -210,6 +213,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
         final NoCheatPlusAPI api = NCPAPIProvider.getNoCheatPlusAPI();
         api.addComponent(vehicleChecks);
         blockChangeTracker = NCPAPIProvider.getNoCheatPlusAPI().getBlockChangeTracker();
+        registerLungeEvent(api);
         if (Bridge1_9.hasEntityToggleGlideEvent()) {
             queuedComponents.add(new Listener() {
                 @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
@@ -237,6 +241,60 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                 .removeSubCheckData(CheckType.MOVING, true)
                 .context() //
                 );
+    }
+
+    @SuppressWarnings("unchecked")
+    private void registerLungeEvent(final NoCheatPlusAPI api) {
+        try {
+            final Class<?> rawEventClass = Class.forName("io.papermc.paper.event.entity.EntityLungeEvent");
+            if (!Event.class.isAssignableFrom(rawEventClass)) {
+                return;
+            }
+            final Class<? extends Event> eventClass = (Class<? extends Event>) rawEventClass;
+            final Method getEntity = rawEventClass.getMethod("getEntity");
+            final Method getLungePower = rawEventClass.getMethod("getLungePower");
+            registerLungeEvent(api, eventClass, getEntity, getLungePower);
+        } catch (ClassNotFoundException e) {
+            // The exact lunge event is only available on Paper-based servers.
+        } catch (ReflectiveOperationException e) {
+            StaticLog.logWarning("Failed to register support for EntityLungeEvent: " + e.getMessage());
+        }
+    }
+
+    private <E extends Event> void registerLungeEvent(final NoCheatPlusAPI api,
+            final Class<E> eventClass, final Method getEntity, final Method getLungePower) {
+        api.getEventRegistry().register(eventClass, new MiniListener<E>() {
+            @Override
+            public void onEvent(final E event) {
+                try {
+                    final Object entity = getEntity.invoke(event);
+                    final int power = ((Number) getLungePower.invoke(event)).intValue();
+                    if (entity instanceof Player && power > 0) {
+                        addLungeVelocity((Player) entity, power);
+                    }
+                } catch (ReflectiveOperationException e) {
+                    StaticLog.logWarning("Failed to process EntityLungeEvent: " + e.getMessage());
+                }
+            }
+        }, EventPriority.MONITOR, null, true);
+    }
+
+    private void addLungeVelocity(final Player player, final int power) {
+        final Vector direction = player.getLocation().getDirection();
+        final double horizontalVelocity = Math.sqrt(direction.getX() * direction.getX()
+                + direction.getZ() * direction.getZ()) * 0.916D * power;
+        if (horizontalVelocity <= 0.0) {
+            return;
+        }
+        final IPlayerData pData = DataManager.getPlayerData(player);
+        final MovingData data = pData.getGenericInstance(MovingData.class);
+        final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+        data.addHorizontalVelocity(new AccountEntry(TickTask.getTick(), horizontalVelocity,
+                cc.velocityActivationCounter, MovingData.getHorVelValCount(horizontalVelocity)));
+        data.sfNoLowJump = true;
+        if (pData.isDebugActive(CheckType.MOVING)) {
+            debug(player, "Lunge impulse: " + horizontalVelocity + " (power " + power + ")");
+        }
     }
 
     /**

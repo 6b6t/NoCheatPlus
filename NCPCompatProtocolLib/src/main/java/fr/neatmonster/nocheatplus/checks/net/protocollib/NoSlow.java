@@ -54,6 +54,7 @@ import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.InventoryUtil;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 
 public class NoSlow extends BaseAdapter {
     private final static String dftag = "system.nocheatplus.noslow";
@@ -195,6 +196,12 @@ public class NoSlow extends BaseAdapter {
 
             if (Bridge1_13.hasIsRiptiding() && m == Material.TRIDENT) {
                 //data.isUsingItem = true;
+                data.offHandUse = e.getHand() == EquipmentSlot.OFF_HAND;
+                return;
+            }
+
+            if (MaterialUtil.isSpear(m)) {
+                data.isUsingItem = false;
                 data.offHandUse = e.getHand() == EquipmentSlot.OFF_HAND;
                 return;
             }

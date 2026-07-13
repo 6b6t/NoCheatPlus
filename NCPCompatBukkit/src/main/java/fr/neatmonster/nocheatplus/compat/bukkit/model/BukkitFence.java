@@ -21,6 +21,7 @@ import org.bukkit.block.BlockState;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.MultipleFacing;
 
+import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
 
 public class BukkitFence implements BukkitShapeModel {
@@ -48,6 +49,9 @@ public class BukkitFence implements BukkitShapeModel {
         // 0.1375, 0.8625
 
         final Block block = world.getBlockAt(x, y, z);
+        if (Bridge1_13.hasBoundingBox()) {
+            return BukkitFetchableBounds.getBounds(block);
+        }
         final BlockState state = block.getState();
         final BlockData blockData = state.getBlockData();
 

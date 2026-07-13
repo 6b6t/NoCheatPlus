@@ -253,17 +253,21 @@ public class MaterialUtil {
 
     public static final Set<Material> BOATS;
     public static final Set<Material> ALL_SEEDS;
+    public static final Set<Material> ALL_SPEARS;
     static {
         HashSet<Material> temp = new HashSet<Material>();
         HashSet<Material> seedsTemp = new HashSet<Material>();
+        HashSet<Material> spearTemp = new HashSet<Material>();
         if (BridgeMaterial.get("boat") != null) {
             temp.add(BridgeMaterial.get("boat"));
         }
         seedsTemp.addAll(InventoryUtil.collectItemsBySuffix("_SEEDS"));
         temp.addAll(InventoryUtil.collectItemsByPrefix("BOAT_"));
         temp.addAll(InventoryUtil.collectItemsBySuffix("_BOAT"));
+        spearTemp.addAll(InventoryUtil.collectItemsBySuffix("_SPEAR"));
         BOATS = Collections.unmodifiableSet(temp);
         ALL_SEEDS = Collections.unmodifiableSet(seedsTemp);
+        ALL_SPEARS = Collections.unmodifiableSet(spearTemp);
     }
 
     private static final List<EntityType> BOATSTYPE = collectTypesBySuffix("BOAT");
@@ -680,6 +684,16 @@ public class MaterialUtil {
      */
     public static boolean isBoat(final Material mat) {
         return BOATS.contains(mat);
+    }
+
+    /**
+     * Test if the material is a spear.
+     *
+     * @param mat the material to test
+     * @return true if the material is a spear
+     */
+    public static boolean isSpear(final Material mat) {
+        return ALL_SPEARS.contains(mat);
     }
 
     /**

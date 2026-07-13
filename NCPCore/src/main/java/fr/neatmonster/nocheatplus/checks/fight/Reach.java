@@ -33,6 +33,7 @@ import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.StringUtil;
 import fr.neatmonster.nocheatplus.utilities.TickTask;
 import fr.neatmonster.nocheatplus.utilities.location.TrigUtil;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 import fr.neatmonster.nocheatplus.actions.ParameterName;
 import fr.neatmonster.nocheatplus.checks.ViolationData;
 
@@ -47,6 +48,10 @@ public class Reach extends Check {
     /** The maximum distance allowed to interact with an entity in creative mode. */
     public static final double CREATIVE_DISTANCE = 6D;
 
+    private static final double SPEAR_SURVIVAL_DISTANCE = 4.625D;
+
+    private static final double SPEAR_CREATIVE_DISTANCE = 6.625D;
+
 
     /** Additum for distance, based on entity. */
     private static double getDistMod(final Entity damaged) {
@@ -57,6 +62,18 @@ public class Reach extends Check {
             return 1.5D;
         }
         else return 0;
+    }
+
+    private static double getDistanceLimit(final Player player, final Entity damaged,
+            final double survivalDistance) {
+        final boolean spear = MaterialUtil.isSpear(player.getInventory().getItemInMainHand().getType());
+        final double baseDistance;
+        if (player.getGameMode() == GameMode.CREATIVE) {
+            baseDistance = spear ? Math.max(CREATIVE_DISTANCE, SPEAR_CREATIVE_DISTANCE) : CREATIVE_DISTANCE;
+        } else {
+            baseDistance = spear ? Math.max(survivalDistance, SPEAR_SURVIVAL_DISTANCE) : survivalDistance;
+        }
+        return player.getGameMode() == GameMode.CREATIVE ? baseDistance : baseDistance + getDistMod(damaged);
     }
 
 
@@ -88,7 +105,7 @@ public class Reach extends Check {
         final double DYNAMIC_RANGE = cc.reachReduceDistance; 
         // Adaption amount for dynamic range.
         final double DYNAMIC_STEP = cc.reachReduceStep / SURVIVAL_DISTANCE; 
-        final double distanceLimit = player.getGameMode() == GameMode.CREATIVE ? CREATIVE_DISTANCE : SURVIVAL_DISTANCE + getDistMod(damaged);
+        final double distanceLimit = getDistanceLimit(player, damaged, SURVIVAL_DISTANCE);
         final double distanceMin = (distanceLimit - DYNAMIC_RANGE) / distanceLimit;
         final double height = damagedIsFake ? (damaged instanceof LivingEntity ? ((LivingEntity) damaged).getEyeHeight() : 1.75) : mcAccess.getHandle().getHeight(damaged);
         final double width = damagedIsFake ? 0.6 : mcAccess.getHandle().getWidth(damaged);
@@ -174,7 +191,7 @@ public class Reach extends Check {
                                    final FightData data, final FightConfig cc) {
 
         final ReachContext context = new ReachContext();
-        context.distanceLimit = player.getGameMode() == GameMode.CREATIVE ? CREATIVE_DISTANCE : cc.reachSurvivalDistance + getDistMod(damaged);
+        context.distanceLimit = getDistanceLimit(player, damaged, cc.reachSurvivalDistance);
         context.distanceMin = (context.distanceLimit - cc.reachReduceDistance) / context.distanceLimit;
         //context.eyeHeight = player.getEyeHeight();
         context.pY = pLoc.getY() + player.getEyeHeight();

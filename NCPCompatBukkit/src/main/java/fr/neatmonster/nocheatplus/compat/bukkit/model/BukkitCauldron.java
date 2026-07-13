@@ -16,6 +16,7 @@ package fr.neatmonster.nocheatplus.compat.bukkit.model;
 
 import org.bukkit.World;
 
+import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
 
 public class BukkitCauldron implements BukkitShapeModel {
@@ -35,6 +36,9 @@ public class BukkitCauldron implements BukkitShapeModel {
 
     @Override
     public double[] getShape(BlockCache blockCache, World world, int x, int y, int z) {
+        if (Bridge1_13.hasBoundingBox()) {
+            return BukkitFetchableBounds.getBounds(world.getBlockAt(x, y, z));
+        }
         return bounds;
     }
 

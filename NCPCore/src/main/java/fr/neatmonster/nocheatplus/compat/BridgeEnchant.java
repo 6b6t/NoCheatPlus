@@ -21,6 +21,7 @@ import org.bukkit.inventory.PlayerInventory;
 
 import fr.neatmonster.nocheatplus.utilities.StringUtil;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 
 public final class BridgeEnchant {
 
@@ -64,6 +65,8 @@ public final class BridgeEnchant {
     private final static Enchantment SOUL_SPEED = parseEnchantment("SOUL_SPEED");
 
     private final static Enchantment SWIFT_SNEAK = parseEnchantment("SWIFT_SNEAK");
+
+    private final static Enchantment LUNGE = parseEnchantment("LUNGE");
     
     public final static Enchantment EFFICIENCY = getFirstNotNull("EFFICIENCY", "DIG_SPEED");
 
@@ -354,6 +357,23 @@ public final class BridgeEnchant {
     public static int getSwiftSneakLevel(final Player player) {
         // Cap at three.
         return Math.min(3, getLeggingsLevelArmor(player, SWIFT_SNEAK));
+    }
+
+    /**
+     * Get the Lunge level on the spear in the player's main hand.
+     *
+     * @param player the player to inspect
+     * @return the Lunge level, capped at the vanilla maximum of three
+     */
+    public static int getLungeLevel(final Player player) {
+        if (LUNGE == null) {
+            return 0;
+        }
+        final ItemStack mainHand = player.getInventory().getItemInMainHand();
+        if (!MaterialUtil.isSpear(mainHand.getType())) {
+            return 0;
+        }
+        return Math.min(3, mainHand.getEnchantmentLevel(LUNGE));
     }
 
     /**

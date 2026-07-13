@@ -25,7 +25,10 @@ public class BukkitFetchableBounds implements BukkitShapeModel {
 
     @Override
     public double[] getShape(BlockCache blockCache, World world, int x, int y, int z) {
-        final Block block = world.getBlockAt(x, y, z);
+        return getBounds(world.getBlockAt(x, y, z));
+    }
+
+    static double[] getBounds(final Block block) {
         final VoxelShape blockshape = block.getCollisionShape();
         double[] res = {};
         for (BoundingBox box : blockshape.getBoundingBoxes()) {
@@ -35,14 +38,14 @@ public class BukkitFetchableBounds implements BukkitShapeModel {
         return res;
     }
 
-    private double[] add(final double[] array1, final double[] array2) {
+    private static double[] add(final double[] array1, final double[] array2) {
         final double[] newArray = new double[array1.length + array2.length];
         System.arraycopy(array1, 0, newArray, 0, array1.length);
         System.arraycopy(array2, 0, newArray, array1.length, array2.length);
         return newArray;
     }
 
-    private double[] toArray(BoundingBox box) {
+    private static double[] toArray(BoundingBox box) {
         return new double[] {box.getMinX(), box.getMinY(), box.getMinZ(), box.getMaxX(), box.getMaxY(), box.getMaxZ()};
     }
 

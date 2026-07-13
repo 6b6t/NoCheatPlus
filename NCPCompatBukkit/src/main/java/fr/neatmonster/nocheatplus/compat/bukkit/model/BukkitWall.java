@@ -23,6 +23,8 @@ import org.bukkit.block.BlockState;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.MultipleFacing;
 import org.bukkit.block.data.type.Wall;
+
+import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
 
 public class BukkitWall implements BukkitShapeModel {
@@ -66,6 +68,9 @@ public class BukkitWall implements BukkitShapeModel {
         // Relevant: https://bugs.mojang.com/browse/MC-9565
 
         final Block block = world.getBlockAt(x, y, z);
+        if (Bridge1_13.hasBoundingBox()) {
+            return BukkitFetchableBounds.getBounds(block);
+        }
         final BlockState state = block.getState();
         final BlockData blockData = state.getBlockData();
         if (blockData instanceof MultipleFacing) {

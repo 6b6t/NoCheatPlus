@@ -19,7 +19,6 @@ import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.BlockData;
 import org.bukkit.block.data.MultipleFacing;
-import org.bukkit.util.BoundingBox;
 
 import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
@@ -32,8 +31,7 @@ public class BukkitChorusPlant implements BukkitShapeModel {
 
         final Block block = world.getBlockAt(x, y, z);
         if (Bridge1_13.hasBoundingBox()) {
-            BoundingBox bd = block.getBoundingBox();
-            return new double[] {bd.getMinX()-x, 0.1875, bd.getMinZ()-z, bd.getMaxX()-x, bd.getMaxY()-y, bd.getMaxZ()-z};
+            return BukkitFetchableBounds.getBounds(block);
         }
         final BlockData blockData = block.getBlockData();
         double[] res = new double[] {0.187, 0.188, 0.187, 1.0 - 0.187, 0.8125, 1.0 - 0.187};
