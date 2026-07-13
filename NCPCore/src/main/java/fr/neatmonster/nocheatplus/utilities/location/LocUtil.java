@@ -473,4 +473,26 @@ public class LocUtil {
         return "x=" + block.getBlockX() + ",y=" + block.getBlockY() + ",z=" + block.getBlockZ();
     }
 
+    /**
+     * Reproduce the Java Edition block offset seed.
+     */
+    public static long randomSeedJava(final int x, final int y, final int z) {
+        long seed = (x * 3129871L) ^ z * 116129781L ^ y;
+        seed = seed * seed * 42317861L + seed * 11L;
+        return seed >> 16;
+    }
+
+    /**
+     * Reproduce the Bedrock Edition block offset seed with 32-bit arithmetic.
+     */
+    public static long randomSeedBedrock(final int x, final int y, final int z) {
+        final long xPart = x * 3129871 & 0xFFFFFFFFL;
+        final long zPart = z * 116129781 & 0xFFFFFFFFL;
+        final long yPart = y & 0xFFFFFFFFL;
+        final long seed = xPart ^ zPart ^ yPart;
+        final long multiplied = ((seed * seed) & 0xFFFFFFFFL) * 42317861 & 0xFFFFFFFFL;
+        final long added = seed * 11 & 0xFFFFFFFFL;
+        return (multiplied + added) & 0xFFFFFFFFL;
+    }
+
 }

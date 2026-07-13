@@ -16,13 +16,17 @@ package fr.neatmonster.nocheatplus.compat.bukkit.model;
 
 import org.bukkit.World;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.BlockState;
-import org.bukkit.block.Container;
+import org.bukkit.block.ShulkerBox;
+import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.Directional;
 
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
-import org.bukkit.block.ShulkerBox;
 
 public class BukkitShulkerBox implements BukkitShapeModel {
+
+    private static final double[] FULL_BLOCK = {0.0, 0.0, 0.0, 1.0, 1.0, 1.0};
 
     @Override
     public double[] getShape(final BlockCache blockCache, 
@@ -30,14 +34,32 @@ public class BukkitShulkerBox implements BukkitShapeModel {
 
         final Block block = world.getBlockAt(x, y, z);
         final BlockState state = block.getState();
-        //final BlockData blockData = state.getBlockData();
-
-        if (state instanceof ShulkerBox) {
-            if (!((ShulkerBox) state).getInventory().getViewers().isEmpty()) {
-                return new double[] {0.0, 0.0, 0.0, 1.0, 1.5, 1.0};
-            }
+        if (!(state instanceof ShulkerBox)) {
+            return FULL_BLOCK;
         }
-        return new double[] {0.0, 0.0, 0.0, 1.0, 1.0, 1.0};
+        if (((ShulkerBox) state).getInventory().getViewers().isEmpty()) {
+            return FULL_BLOCK;
+        }
+        BlockFace face = BlockFace.UP;
+        final BlockData blockData = block.getBlockData();
+        if (blockData instanceof Directional) {
+            face = ((Directional) blockData).getFacing();
+        }
+        switch (face) {
+            case DOWN:
+                return new double[] {0.0, -0.5, 0.0, 1.0, 1.0, 1.0};
+            case NORTH:
+                return new double[] {0.0, 0.0, -0.5, 1.0, 1.0, 1.0};
+            case SOUTH:
+                return new double[] {0.0, 0.0, 0.0, 1.0, 1.0, 1.5};
+            case WEST:
+                return new double[] {-0.5, 0.0, 0.0, 1.0, 1.0, 1.0};
+            case EAST:
+                return new double[] {0.0, 0.0, 0.0, 1.5, 1.0, 1.0};
+            case UP:
+            default:
+                return new double[] {0.0, 0.0, 0.0, 1.0, 1.5, 1.0};
+        }
     }
 
     @Override

@@ -21,6 +21,7 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 
 import fr.neatmonster.nocheatplus.compat.AlmostBoolean;
+import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.ds.map.CoordHashMap;
 import fr.neatmonster.nocheatplus.utilities.ds.map.CoordMap;
 
@@ -199,6 +200,7 @@ public abstract class BlockCache {
     protected int minBlockY = 0;
 
     private boolean isBedrockCache = false;
+    private IPlayerData playerData = null;
 
     private final BlockCacheNode airNode = new BlockCacheNode(Material.AIR);
     // TODO: setBlockCacheConfig -> set static nodes (rather only by id).
@@ -299,6 +301,7 @@ public abstract class BlockCache {
     public void cleanup() {
         nodeMap.clear();
         isBedrockCache = false;
+        playerData = null;
     }
 
     /**
@@ -505,5 +508,14 @@ public abstract class BlockCache {
 
     public void setBedrockCache(boolean isBedrockCache) {
         this.isBedrockCache = isBedrockCache;
+    }
+
+    public IPlayerData getPlayerData() {
+        return playerData;
+    }
+
+    public void setPlayerData(final IPlayerData playerData) {
+        this.playerData = playerData;
+        isBedrockCache = playerData != null && playerData.isBedrockPlayer();
     }
 }

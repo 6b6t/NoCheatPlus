@@ -101,6 +101,8 @@ public class BlockProperties {
         PICKAXE,
         /** The hoe. */
         HOE,
+        /** The spear. */
+        SPEAR,
     }
 
     /**
@@ -116,14 +118,16 @@ public class BlockProperties {
         WOOD(1, 2f),
         /** The stone. */
         STONE(2, 4f),
+        /** The copper. */
+        COPPER(3, 5f),
         /** The iron. */
-        IRON(3, 6f),
+        IRON(4, 6f),
         /** The diamond. */
-        DIAMOND(4, 8f),
+        DIAMOND(5, 8f),
         /** The netherite */
-        NETHERITE(5, 9f),
+        NETHERITE(6, 9f),
         /** The gold. */
-        GOLD(6, 12f);
+        GOLD(7, 12f);
 
         /** Index for array. */
         public final int index;
@@ -173,6 +177,8 @@ public class BlockProperties {
             throw new IllegalArgumentException("Bad index: " + index);
         }
     }
+
+    private static final int MATERIAL_BASE_COUNT = MaterialBase.values().length;
 
     /**
      * Properties of a tool.
@@ -291,7 +297,7 @@ public class BlockProperties {
             this.tool = tool;
             this.hardness = hardness;
             this.requireCorrectTool = requireCorrectTool;
-            breakingTimes = new long[7];
+            breakingTimes = new long[MATERIAL_BASE_COUNT];
             breakingTimes[0] = (long) (1000f * 5f * hardness);
             boolean notool = tool.materialBase == null || tool.toolType == null || tool.toolType == ToolType.NONE;//|| tool.materialBase == MaterialBase.NONE;
 
@@ -299,7 +305,7 @@ public class BlockProperties {
                 breakingTimes[0] *= 0.3;
             }
 
-            for (int i = 1; i < 7; i++) {
+            for (int i = 1; i < MATERIAL_BASE_COUNT; i++) {
                 if (notool) {
                     breakingTimes[i] = breakingTimes[0];
                 } 
@@ -369,8 +375,8 @@ public class BlockProperties {
             if (breakingTimes == null) {
                 throw new IllegalArgumentException("Breaking times must not be null.");
             }
-            if (breakingTimes.length != 7) {
-                throw new IllegalArgumentException("Breaking times length must match the number of available tool types (7).");
+            if (breakingTimes.length != MATERIAL_BASE_COUNT) {
+                throw new IllegalArgumentException("Breaking times length must match the number of available tool types (" + MATERIAL_BASE_COUNT + ").");
             }
             if (tool == null)  {
                 throw new IllegalArgumentException("Tool must not be null.");
@@ -635,6 +641,8 @@ public class BlockProperties {
                             || mat == Material.TRAPPED_CHEST
                             || mat == Material.HOPPER
                             || mat == BridgeMaterial.BARREL
+                            || MaterialUtil.COPPER_CHESTS.contains(mat)
+                            || MaterialUtil.WOODEN_SHELVES.contains(mat)
                             // Ugly.
                             || mat.toString().endsWith("SHULKER_BOX"));
     }
@@ -835,7 +843,7 @@ public class BlockProperties {
     public static final long[] instantTimes = secToMs(0);
 
     /** The Constant indestructibleTimes. */
-    private static final long[] indestructibleTimes = new long[] {indestructible, indestructible, indestructible, indestructible, indestructible, indestructible, indestructible}; 
+    private static final long[] indestructibleTimes = sameBreakingTimes(indestructible);
 
     /** Instantly breakable. */ 
     public static final BlockProps instantType = new BlockProps(noTool, 0, instantTimes);
@@ -1003,6 +1011,12 @@ public class BlockProperties {
         tools.put(Material.STONE_AXE, new ToolProps(ToolType.AXE, MaterialBase.STONE));
         tools.put(Material.STONE_HOE, new ToolProps(ToolType.HOE, MaterialBase.STONE));
 
+        putToolIfPresent(BridgeMaterial.COPPER_SWORD, ToolType.SWORD, MaterialBase.COPPER);
+        putToolIfPresent(BridgeMaterial.COPPER_SHOVEL, ToolType.SPADE, MaterialBase.COPPER);
+        putToolIfPresent(BridgeMaterial.COPPER_PICKAXE, ToolType.PICKAXE, MaterialBase.COPPER);
+        putToolIfPresent(BridgeMaterial.COPPER_AXE, ToolType.AXE, MaterialBase.COPPER);
+        putToolIfPresent(BridgeMaterial.COPPER_HOE, ToolType.HOE, MaterialBase.COPPER);
+
         tools.put(Material.IRON_SWORD, new ToolProps(ToolType.SWORD, MaterialBase.IRON));
         tools.put(BridgeMaterial.IRON_SHOVEL, new ToolProps(ToolType.SPADE, MaterialBase.IRON));
         tools.put(Material.IRON_PICKAXE, new ToolProps(ToolType.PICKAXE, MaterialBase.IRON));
@@ -1029,7 +1043,21 @@ public class BlockProperties {
             tools.put(BridgeMaterial.NETHERITE_HOE, new ToolProps(ToolType.HOE, MaterialBase.NETHERITE));
         }
 
+        putToolIfPresent(BridgeMaterial.WOODEN_SPEAR, ToolType.SPEAR, MaterialBase.WOOD);
+        putToolIfPresent(BridgeMaterial.STONE_SPEAR, ToolType.SPEAR, MaterialBase.STONE);
+        putToolIfPresent(BridgeMaterial.COPPER_SPEAR, ToolType.SPEAR, MaterialBase.COPPER);
+        putToolIfPresent(BridgeMaterial.IRON_SPEAR, ToolType.SPEAR, MaterialBase.IRON);
+        putToolIfPresent(BridgeMaterial.GOLDEN_SPEAR, ToolType.SPEAR, MaterialBase.GOLD);
+        putToolIfPresent(BridgeMaterial.DIAMOND_SPEAR, ToolType.SPEAR, MaterialBase.DIAMOND);
+        putToolIfPresent(BridgeMaterial.NETHERITE_SPEAR, ToolType.SPEAR, MaterialBase.NETHERITE);
+
         tools.put(Material.SHEARS, new ToolProps(ToolType.SHEARS, MaterialBase.NONE));
+    }
+
+    private static void putToolIfPresent(final Material material, final ToolType toolType, final MaterialBase materialBase) {
+        if (material != null) {
+            tools.put(material, new ToolProps(toolType, materialBase));
+        }
     }
 
     private static void setBlock(Material material, BlockProps props) {
@@ -1743,7 +1771,14 @@ public class BlockProperties {
      * @return the long[]
      */
     public static long[] secToMs(final double s1, final double s2, final double s3, final double s4, final double s5, final double s6, final double s7) {
-        return new long[] { (long) (s1 * 1000d), (long) (s2 * 1000d), (long) (s3 * 1000d), (long) (s4 * 1000d), (long) (s5 * 1000d), (long) (s6 * 1000d), (long) (s7 * 1000d) };
+        return secToMs(s1, s2, s3, s4, s4, s5, s6, s7);
+    }
+
+    public static long[] secToMs(final double s1, final double s2, final double s3, final double s4,
+            final double s5, final double s6, final double s7, final double s8) {
+        return new long[] { (long) (s1 * 1000d), (long) (s2 * 1000d), (long) (s3 * 1000d),
+                (long) (s4 * 1000d), (long) (s5 * 1000d), (long) (s6 * 1000d),
+                (long) (s7 * 1000d), (long) (s8 * 1000d) };
     }
 
     /**
@@ -1755,7 +1790,13 @@ public class BlockProperties {
      */
     public static long[] secToMs(final double s1) {
         final long v = (long) (s1 * 1000d);
-        return new long[]{v, v, v, v, v, v, v};
+        return sameBreakingTimes(v);
+    }
+
+    private static long[] sameBreakingTimes(final long value) {
+        final long[] times = new long[MATERIAL_BASE_COUNT];
+        Arrays.fill(times, value);
+        return times;
     }
 
     /**
@@ -2195,6 +2236,7 @@ public class BlockProperties {
     public static boolean isRightToolMaterial(final Material blockId, final MaterialBase blockMat, final MaterialBase toolMat, final boolean isValidTool) {
         if (blockMat == MaterialBase.WOOD) {
             switch(toolMat) {
+            case COPPER:
             case DIAMOND:
             case GOLD:
             case IRON:
@@ -2208,10 +2250,22 @@ public class BlockProperties {
         }
         if (blockMat == MaterialBase.STONE) {
             switch(toolMat) {
+            case COPPER:
             case DIAMOND:
             case IRON:
             case NETHERITE:
             case STONE:
+                return isValidTool;
+            default:
+                return false;
+            }
+        }
+        if (blockMat == MaterialBase.COPPER) {
+            switch(toolMat) {
+            case COPPER:
+            case DIAMOND:
+            case IRON:
+            case NETHERITE:
                 return isValidTool;
             default:
                 return false;

@@ -163,13 +163,29 @@ public class BridgeMaterial {
     // Specific unique material instances for items (only).
     /////////////////////////////////////////////////////////
 
+    public static final Material WOODEN_SPEAR = getFirst("wooden_spear");
+    public static final Material STONE_SPEAR = getFirst("stone_spear");
+    public static final Material COPPER_SPEAR = getFirst("copper_spear");
+    public static final Material IRON_SPEAR = getFirst("iron_spear");
+    public static final Material GOLDEN_SPEAR = getFirst("golden_spear");
+    public static final Material DIAMOND_SPEAR = getFirst("diamond_spear");
+    public static final Material NETHERITE_SPEAR = getFirst("netherite_spear");
+
     public static final Material DIAMOND_SHOVEL = getFirstNotNull("diamond_shovel", "diamond_spade");
+
+    public static final Material TRIDENT = getFirst("trident");
 
     public static final Material NETHERITE_AXE = getFirst("netherite_axe");
     public static final Material NETHERITE_HOE = getFirst("netherite_hoe");
     public static final Material NETHERITE_PICKAXE = getFirst("netherite_pickaxe");
     public static final Material NETHERITE_SHOVEL = getFirst("netherite_shovel");
     public static final Material NETHERITE_SWORD = getFirst("netherite_sword");
+
+    public static final Material COPPER_AXE = getFirst("copper_axe");
+    public static final Material COPPER_HOE = getFirst("copper_hoe");
+    public static final Material COPPER_PICKAXE = getFirst("copper_pickaxe");
+    public static final Material COPPER_SHOVEL = getFirst("copper_shovel");
+    public static final Material COPPER_SWORD = getFirst("copper_sword");
 
     public static final Material GOLDEN_AXE = getFirstNotNull("golden_axe", "gold_axe");
     public static final Material GOLDEN_HOE = getFirstNotNull("golden_hoe", "gold_hoe");
@@ -191,6 +207,12 @@ public class BridgeMaterial {
     ///////////////////////////////////////////////////
     // Specific unique material instances for blocks.
     ///////////////////////////////////////////////////
+    public static final Material SEA_LANTERN = get("sea_lantern");
+
+    public static final Material IRON_CHAIN = get("iron_chain");
+
+    public static final Material LEGACY_CHAIN = get("chain");
+
     public static final Material BARREL = get("barrel"); // null for legacy servers
 
     public static final Material BEETROOTS = getFirst("beetroots", "beetroot_block");

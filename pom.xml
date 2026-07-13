@@ -27,6 +27,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.build.timestamp.format>yyyy_MM_dd-HH_mm</maven.build.timestamp.format>
+        <protocollib.version>5.3.0</protocollib.version>
     </properties>
 
     <!-- Default modules -->
