@@ -116,6 +116,10 @@ public class SurvivalFly extends Check {
         blockChangeTracker = NCPAPIProvider.getNoCheatPlusAPI().getBlockChangeTracker();
     }
 
+    private static boolean hasWeavingEffect(final Player player) {
+        return BridgePotionEffect.WEAVING != null && player.hasPotionEffect(BridgePotionEffect.WEAVING);
+    }
+
 
     /**
      * Checks a player
@@ -1108,7 +1112,8 @@ public class SurvivalFly extends Check {
         // Webs
         if (thisMove.from.inWeb) {
             tags.add("hweb");
-            hAllowedDistance = Magic.modWeb * thisMove.walkSpeed * cc.survivalFlyWalkingSpeed / 100D;
+            final double webModifier = hasWeavingEffect(player) ? Magic.modWebWeaving : Magic.modWeb;
+            hAllowedDistance = webModifier * thisMove.walkSpeed * cc.survivalFlyWalkingSpeed / 100D;
             useBaseModifiersSprint = false; 
             useBaseModifiers = true;
             useSneakModifier = true;
@@ -2321,6 +2326,7 @@ public class SurvivalFly extends Check {
         final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
         final double yDistance = thisMove.yDistance;
         final boolean step = toOnGround && yDistance > 0.0 && yDistance <= cc.sfStepHeight || thisMove.from.inWeb && !lastMove.from.inWeb && yDistance <= cc.sfStepHeight;
+        final boolean weaving = hasWeavingEffect(player);
         double vAllowedDistance, vDistanceAboveLimit;
         data.sfNoLowJump = true;
         data.jumpAmplifier = 0; 
@@ -2351,13 +2357,19 @@ public class SurvivalFly extends Check {
         }
         // (Falling speed is static, however if falling from high enough places, it can depend on how fast one "dives" in.)
         else {
+            final double webDescendAllowed = weaving
+                    ? Magic.webSpeedDescendWeaving
+                    : -Magic.GRAVITY_MIN * Magic.FRICTION_MEDIUM_AIR;
             // Lenient on first move(s) in web.
             if (data.insideMediumCount < 4 && lastMove.yDistance <= 0.0) {
                 vAllowedDistance = lastMove.yDistance * Magic.FRICTION_MEDIUM_AIR - Magic.GRAVITY_MAX;
+                if (weaving) {
+                    vAllowedDistance = Math.min(vAllowedDistance, webDescendAllowed);
+                }
             }
             // Ordinary.
             // We could be stricter but spamming WASD in a tower of webs results in random falling speed changes: ca. observed -0.058 (!? Mojang...)
-            else vAllowedDistance = -Magic.GRAVITY_MIN * Magic.FRICTION_MEDIUM_AIR;
+            else vAllowedDistance = webDescendAllowed;
             vDistanceAboveLimit = yDistance < vAllowedDistance ? Math.abs(yDistance - vAllowedDistance) : 0.0;
         }
 
