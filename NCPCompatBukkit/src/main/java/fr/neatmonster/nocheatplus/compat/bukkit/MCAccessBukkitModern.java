@@ -224,8 +224,8 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         }
 
         // new flower, and others
-        // (Do not add liquids here: an auto-fetched shape is empty for them, which loses the bounds
-        //  BlocksMC1_13 sets up from WATER - i.e. bubble columns would no longer be detected at all.)
+        // Keep liquids out of here: they have no collision shape, so auto-fetching leaves them with
+        // empty bounds and NCP stops seeing them entirely. That is what broke bubble columns.
         for (Material mat : BridgeMaterial.getAllBlocks(
             "azalea", "flowering_azalea",
             "sculk_sensor", "frogspawn", "sniffer_egg", "decorated_pot", "pitcher_crop",
