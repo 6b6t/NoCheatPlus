@@ -224,10 +224,12 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         }
 
         // new flower, and others
+        // (Do not add liquids here: an auto-fetched shape is empty for them, which loses the bounds
+        //  BlocksMC1_13 sets up from WATER - i.e. bubble columns would no longer be detected at all.)
         for (Material mat : BridgeMaterial.getAllBlocks(
             "azalea", "flowering_azalea",
             "sculk_sensor", "frogspawn", "sniffer_egg", "decorated_pot", "pitcher_crop",
-            "calibrated_sculk_sensor", "bubble_column", "closed_eyeblossom", "open_eyeblossom",
+            "calibrated_sculk_sensor", "closed_eyeblossom", "open_eyeblossom",
             "pale_hanging_moss", "resin_clump", "cactus_flower", "short_dry_grass",
             "tall_dry_grass", "golden_dandelion")) {
             addModel(mat, MODEL_AUTO_FETCH);
