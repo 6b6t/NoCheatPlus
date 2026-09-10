@@ -164,6 +164,13 @@ public class CreativeFly extends Check {
         double[] resH = hDist(player, from, to, hDistance, yDistance, sprinting, flying, thisMove, lastMove, time, model, data, cc);
         double limitH = resH[0];
         double resultH = resH[1];
+        // Cut short by a wall (e.g. diagonal highways): keep the distance it could have covered as friction base for the next move.
+        // Capped by sqrt(2), as a wall stops at most one axis, so hugging a wall slowly can't build up allowance.
+        // Only add the bunnyhop leniency where hDist grants it, else snapping to block edges would ratchet the limit up.
+        if (isFlushWithBlockEdge(to)) {
+            final double leniency = model.getApplyModifiers() && !flying ? 0.3 : 0.0;
+            thisMove.hClippedBase = Math.min(limitH + leniency, hDistance * Math.sqrt(2.0));
+        }
         double[] rese = hackElytraH(player, from, to, hDistance, yDistance, thisMove, lastMove, lostGround, data, cc, debug); // Related to the elytra
         resultH = Math.max(resultH, rese[1]);
 
@@ -357,6 +364,19 @@ public class CreativeFly extends Check {
 
 
     /**
+     * Bounding box flush with a block edge on x or z, i.e. the move may have
+     * been cut short by a wall.
+     */
+    private static boolean isFlushWithBlockEdge(final PlayerLocation loc) {
+        return isBlockEdge(loc.getMinX()) || isBlockEdge(loc.getMaxX())
+                || isBlockEdge(loc.getMinZ()) || isBlockEdge(loc.getMaxZ());
+    }
+
+    private static boolean isBlockEdge(final double coord) {
+        return Math.abs(coord - Math.rint(coord)) < 0.001;
+    }
+
+    /**
      * Horizontal distance checking.
      * @param player
      * @param from
@@ -452,7 +472,7 @@ public class CreativeFly extends Check {
         // TODO: Skipping on ripglide phases is not ideal, but at the same time, the speed increase is so much that
         // it doesn't really make much sense checking for friction as well...
         if (lastMove.toIsValid && !ripglide) {
-            double frictionDist = lastMove.hDistance * Magic.FRICTION_MEDIUM_AIR;
+            double frictionDist = Math.max(lastMove.hDistance, lastMove.hClippedBase) * Magic.FRICTION_MEDIUM_AIR;
             limitH = Math.max(frictionDist, limitH);
             tags.add("hfrict");
         }

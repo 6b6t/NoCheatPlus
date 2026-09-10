@@ -60,6 +60,12 @@ public class PlayerMoveData extends MoveData {
      */
     public double yAllowedDistance;
 
+    /**
+     * Horizontal distance a move cut short by a wall could have covered (0 if
+     * not cut). Set in CreativeFly.check, used as friction base for the next move.
+     */
+    public double hClippedBase;
+
     // Properties involving the environment.
 
     /** This move was a bunny hop. */
@@ -100,6 +106,7 @@ public class PlayerMoveData extends MoveData {
         hAllowedDistanceBase = 0.0;
         yAllowedDistance = 0.0;
         hAllowedDistance = 0.0;
+        hClippedBase = 0.0;
         // Meta stuff.
         //flyCheck = null;
         //modelFlying = null;
