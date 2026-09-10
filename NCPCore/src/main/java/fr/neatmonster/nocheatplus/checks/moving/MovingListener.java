@@ -1795,10 +1795,12 @@ catch (java.lang.Throwable thr) {}
             if (method.shouldSchedule()) {
                 // Schedule the teleport, because it might be faster than the next incoming packet.
                 final IPlayerData pd = DataManager.getPlayerData(player);
-                if (pd.isPlayerSetBackScheduled()) debug(player, "Teleport (set back) already scheduled to: " + ref);
-                else if (debug) {
+                if (pd.isPlayerSetBackScheduled()) {
+                    if (debug) debug(player, "Teleport (set back) already scheduled to: " + ref);
+                }
+                else {
                     pd.requestPlayerSetBack();
-                    if (debug)  debug(player, "Schedule teleport (set back) to: " + ref);
+                    if (debug) debug(player, "Schedule teleport (set back) to: " + ref);
                 }
             }
             // (Position adaption will happen with the teleport on tick, or with the next move.)
