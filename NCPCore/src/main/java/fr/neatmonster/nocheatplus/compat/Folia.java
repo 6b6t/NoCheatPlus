@@ -242,14 +242,31 @@ public class Folia {
             return entity.teleport(loc, cause);
         }
         try {
-            Method teleportAsyncMethod = ReflectionUtil.getMethod(Entity.class, "teleportAsync", Location.class, TeleportCause.class);
-            Object result = ReflectionUtil.invokeMethod(teleportAsyncMethod, entity, loc, cause);
-            CompletableFuture<Boolean> res = (CompletableFuture<Boolean>) result;
-            return res.get();
+            return teleportEntityAsync(entity, loc, cause).get();
         } catch (Exception e) {
             e.printStackTrace();
         }
         return false;
+    }
+
+    /**
+     * Teleport without waiting for the result. On Paper/Spigot this teleports directly.
+     * @return Future completing with the teleport result.
+     */
+    public static CompletableFuture<Boolean> teleportEntityAsync(Entity entity, Location loc, TeleportCause cause) {
+        if (!isFoliaServer) {
+            return CompletableFuture.completedFuture(entity.teleport(loc, cause));
+        }
+        try {
+            Method teleportAsyncMethod = ReflectionUtil.getMethod(Entity.class, "teleportAsync", Location.class, TeleportCause.class);
+            Object result = ReflectionUtil.invokeMethod(teleportAsyncMethod, entity, loc, cause);
+            if (result instanceof CompletableFuture) {
+                return (CompletableFuture<Boolean>) result;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return CompletableFuture.completedFuture(false);
     }
 
     /**

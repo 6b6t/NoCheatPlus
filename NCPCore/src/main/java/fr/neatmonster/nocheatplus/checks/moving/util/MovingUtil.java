@@ -640,7 +640,7 @@ public class MovingUtil {
      * 
      * @param player
      * @param debugMessagePrefix
-     * @return True, if the teleport has been successful.
+     * @return True, if a teleport has been issued.
      */
     public static boolean processStoredSetBack(final Player player, final String debugMessagePrefix, final IPlayerData pData) {
         final MovingData data = pData.getGenericInstance(MovingData.class);
@@ -704,16 +704,23 @@ public class MovingUtil {
         // Attempt to teleport.
         final Location teleported = data.getTeleported();
         // (Data resetting is done during PlayerTeleportEvent handling.)
-        // Called from the TickTask (off region thread on Folia), plain teleport throws there.
-        if (Folia.teleportEntity(player, teleported, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION)) {
-            return true;
-        }
-        else {
+        // Called from the TickTask (off region thread on Folia): don't wait for the teleport there, but don't stack them either.
+        // (The cancelled move already sent the player back, this is a backup, so not waiting can't skip a set back.)
+        final long now = System.currentTimeMillis();
+        if (now - data.setBackTeleportPendingSince < 1000L) {
             if (debug) {
-                CheckUtils.debug(player, CheckType.MOVING, "Player set back on tick: Teleport failed.");
+                CheckUtils.debug(player, CheckType.MOVING, debugMessagePrefix + "Skip teleport, previous one still pending.");
             }
             return false;
         }
+        data.setBackTeleportPendingSince = now;
+        Folia.teleportEntityAsync(player, LocUtil.clone(teleported), BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION).whenComplete((success, error) -> {
+            data.setBackTeleportPendingSince = 0L;
+            if (debug && !Boolean.TRUE.equals(success)) {
+                CheckUtils.debug(player, CheckType.MOVING, "Player set back on tick: Teleport failed.");
+            }
+        });
+        return true;
     }
 
 

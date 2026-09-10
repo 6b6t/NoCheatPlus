@@ -193,6 +193,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     private Location setBack = null;
     /** Telepot location, shared between fly checks */
     private Location teleported = null;
+    /** Time the last on-tick set back teleport was issued, 0 once it has completed. */
+    public volatile long setBackTeleportPendingSince = 0L;
     public World currentWorldToChange = null;
 
 
