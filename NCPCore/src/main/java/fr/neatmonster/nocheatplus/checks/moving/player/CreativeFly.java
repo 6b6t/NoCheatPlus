@@ -52,6 +52,7 @@ import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.StringUtil;
 import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 import fr.neatmonster.nocheatplus.utilities.location.TrigUtil;
+import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
 import fr.neatmonster.nocheatplus.utilities.map.BlockFlags;
 
@@ -167,7 +168,7 @@ public class CreativeFly extends Check {
         // Cut short by a wall (e.g. diagonal highways): keep the distance it could have covered as friction base for the next move.
         // Capped by sqrt(2), as a wall stops at most one axis, so hugging a wall slowly can't build up allowance.
         // Only add the bunnyhop leniency where hDist grants it, else snapping to block edges would ratchet the limit up.
-        if (isFlushWithBlockEdge(to)) {
+        if (isAgainstWall(to)) {
             final double leniency = model.getApplyModifiers() && !flying ? 0.3 : 0.0;
             thisMove.hClippedBase = Math.min(limitH + leniency, hDistance * Math.sqrt(2.0));
         }
@@ -371,12 +372,24 @@ public class CreativeFly extends Check {
 
 
     /**
-     * Bounding box flush with a block edge on x or z, i.e. the move may have
-     * been cut short by a wall.
+     * A side of the bounding box is flush with a block edge and touches a
+     * solid block, i.e. the move may have been cut short by a wall. Being
+     * aligned to a block edge alone happens in open air too.
      */
-    private static boolean isFlushWithBlockEdge(final PlayerLocation loc) {
-        return isBlockEdge(loc.getMinX()) || isBlockEdge(loc.getMaxX())
-                || isBlockEdge(loc.getMinZ()) || isBlockEdge(loc.getMaxZ());
+    private static boolean isAgainstWall(final PlayerLocation loc) {
+        final BlockCache cache = loc.getBlockCache();
+        final double minX = loc.getMinX();
+        final double maxX = loc.getMaxX();
+        final double minZ = loc.getMinZ();
+        final double maxZ = loc.getMaxZ();
+        // Shrink the other axes a little, so floor, ceiling and corners don't count as a wall.
+        final double m = 0.01;
+        final double minY = loc.getMinY() + m;
+        final double maxY = loc.getMaxY() - m;
+        return isBlockEdge(minX) && BlockProperties.collides(cache, minX - m, minY, minZ + m, minX, maxY, maxZ - m, BlockFlags.F_SOLID)
+                || isBlockEdge(maxX) && BlockProperties.collides(cache, maxX, minY, minZ + m, maxX + m, maxY, maxZ - m, BlockFlags.F_SOLID)
+                || isBlockEdge(minZ) && BlockProperties.collides(cache, minX + m, minY, minZ - m, maxX - m, maxY, minZ, BlockFlags.F_SOLID)
+                || isBlockEdge(maxZ) && BlockProperties.collides(cache, minX + m, minY, maxZ, maxX - m, maxY, maxZ + m, BlockFlags.F_SOLID);
     }
 
     private static boolean isBlockEdge(final double coord) {

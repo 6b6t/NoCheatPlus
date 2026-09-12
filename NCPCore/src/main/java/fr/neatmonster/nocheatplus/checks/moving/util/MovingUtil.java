@@ -707,15 +707,16 @@ public class MovingUtil {
         // Called from the TickTask (off region thread on Folia): don't wait for the teleport there, but don't stack them either.
         // (The cancelled move already sent the player back, this is a backup, so not waiting can't skip a set back.)
         final long now = System.currentTimeMillis();
-        if (now - data.setBackTeleportPendingSince < 1000L) {
+        if (now - data.setBackTeleportPendingSince.get() < 1000L) {
             if (debug) {
                 CheckUtils.debug(player, CheckType.MOVING, debugMessagePrefix + "Skip teleport, previous one still pending.");
             }
             return false;
         }
-        data.setBackTeleportPendingSince = now;
+        data.setBackTeleportPendingSince.set(now);
         Folia.teleportEntityAsync(player, LocUtil.clone(teleported), BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION).whenComplete((success, error) -> {
-            data.setBackTeleportPendingSince = 0L;
+            // Only clear our own request, a newer one may be pending by now.
+            data.setBackTeleportPendingSince.compareAndSet(now, 0L);
             if (debug && !Boolean.TRUE.equals(success)) {
                 CheckUtils.debug(player, CheckType.MOVING, "Player set back on tick: Teleport failed.");
             }
