@@ -17,11 +17,14 @@ package fr.neatmonster.nocheatplus.checks.fight;
 import java.util.Iterator;
 
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.TNTPrimed;
+import org.bukkit.entity.Trident;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
@@ -30,6 +33,7 @@ import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent;
 import org.bukkit.event.entity.EntityRegainHealthEvent.RegainReason;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.PlayerAnimationEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerItemHeldEvent;
@@ -57,6 +61,8 @@ import fr.neatmonster.nocheatplus.checks.net.NetData;
 import fr.neatmonster.nocheatplus.compat.Bridge1_9;
 import fr.neatmonster.nocheatplus.compat.BridgeEnchant;
 import fr.neatmonster.nocheatplus.compat.BridgeHealth;
+import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
+import fr.neatmonster.nocheatplus.compat.BridgeMisc;
 import fr.neatmonster.nocheatplus.compat.IBridgeCrossPlugin;
 import fr.neatmonster.nocheatplus.components.NoCheatPlusAPI;
 import fr.neatmonster.nocheatplus.components.data.ICheckData;
@@ -71,11 +77,13 @@ import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.players.PlayerFactoryArgument;
 import fr.neatmonster.nocheatplus.stats.Counters;
+import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
 import fr.neatmonster.nocheatplus.utilities.TickTask;
 import fr.neatmonster.nocheatplus.utilities.build.BuildParameters;
 import fr.neatmonster.nocheatplus.utilities.location.LocUtil;
 import fr.neatmonster.nocheatplus.utilities.location.TrigUtil;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 import fr.neatmonster.nocheatplus.worlds.WorldFactoryArgument;
 
 /**
@@ -691,6 +699,18 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
         else attackerData = null;
         
         if (player != null) {
+            // Mace and spear damage scale with the attacker's movement: don't let a move that got set back (e.g. elytra vclip) land.
+            // Swords and crystals are not affected.
+            final ItemStack weapon = Bridge1_9.getItemInMainHand(player);
+            final Material weaponType = weapon == null ? null : weapon.getType();
+            if (weaponType != null && (weaponType == BridgeMaterial.MACE || MaterialUtil.isSpear(weaponType))
+                && isRecentlySetBack(attackerPData)) {
+                if (attackerPData.isDebugActive(checkType)) {
+                    debug(player, "Prevent " + weaponType + " damage, due to a recent set back.");
+                }
+                event.setCancelled(true);
+                return;
+            }
             // Actual fight checks.
             if (damageCause == DamageCause.ENTITY_ATTACK) {
                 // TODO: Might/should skip the damage comparison, though checking on lowest priority.
@@ -715,6 +735,41 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
                 }
             }
         }
+    }
+
+    /** AbstractArrow exists since MC 1.14. */
+    private static final boolean hasAbstractArrow = ReflectionUtil.getClass("org.bukkit.entity.AbstractArrow") != null;
+
+    /**
+     * Arrows (all kinds, not tridents) inherit the shooter's movement, so don't launch them right after a set back.
+     */
+    @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
+    public void onProjectileLaunch(final ProjectileLaunchEvent event) {
+        final Entity projectile = event.getEntity();
+        if (!hasAbstractArrow || !(projectile instanceof AbstractArrow) || projectile instanceof Trident) {
+            return;
+        }
+        final Player player = BridgeMisc.getShooterPlayer(event.getEntity());
+        if (player == null) {
+            return;
+        }
+        final IPlayerData pData = DataManager.getPlayerData(player);
+        if (isRecentlySetBack(pData)) {
+            if (pData.isDebugActive(checkType)) {
+                debug(player, "Prevent " + projectile.getType() + " launch, due to a recent set back.");
+            }
+            event.setCancelled(true);
+        }
+    }
+
+    /**
+     * @return True, if the player got a moving set back within the last 5 ticks.
+     */
+    private static boolean isRecentlySetBack(final IPlayerData pData) {
+        final MovingData mData = pData.getGenericInstance(MovingData.class);
+        // A negative age means the tick counter got reset (reload).
+        final int age = TickTask.getTick() - mData.setBackTick;
+        return mData.setBackTick >= 0 && age >= 0 && age < 5;
     }
 
     @EventHandler(ignoreCancelled = true, priority = EventPriority.MONITOR)

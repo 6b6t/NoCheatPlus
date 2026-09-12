@@ -293,6 +293,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public int timeSinceSetBack = 0;
     /** Location hash value of the last (player/vehicle) set back, for checking independently of which set back location had been used. */
     public int lastSetBackHash = 0;
+    /** TickTask tick of the last (player/vehicle) set back, -1 if none happened yet. */
+    public int setBackTick = -1;
     /** Position teleported from into another world. Only used for certain contexts for workarounds. */
     public IPositionWithLook crossWorldFrom = null;
     /** Indicate there was a duplicate move */
@@ -428,6 +430,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         verticalBounce = null;
         timeSinceSetBack = 0;
         lastSetBackHash = setBack == null ? 0 : setBack.hashCode();
+        setBackTick = TickTask.getTick();
         // Reset to setBack.
         resetPlayerPositions(setBack);
         adjustMediumProperties(setBack);
