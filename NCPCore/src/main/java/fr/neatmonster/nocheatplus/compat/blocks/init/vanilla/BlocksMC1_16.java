@@ -14,8 +14,8 @@ import fr.neatmonster.nocheatplus.utilities.map.BlockProperties.BlockProps;
 
 public class BlocksMC1_16 implements BlockPropertiesSetup{
     public BlocksMC1_16() {
+        // Don't assert CHAIN: 1.21.9 renamed it to IRON_CHAIN, which silently skipped all setups from 1.16 on.
         BlockInit.assertMaterialExists("SOUL_CAMPFIRE");
-        BlockInit.assertMaterialExists("CHAIN");
     }
     @SuppressWarnings("deprecation")
     @Override
@@ -88,9 +88,12 @@ public class BlocksMC1_16 implements BlockPropertiesSetup{
         // More Lantern blocks
         BlockInit.setAs("SOUL_LANTERN", "LANTERN");
 
-        // Chain
-        BlockFlags.addFlags("CHAIN", BlockFlags.SOLID_GROUND);
-        BlockInit.setPropsAs("CHAIN", Material.IRON_BLOCK);
+        // Chain (IRON_CHAIN since 1.21.9, see BlocksMC1_21_9).
+        final Material chain = BridgeMaterial.getBlock("chain");
+        if (chain != null) {
+            BlockFlags.addFlags(chain, BlockFlags.SOLID_GROUND);
+            BlockInit.setPropsAs(chain, Material.IRON_BLOCK);
+        }
 
         // Ancient Debris
         BlockFlags.addFlags("ANCIENT_DEBRIS", BlockFlags.FULLY_SOLID_BOUNDS);

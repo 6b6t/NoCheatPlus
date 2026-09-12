@@ -230,6 +230,13 @@ public class CreativeFly extends Check {
             limitV = res[0];
         }
 
+        // Hard cap for gliding, cheat clients vclip up and back down to gain speed for spear/bow damage.
+        if (Bridge1_9.isGlidingWithElytra(player) && !Bridge1_13.isRiptiding(player)
+            && Math.abs(yDistance) > Magic.ELYTRA_MAX_Y_DISTANCE) {
+            resultV = Math.max(resultV, Math.abs(yDistance) - Magic.ELYTRA_MAX_Y_DISTANCE);
+            tags.add("e_vclip");
+        }
+
         // Velocity.
         if (resultV > 0.0 && (thisMove.verVelUsed != null || data.getOrUseVerticalVelocity(yDistance) != null)) {
             resultV = 0.0;
