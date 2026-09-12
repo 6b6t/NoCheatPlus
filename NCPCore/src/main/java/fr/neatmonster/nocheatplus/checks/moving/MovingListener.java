@@ -2598,6 +2598,8 @@ catch (java.lang.Throwable thr) {}
     @Override
     public void playerJoins(final Player player) {
 
+        // Before the active check: the task checks that on each run.
+        scheduleUntrackedMoveCheck(player);
         final IPlayerData pData = DataManager.getPlayerData(player);
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         dataOnJoin(player, player.getLocation(useJoinLoc), false, pData.getGenericInstance(MovingData.class), 
@@ -2936,7 +2938,60 @@ catch (java.lang.Throwable thr) {}
 
 
     /**
-     * The heavier checking including on.ground etc., check if enabled/valid to check before this. 
+     * Run checkUntrackedMove every few ticks on the player's own (region)
+     * thread, as long as the player is online.
+     */
+    private void scheduleUntrackedMoveCheck(final Player player) {
+        Folia.runSyncDelayedTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), (arg) -> {
+            if (player.isOnline()) {
+                checkUntrackedMove(player);
+                scheduleUntrackedMoveCheck(player);
+            }
+        }, null, 5L);
+    }
+
+
+    /**
+     * Set back players who moved away from the last checked position without
+     * any PlayerMoveEvent. Bukkit fires the event only after moving 1/16 block
+     * since the last event or teleport, and a teleport to the current position
+     * (e.g. "moved too quickly") fires none but resets that reference. Sending
+     * such an invalid packet every tick with small moves in between
+     * (PacketFly) moves the player without NCP ever seeing it.
+     */
+    private void checkUntrackedMove(final Player player) {
+        final IPlayerData pData = DataManager.getPlayerData(player);
+        final MovingData data = pData.getGenericInstance(MovingData.class);
+        final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
+        final Location loc = player.getLocation();
+        final int moveCount = data.getPlayerMoveCount();
+        final boolean skip = !pData.isCheckActive(CheckType.MOVING, player) || player.isDead() || player.isSleeping()
+                || player.isInsideVehicle() || data.hasTeleported() || !lastMove.toIsValid
+                || !loc.getWorld().getName().equals(lastMove.to.getWorldName());
+        // Only if the player moved since the last run while NCP saw no move event, legit players can't do that.
+        // Margin above 1/16: a legit "moved too quickly" teleport also resets the event reference.
+        if (!skip && data.untrackedValid && moveCount == data.untrackedMoveCount
+            && TrigUtil.distanceSquared(data.untrackedX, data.untrackedY, data.untrackedZ, loc.getX(), loc.getY(), loc.getZ()) > 0.0
+            && TrigUtil.distanceSquared(lastMove.to.getX(), lastMove.to.getY(), lastMove.to.getZ(), loc.getX(), loc.getY(), loc.getZ()) > 0.01) {
+            final Location newTo = enforceLocation(player, loc, data);
+            if (newTo != null) {
+                NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
+                        CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Untracked move (no PlayerMoveEvent) to "
+                        + LocUtil.simpleFormat(loc) + ", set back to " + LocUtil.simpleFormat(newTo) + ".");
+                data.prepareSetBack(newTo);
+                Folia.teleportEntityAsync(player, newTo, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
+            }
+        }
+        data.untrackedValid = !skip;
+        data.untrackedX = loc.getX();
+        data.untrackedY = loc.getY();
+        data.untrackedZ = loc.getZ();
+        data.untrackedMoveCount = moveCount;
+    }
+
+
+    /**
+     * The heavier checking including on.ground etc., check if enabled/valid to check before this.
      * @param player
      * @param data
      * @param cc
