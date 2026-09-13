@@ -2975,54 +2975,78 @@ catch (java.lang.Throwable thr) {}
     private void checkUntrackedMove(final Player player) {
         final IPlayerData pData = DataManager.getPlayerData(player);
         final MovingData data = pData.getGenericInstance(MovingData.class);
-        final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
-        // After a set back or teleport only "from" is set, and PacketFly never sends the move event that would set "to".
-        final LocationData ref = lastMove.toIsValid ? lastMove.to : lastMove.from;
         if (data.hasTeleported()) {
-            // A set back is pending, positions are reset when it gets confirmed.
+            // A set back is pending, confirming it updates the trusted position.
+            return;
+        }
+        if (!pData.isCheckActive(CheckType.MOVING, player) || player.isDead() || player.isSleeping()
+            || player.isInsideVehicle()) {
+            // NCP doesn't follow the player here, don't correct towards an outdated position later on.
+            data.untrackedTrustedValid = false;
+            data.untrackedDiscrepancy = false;
             return;
         }
         final Location loc = player.getLocation();
-        // NCP doesn't follow the player then, so its last position can be outdated.
-        final boolean notTracked = !pData.isCheckActive(CheckType.MOVING, player) || player.isDead() || player.isSleeping()
-                || player.isInsideVehicle() || !lastMove.valid || !loc.getWorld().getName().equals(ref.getWorldName());
-        if (notTracked) {
-            data.untrackedStale = true;
-            data.untrackedRefX = lastMove.valid ? ref.getX() : Double.NaN;
-            data.untrackedRefY = ref.getY();
-            data.untrackedRefZ = ref.getZ();
+        final String world = loc.getWorld().getName();
+        final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
+        // Adopt NCP's position whenever it changed: a move event, teleport or set back just updated it.
+        // After a set back or teleport only "from" is set, PacketFly never sends the move event that would set "to".
+        if (lastMove.valid) {
+            final LocationData ref = lastMove.toIsValid ? lastMove.to : lastMove.from;
+            if (world.equals(ref.getWorldName())
+                && (ref.getX() != data.untrackedSeenRefX || ref.getY() != data.untrackedSeenRefY
+                    || ref.getZ() != data.untrackedSeenRefZ)) {
+                data.untrackedSeenRefX = ref.getX();
+                data.untrackedSeenRefY = ref.getY();
+                data.untrackedSeenRefZ = ref.getZ();
+                setUntrackedTrusted(data, world, ref.getX(), ref.getY(), ref.getZ());
+            }
         }
-        else if (data.untrackedStale) {
-            // Trust it again once NCP updated it (move event, teleport, set back).
-            data.untrackedStale = ref.getX() == data.untrackedRefX && ref.getY() == data.untrackedRefY && ref.getZ() == data.untrackedRefZ;
+        if (!data.untrackedTrustedValid || !world.equals(data.untrackedTrustedWorld)) {
+            setUntrackedTrusted(data, world, loc.getX(), loc.getY(), loc.getZ());
+            data.untrackedDiscrepancy = false;
+            return;
         }
-        // More than 1/16 block away from the last position NCP saw always fires a move event, unless the server
-        // reset the event reference silently. Margin: a legit "moved too quickly" teleport also resets it.
-        else if (TrigUtil.distanceSquared(ref.getX(), ref.getY(), ref.getZ(), loc.getX(), loc.getY(), loc.getZ()) > 0.01) {
-            // Back to the last position NCP saw, the regular set back may have been moved into the air.
-            final Location newTo = new Location(loc.getWorld(), ref.getX(), ref.getY(), ref.getZ(), loc.getYaw(), loc.getPitch());
-            NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
-                    CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Untracked move (no PlayerMoveEvent) to "
-                    + LocUtil.simpleFormat(loc) + ", set back to " + LocUtil.simpleFormat(newTo) + ".");
-            data.prepareSetBack(newTo);
-            // Folia teleports within a region without a PlayerTeleportEvent, and PacketFly sends no move event either,
-            // so confirm the set back here. Else it stays pending and this check waits forever.
-            Folia.teleportEntityAsync(player, newTo, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION).whenComplete((success, error) -> {
-                Folia.runSyncTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), (arg) -> {
-                    if (!data.isTeleportedPosition(newTo)) {
-                        // Already confirmed (teleport event) or replaced by another set back.
-                        return;
-                    }
-                    if (Boolean.TRUE.equals(success)) {
-                        confirmSetBack(player, false, data, pData.getGenericInstance(MovingConfig.class), pData, newTo);
-                    }
-                    else {
-                        // Failed: let the next run try again.
-                        data.resetTeleported();
-                    }
-                }, null);
-            });
+        // More than 1/16 block away from the trusted position always fires a move event, unless the server reset
+        // the event reference silently. Margin: a legit "moved too quickly" teleport also resets it.
+        if (TrigUtil.distanceSquared(data.untrackedTrustedX, data.untrackedTrustedY, data.untrackedTrustedZ,
+                                     loc.getX(), loc.getY(), loc.getZ()) <= 0.01) {
+            data.untrackedDiscrepancy = false;
+            return;
         }
+        if (!data.untrackedDiscrepancy) {
+            // Wait one run: an eventless server teleport (e.g. /tp within a Folia region) lands and stays put,
+            // untracked movement keeps going.
+            data.untrackedDiscrepancy = true;
+            data.untrackedLastX = loc.getX();
+            data.untrackedLastY = loc.getY();
+            data.untrackedLastZ = loc.getZ();
+            return;
+        }
+        data.untrackedDiscrepancy = false;
+        if (TrigUtil.distanceSquared(data.untrackedLastX, data.untrackedLastY, data.untrackedLastZ,
+                                     loc.getX(), loc.getY(), loc.getZ()) < 0.0001) {
+            // Stayed where it landed: a teleport NCP got no event for, rather than continuous untracked movement.
+            setUntrackedTrusted(data, world, loc.getX(), loc.getY(), loc.getZ());
+            return;
+        }
+        // Still moving: correct back to the trusted position. The regular set back may have moved into the air.
+        final Location newTo = new Location(loc.getWorld(), data.untrackedTrustedX, data.untrackedTrustedY,
+                                            data.untrackedTrustedZ, loc.getYaw(), loc.getPitch());
+        NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
+                CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Untracked move (no PlayerMoveEvent) to "
+                + LocUtil.simpleFormat(loc) + ", set back to " + LocUtil.simpleFormat(newTo) + ".");
+        MovingUtil.teleportSetBack(player, newTo, data);
+    }
+
+
+    private static void setUntrackedTrusted(final MovingData data, final String world,
+                                            final double x, final double y, final double z) {
+        data.untrackedTrustedValid = true;
+        data.untrackedTrustedWorld = world;
+        data.untrackedTrustedX = x;
+        data.untrackedTrustedY = y;
+        data.untrackedTrustedZ = z;
     }
 
 

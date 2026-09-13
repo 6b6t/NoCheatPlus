@@ -298,14 +298,24 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     /** TickTask tick of the last (player/vehicle) set back, -1 if none happened yet. */
     public int setBackTick = -1;
     /**
-     * Untracked move check (MovingListener.checkUntrackedMove): NCP's last
-     * position might be outdated (exempt, vehicle, ...), wait until it
-     * changes from the stored one.
+     * Untracked move check (MovingListener.checkUntrackedMove): the position
+     * NCP is trusted to have seen the player at. Kept independently of
+     * playerMoves, which a pending set back invalidates.
      */
-    public boolean untrackedStale = false;
-    public double untrackedRefX;
-    public double untrackedRefY;
-    public double untrackedRefZ;
+    public boolean untrackedTrustedValid = false;
+    public String untrackedTrustedWorld = null;
+    public double untrackedTrustedX;
+    public double untrackedTrustedY;
+    public double untrackedTrustedZ;
+    /** Last position adopted from playerMoves, to notice when NCP updates it. */
+    public double untrackedSeenRefX;
+    public double untrackedSeenRefY;
+    public double untrackedSeenRefZ;
+    /** A discrepancy was already seen on the previous run, with the player position back then. */
+    public boolean untrackedDiscrepancy = false;
+    public double untrackedLastX;
+    public double untrackedLastY;
+    public double untrackedLastZ;
     /** Position teleported from into another world. Only used for certain contexts for workarounds. */
     public IPositionWithLook crossWorldFrom = null;
     /** Indicate there was a duplicate move */
