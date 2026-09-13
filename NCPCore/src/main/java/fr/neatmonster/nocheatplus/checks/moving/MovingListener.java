@@ -74,6 +74,7 @@ import fr.neatmonster.nocheatplus.checks.combined.CombinedConfig;
 import fr.neatmonster.nocheatplus.checks.combined.CombinedData;
 import fr.neatmonster.nocheatplus.checks.moving.magic.Magic;
 import fr.neatmonster.nocheatplus.checks.moving.model.LiftOffEnvelope;
+import fr.neatmonster.nocheatplus.checks.moving.model.LocationData;
 import fr.neatmonster.nocheatplus.checks.moving.model.ModelFlying;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveInfo;
@@ -92,6 +93,7 @@ import fr.neatmonster.nocheatplus.checks.moving.velocity.AccountEntry;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.SimpleEntry;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.VelocityFlags;
 import fr.neatmonster.nocheatplus.checks.net.NetData;
+import fr.neatmonster.nocheatplus.checks.net.model.CountableLocation;
 import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.compat.Bridge1_17;
 import fr.neatmonster.nocheatplus.compat.Bridge1_9;
@@ -1798,10 +1800,12 @@ catch (java.lang.Throwable thr) {}
             if (method.shouldSchedule()) {
                 // Schedule the teleport, because it might be faster than the next incoming packet.
                 final IPlayerData pd = DataManager.getPlayerData(player);
-                if (pd.isPlayerSetBackScheduled()) debug(player, "Teleport (set back) already scheduled to: " + ref);
-                else if (debug) {
+                if (pd.isPlayerSetBackScheduled()) {
+                    if (debug) debug(player, "Teleport (set back) already scheduled to: " + ref);
+                }
+                else {
                     pd.requestPlayerSetBack();
-                    if (debug)  debug(player, "Schedule teleport (set back) to: " + ref);
+                    if (debug) debug(player, "Schedule teleport (set back) to: " + ref);
                 }
             }
             // (Position adaption will happen with the teleport on tick, or with the next move.)
@@ -2274,12 +2278,11 @@ catch (java.lang.Throwable thr) {}
                                 final MovingConfig cc, final IPlayerData pData, final Location fallbackTeleported) {
 
         // TODO: Find the reason why it can be null even passed the precondition not null.
-        final Location teleported = data.getTeleported();
+        final Location teleported = data.getTeleported() != null ? data.getTeleported() : fallbackTeleported;
         final PlayerMoveInfo moveInfo = aux.usePlayerMoveInfo();
-        moveInfo.set(player, teleported != null ? teleported : fallbackTeleported, null, cc.yOnGround);
+        moveInfo.set(player, teleported, null, cc.yOnGround);
         if (cc.loadChunksOnTeleport) {
-            MovingUtil.ensureChunksLoaded(player, teleported != null ? teleported : fallbackTeleported, 
-                    "teleport", data, cc, pData);
+            MovingUtil.ensureChunksLoaded(player, teleported, "teleport", data, cc, pData);
         }
         data.onSetBack(moveInfo.from);
         aux.returnPlayerMoveInfo(moveInfo);
@@ -2599,6 +2602,8 @@ catch (java.lang.Throwable thr) {}
     @Override
     public void playerJoins(final Player player) {
 
+        // Before the active check: the task checks that on each run.
+        scheduleUntrackedMoveCheck(player);
         final IPlayerData pData = DataManager.getPlayerData(player);
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         dataOnJoin(player, player.getLocation(useJoinLoc), false, pData.getGenericInstance(MovingData.class), 
@@ -2947,7 +2952,99 @@ catch (java.lang.Throwable thr) {}
 
 
     /**
-     * The heavier checking including on.ground etc., check if enabled/valid to check before this. 
+     * Run checkUntrackedMove every few ticks on the player's own (region)
+     * thread, as long as the player is online.
+     */
+    private void scheduleUntrackedMoveCheck(final Player player) {
+        Folia.runSyncDelayedTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), (arg) -> {
+            if (player.isOnline()) {
+                checkUntrackedMove(player);
+                scheduleUntrackedMoveCheck(player);
+            }
+        }, null, 5L);
+    }
+
+
+    /**
+     * Set back players who moved away from the last checked position without
+     * any PlayerMoveEvent. Bukkit fires the event only after moving 1/16 block
+     * since the last event or teleport, and a teleport to the current position
+     * (e.g. "moved too quickly") fires none but resets that reference. Sending
+     * such an invalid packet every tick with small moves in between
+     * (PacketFly) moves the player without NCP ever seeing it.
+     */
+    private void checkUntrackedMove(final Player player) {
+        final IPlayerData pData = DataManager.getPlayerData(player);
+        final MovingData data = pData.getGenericInstance(MovingData.class);
+        if (data.hasTeleported()) {
+            // A set back is pending, confirming it updates the trusted position.
+            return;
+        }
+        if (!pData.isCheckActive(CheckType.MOVING, player) || player.isDead() || player.isSleeping()
+            || player.isInsideVehicle()) {
+            // NCP doesn't follow the player here, don't correct towards an outdated position later on.
+            data.untrackedTrustedValid = false;
+            return;
+        }
+        final Location loc = player.getLocation();
+        final String world = loc.getWorld().getName();
+        final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
+        // Adopt NCP's position whenever it changed: a move event, teleport or set back just updated it.
+        // After a set back or teleport only "from" is set, PacketFly never sends the move event that would set "to".
+        if (lastMove.valid) {
+            final LocationData ref = lastMove.toIsValid ? lastMove.to : lastMove.from;
+            if (world.equals(ref.getWorldName())
+                && (ref.getX() != data.untrackedSeenRefX || ref.getY() != data.untrackedSeenRefY
+                    || ref.getZ() != data.untrackedSeenRefZ)) {
+                data.untrackedSeenRefX = ref.getX();
+                data.untrackedSeenRefY = ref.getY();
+                data.untrackedSeenRefZ = ref.getZ();
+                setUntrackedTrusted(data, world, ref.getX(), ref.getY(), ref.getZ());
+            }
+        }
+        // A teleport the client acknowledged is verified information: adopt it, whatever moved the player there.
+        // Only fed with packet level access, there is no Bukkit event for a Folia teleport within a region.
+        final CountableLocation ack = pData.getGenericInstance(NetData.class).teleportQueue.getLastAck();
+        if (ack != null
+            && (ack.getX() != data.untrackedSeenAckX || ack.getY() != data.untrackedSeenAckY
+                || ack.getZ() != data.untrackedSeenAckZ)) {
+            data.untrackedSeenAckX = ack.getX();
+            data.untrackedSeenAckY = ack.getY();
+            data.untrackedSeenAckZ = ack.getZ();
+            setUntrackedTrusted(data, world, ack.getX(), ack.getY(), ack.getZ());
+        }
+        if (!data.untrackedTrustedValid || !world.equals(data.untrackedTrustedWorld)) {
+            setUntrackedTrusted(data, world, loc.getX(), loc.getY(), loc.getZ());
+            return;
+        }
+        // More than 1/16 block away from the trusted position always fires a move event, unless the server reset
+        // the event reference silently. Margin: a legit "moved too quickly" teleport also resets it.
+        if (TrigUtil.distanceSquared(data.untrackedTrustedX, data.untrackedTrustedY, data.untrackedTrustedZ,
+                                     loc.getX(), loc.getY(), loc.getZ()) <= 0.01) {
+            return;
+        }
+        // Correct back to the trusted position. The regular set back may have moved into the air.
+        final Location newTo = new Location(loc.getWorld(), data.untrackedTrustedX, data.untrackedTrustedY,
+                                            data.untrackedTrustedZ, loc.getYaw(), loc.getPitch());
+        NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
+                CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Untracked move (no PlayerMoveEvent) to "
+                + LocUtil.simpleFormat(loc) + ", set back to " + LocUtil.simpleFormat(newTo) + ".");
+        MovingUtil.teleportSetBack(player, newTo, data);
+    }
+
+
+    private static void setUntrackedTrusted(final MovingData data, final String world,
+                                            final double x, final double y, final double z) {
+        data.untrackedTrustedValid = true;
+        data.untrackedTrustedWorld = world;
+        data.untrackedTrustedX = x;
+        data.untrackedTrustedY = y;
+        data.untrackedTrustedZ = z;
+    }
+
+
+    /**
+     * The heavier checking including on.ground etc., check if enabled/valid to check before this.
      * @param player
      * @param data
      * @param cc

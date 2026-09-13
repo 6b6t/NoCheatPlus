@@ -52,6 +52,7 @@ import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.StringUtil;
 import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 import fr.neatmonster.nocheatplus.utilities.location.TrigUtil;
+import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
 import fr.neatmonster.nocheatplus.utilities.map.BlockFlags;
 
@@ -164,6 +165,13 @@ public class CreativeFly extends Check {
         double[] resH = hDist(player, from, to, hDistance, yDistance, sprinting, flying, thisMove, lastMove, time, model, data, cc);
         double limitH = resH[0];
         double resultH = resH[1];
+        // Cut short by a wall (e.g. diagonal highways): keep the distance it could have covered as friction base for the next move.
+        // Capped by sqrt(2), as a wall stops at most one axis, so hugging a wall slowly can't build up allowance.
+        // Only add the bunnyhop leniency if hDist granted it to this move, else the limit would ratchet up move by move.
+        if (isAgainstWall(to)) {
+            final double leniency = tags.contains("bunnyhop") ? 0.3 : 0.0;
+            thisMove.hClippedBase = Math.min(limitH + leniency, hDistance * Math.sqrt(2.0));
+        }
         double[] rese = hackElytraH(player, from, to, hDistance, yDistance, thisMove, lastMove, lostGround, data, cc, debug); // Related to the elytra
         resultH = Math.max(resultH, rese[1]);
 
@@ -221,6 +229,16 @@ public class CreativeFly extends Check {
             double[] res = vDistZero(from, to, yDistance, flying, thisMove, lastMove, model, data, cc);
             resultV = Math.max(resultV, res[1]);
             limitV = res[0];
+        }
+
+        // Hard cap for gliding, cheat clients vclip up and back down to gain speed for spear/bow damage.
+        // A vanilla dive goes beyond it (towards -3.92), but only gains gravity per move: (last - gravity) * friction.
+        if (Bridge1_9.isGlidingWithElytra(player) && !Bridge1_13.isRiptiding(player)
+            && Math.abs(yDistance) > Magic.ELYTRA_MAX_Y_DISTANCE
+            && !(yDistance < 0.0 && lastMove.toIsValid && lastMove.yDistance < 0.0
+                 && yDistance >= (lastMove.yDistance - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR)) {
+            resultV = Math.max(resultV, Math.abs(yDistance) - Magic.ELYTRA_MAX_Y_DISTANCE);
+            tags.add("e_vclip");
         }
 
         // Velocity.
@@ -357,6 +375,31 @@ public class CreativeFly extends Check {
 
 
     /**
+     * A side of the bounding box is flush with a block edge and touches a
+     * solid block, i.e. the move may have been cut short by a wall. Being
+     * aligned to a block edge alone happens in open air too.
+     */
+    private static boolean isAgainstWall(final PlayerLocation loc) {
+        final BlockCache cache = loc.getBlockCache();
+        final double minX = loc.getMinX();
+        final double maxX = loc.getMaxX();
+        final double minZ = loc.getMinZ();
+        final double maxZ = loc.getMaxZ();
+        // Shrink the other axes a little, so floor, ceiling and corners don't count as a wall.
+        final double m = 0.01;
+        final double minY = loc.getMinY() + m;
+        final double maxY = loc.getMaxY() - m;
+        return isBlockEdge(minX) && BlockProperties.collides(cache, minX - m, minY, minZ + m, minX, maxY, maxZ - m, BlockFlags.F_SOLID)
+                || isBlockEdge(maxX) && BlockProperties.collides(cache, maxX, minY, minZ + m, maxX + m, maxY, maxZ - m, BlockFlags.F_SOLID)
+                || isBlockEdge(minZ) && BlockProperties.collides(cache, minX + m, minY, minZ - m, maxX - m, maxY, minZ, BlockFlags.F_SOLID)
+                || isBlockEdge(maxZ) && BlockProperties.collides(cache, minX + m, minY, maxZ, maxX - m, maxY, maxZ + m, BlockFlags.F_SOLID);
+    }
+
+    private static boolean isBlockEdge(final double coord) {
+        return Math.abs(coord - Math.rint(coord)) < 0.001;
+    }
+
+    /**
      * Horizontal distance checking.
      * @param player
      * @param from
@@ -452,7 +495,7 @@ public class CreativeFly extends Check {
         // TODO: Skipping on ripglide phases is not ideal, but at the same time, the speed increase is so much that
         // it doesn't really make much sense checking for friction as well...
         if (lastMove.toIsValid && !ripglide) {
-            double frictionDist = lastMove.hDistance * Magic.FRICTION_MEDIUM_AIR;
+            double frictionDist = Math.max(lastMove.hDistance, lastMove.hClippedBase) * Magic.FRICTION_MEDIUM_AIR;
             limitH = Math.max(frictionDist, limitH);
             tags.add("hfrict");
         }

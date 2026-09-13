@@ -280,10 +280,7 @@ public class Folia {
             return entity.teleport(loc, cause);
         }
         try {
-            Method teleportAsyncMethod = ReflectionUtil.getMethod(Entity.class, "teleportAsync", Location.class, TeleportCause.class);
-            Object result = ReflectionUtil.invokeMethod(teleportAsyncMethod, entity, loc, cause);
-            CompletableFuture<Boolean> res = (CompletableFuture<Boolean>) result;
-            return res.get();
+            return teleportEntityAsync(entity, loc, cause).get();
         } catch (Exception e) {
             e.printStackTrace();
         }

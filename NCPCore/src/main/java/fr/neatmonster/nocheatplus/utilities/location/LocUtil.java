@@ -477,7 +477,8 @@ public class LocUtil {
      * Reproduce the Java Edition block offset seed.
      */
     public static long randomSeedJava(final int x, final int y, final int z) {
-        long seed = (x * 3129871L) ^ z * 116129781L ^ y;
+        // x * 3129871 overflows as int in vanilla (Mth.getSeed), keep that.
+        long seed = (long) (x * 3129871) ^ z * 116129781L ^ y;
         seed = seed * seed * 42317861L + seed * 11L;
         return seed >> 16;
     }

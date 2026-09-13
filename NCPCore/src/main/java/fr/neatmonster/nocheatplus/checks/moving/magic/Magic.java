@@ -158,6 +158,8 @@ public class Magic {
      */
     public static final double EXTREME_MOVE_DIST_VERTICAL = 4.0;
     public static final double EXTREME_MOVE_DIST_HORIZONTAL = 22.0;
+    /** Maximum vertical distance per move while gliding (3 blocks per tick = 60 bps). */
+    public static final double ELYTRA_MAX_Y_DISTANCE = 3.0;
     /** Minimal xz-margin for chunk load. */
     public static final double CHUNK_LOAD_MARGIN_MIN = 3.0;
 

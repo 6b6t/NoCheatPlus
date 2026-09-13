@@ -417,6 +417,10 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         for (final Material mat : MaterialUtil.HEADS_WALL) {
             addModel(mat, MODEL_WALL_HEAD);
         }
+        // Piglin heads are wider (10/16, the ears) than the other heads (8/16).
+        for (final Material mat : BridgeMaterial.getAllBlocks("piglin_head", "piglin_wall_head")) {
+            addModel(mat, MODEL_AUTO_FETCH);
+        }
 
         // Doors.
         for (final Material mat : MaterialUtil.ALL_DOORS) {

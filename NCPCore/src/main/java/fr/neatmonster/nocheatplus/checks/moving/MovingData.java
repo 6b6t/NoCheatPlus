@@ -16,6 +16,7 @@ package fr.neatmonster.nocheatplus.checks.moving;
 
 import java.util.Collection;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -43,6 +44,7 @@ import fr.neatmonster.nocheatplus.checks.moving.velocity.SimpleEntry;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.VelocityFlags;
 import fr.neatmonster.nocheatplus.checks.workaround.WRPT;
 import fr.neatmonster.nocheatplus.compat.blocks.changetracker.BlockChangeReference;
+import fr.neatmonster.nocheatplus.components.data.ICanHandleTimeRunningBackwards;
 import fr.neatmonster.nocheatplus.components.data.IDataOnReload;
 import fr.neatmonster.nocheatplus.components.data.IDataOnRemoveSubCheckData;
 import fr.neatmonster.nocheatplus.components.data.IDataOnWorldUnload;
@@ -65,7 +67,7 @@ import fr.neatmonster.nocheatplus.workaround.IWorkaroundRegistry.WorkaroundSet;
 /**
  * Player specific data for the moving checks.
  */
-public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData, IDataOnReload, IDataOnWorldUnload {
+public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData, IDataOnReload, IDataOnWorldUnload, ICanHandleTimeRunningBackwards {
 
     //////////////////////////////////////////////
     // Violation levels                         //
@@ -193,6 +195,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     private Location setBack = null;
     /** Telepot location, shared between fly checks */
     private Location teleported = null;
+    /** Time the last on-tick set back teleport was issued, 0 once it has completed. */
+    public final AtomicLong setBackTeleportPendingSince = new AtomicLong(0L);
     public World currentWorldToChange = null;
 
 
@@ -291,6 +295,26 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public int timeSinceSetBack = 0;
     /** Location hash value of the last (player/vehicle) set back, for checking independently of which set back location had been used. */
     public int lastSetBackHash = 0;
+    /** TickTask tick of the last (player/vehicle) set back, -1 if none happened yet. */
+    public int setBackTick = -1;
+    /**
+     * Untracked move check (MovingListener.checkUntrackedMove): the position
+     * NCP is trusted to have seen the player at. Kept independently of
+     * playerMoves, which a pending set back invalidates.
+     */
+    public boolean untrackedTrustedValid = false;
+    public String untrackedTrustedWorld = null;
+    public double untrackedTrustedX;
+    public double untrackedTrustedY;
+    public double untrackedTrustedZ;
+    /** Last position adopted from playerMoves, to notice when NCP updates it. */
+    public double untrackedSeenRefX;
+    public double untrackedSeenRefY;
+    public double untrackedSeenRefZ;
+    /** Last teleport ack adopted as trusted, to adopt each verified teleport only once. */
+    public double untrackedSeenAckX;
+    public double untrackedSeenAckY;
+    public double untrackedSeenAckZ;
     /** Position teleported from into another world. Only used for certain contexts for workarounds. */
     public IPositionWithLook crossWorldFrom = null;
     /** Indicate there was a duplicate move */
@@ -426,6 +450,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         verticalBounce = null;
         timeSinceSetBack = 0;
         lastSetBackHash = setBack == null ? 0 : setBack.hashCode();
+        setBackTick = TickTask.getTick();
         // Reset to setBack.
         resetPlayerPositions(setBack);
         adjustMediumProperties(setBack);
@@ -1494,6 +1519,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         timeRiptiding = Math.min(timeRiptiding, time);
         delayWorkaround = Math.min(delayWorkaround, time);
         vehicleMorePacketsLastTime = Math.min(vehicleMorePacketsLastTime, time);
+        setBackTeleportPendingSince.accumulateAndGet(time, Math::min);
         clearAccounting(); // Not sure: adding up might not be nice.
         removeAllPlayerSpeedModifiers(); // TODO: This likely leads to problems.
         // (ActionFrequency can handle this.)

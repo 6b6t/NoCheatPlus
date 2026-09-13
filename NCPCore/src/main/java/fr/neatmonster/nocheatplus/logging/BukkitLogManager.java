@@ -143,6 +143,11 @@ public class BukkitLogManager extends AbstractLogManager implements INotifyReloa
         // Abstract STATUS stream (efficient version of INIT during plugin runtime).
         attachStringLogger(getLoggerID(Streams.SERVER_LOGGER.name), Streams.STATUS);
 
+        // Debug/trace output to console as well, if the console backend is active.
+        if (config.getBoolean(ConfPaths.LOGGING_BACKEND_CONSOLE_ACTIVE)) {
+            attachStringLogger(getLoggerID(Streams.SERVER_LOGGER.name), Streams.TRACE_FILE);
+        }
+
         // Default file logger.
         String fileName = config.getString(ConfPaths.LOGGING_BACKEND_FILE_FILENAME).trim();
         ContentLogger<String> defaultFileLogger = null;

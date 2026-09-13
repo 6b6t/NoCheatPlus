@@ -15,6 +15,8 @@
 package fr.neatmonster.nocheatplus.compat.bukkit.model;
 
 import org.bukkit.World;
+
+import fr.neatmonster.nocheatplus.utilities.location.LocUtil;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
 
 public class BukkitBamboo implements BukkitShapeModel {
@@ -23,10 +25,8 @@ public class BukkitBamboo implements BukkitShapeModel {
     public double[] getShape(final BlockCache blockCache, 
             final World world, final int x, final int y, final int z) {
         
-        // Taken from NMS - Offset/Noise
-        long i = (x * 3129871L) ^ z * 116129781L ^ 0;
-        i = i * i * 42317861L + i * 11L;
-        i = i >> 16;
+        // Taken from NMS - Offset/Noise. Only the collision box is modeled, the outline (thin/thick leaves) doesn't collide.
+        final long i = LocUtil.randomSeedJava(x, 0, z);
         final double xOffset = (((i & 15L) / 15.0F) - 0.5D) * 0.5D;
         final double zOffset = (((i >> 8 & 15L) / 15.0F) - 0.5D) * 0.5D;
 
