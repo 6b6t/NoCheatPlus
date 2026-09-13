@@ -53,6 +53,7 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerPortalEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.player.PlayerEvent;
 import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
 import org.bukkit.event.player.PlayerToggleFlightEvent;
 import org.bukkit.event.player.PlayerToggleSneakEvent;
@@ -193,7 +194,6 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     final Location useChangeWorldLoc = new Location(null, 0, 0, 0);
     final Location useDeathLoc = new Location(null, 0, 0, 0);
     final Location useFallLoc = new Location(null, 0, 0, 0);
-    final Location useJoinLoc = new Location(null, 0, 0, 0);
     final Location useLeaveLoc = new Location(null, 0, 0, 0);
     final Location useToggleFlightLoc = new Location(null, 0, 0, 0);
 
@@ -210,6 +210,8 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     private final int idMoveEvent = counters.registerKey("event.player.move");
 
     private final boolean specialMinecart = ServerVersion.compareMinecraftVersion("1.19.4") >= 0;
+
+    private final boolean teleportCompletionSupported;
 
     @SuppressWarnings("unchecked")
     public MovingListener() {
@@ -246,6 +248,45 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                 .removeSubCheckData(CheckType.MOVING, true)
                 .context() //
                 );
+        teleportCompletionSupported = registerTeleportCompletionEvent(api);
+    }
+
+    private boolean registerTeleportCompletionEvent(final NoCheatPlusAPI api) {
+        try {
+            final Class<? extends PlayerEvent> eventClass = Class.forName(
+                    "net.blockhost.fox.api.event.PlayerPostTeleportEvent")
+                    .asSubclass(PlayerEvent.class);
+            final Method getTo = eventClass.getMethod("getTo");
+            final Method getSequence = eventClass.getMethod("getSequence");
+            registerTeleportCompletionEvent(api, eventClass, getTo, getSequence);
+            return true;
+        } catch (ClassNotFoundException e) {
+            return false;
+        } catch (ReflectiveOperationException | ClassCastException e) {
+            StaticLog.logWarning("Failed to register teleport completion support: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private <E extends PlayerEvent> void registerTeleportCompletionEvent(
+            final NoCheatPlusAPI api, final Class<E> eventClass, final Method getTo, final Method getSequence) {
+        api.getEventRegistry().register(eventClass, new MiniListener<E>() {
+            @Override
+            public void onEvent(final E event) {
+                try {
+                    final Player player = event.getPlayer();
+                    // An earlier listener may have started another cross-region teleport.
+                    if (!Folia.isOwnedByCurrentRegion(player)) return;
+                    final Location to = (Location) getTo.invoke(event);
+                    final long sequence = ((Number) getSequence.invoke(event)).longValue();
+                    final IPlayerData pData = DataManager.getPlayerData(player);
+                    MovingUtil.onTeleportComplete(player, to, sequence,
+                            pData.getGenericInstance(MovingData.class), pData);
+                } catch (ReflectiveOperationException e) {
+                    StaticLog.logWarning("Failed to process teleport completion: " + e.getMessage());
+                }
+            }
+        }, EventPriority.MONITOR, null, true);
     }
 
     @SuppressWarnings("unchecked")
@@ -2602,17 +2643,18 @@ catch (java.lang.Throwable thr) {}
     @Override
     public void playerJoins(final Player player) {
 
-        // Folia teleports, including ender pearls, can bypass PlayerTeleportEvent.
-        // Polling cannot distinguish those teleports from unchecked movement.
-        if (!Folia.isFoliaServer()) {
+        // Other Folia builds cannot distinguish server teleports from unchecked movement.
+        if (!Folia.isFoliaServer() || teleportCompletionSupported) {
             scheduleUntrackedMoveCheck(player);
         }
         final IPlayerData pData = DataManager.getPlayerData(player);
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
-        dataOnJoin(player, player.getLocation(useJoinLoc), false, pData.getGenericInstance(MovingData.class), 
-                  pData.getGenericInstance(MovingConfig.class), pData.isDebugActive(checkType));
-        // Cleanup.
-        useJoinLoc.setWorld(null);
+        final Location location = player.getLocation();
+        final MovingData data = pData.getGenericInstance(MovingData.class);
+        data.lastTeleportCompletionSequence = 0L;
+        data.resetUntrackedPosition(location);
+        dataOnJoin(player, location, false, data,
+                pData.getGenericInstance(MovingConfig.class), pData.isDebugActive(checkType));
     }
 
 
@@ -3005,9 +3047,9 @@ catch (java.lang.Throwable thr) {}
                 setUntrackedTrusted(data, world, ref.getX(), ref.getY(), ref.getZ());
             }
         }
-        // A teleport the client acknowledged is verified information: adopt it, whatever moved the player there.
-        // Only fed with packet level access, there is no Bukkit event for a Folia teleport within a region.
-        final CountableLocation ack = pData.getGenericInstance(NetData.class).teleportQueue.getLastAck();
+        // Fox reports actual placement directly. An older packet acknowledgement must never override it.
+        final CountableLocation ack = teleportCompletionSupported ? null
+                : pData.getGenericInstance(NetData.class).teleportQueue.getLastAck();
         if (ack != null
             && (ack.getX() != data.untrackedSeenAckX || ack.getY() != data.untrackedSeenAckY
                 || ack.getZ() != data.untrackedSeenAckZ)) {

@@ -303,6 +303,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * playerMoves, which a pending set back invalidates.
      */
     public boolean untrackedTrustedValid = false;
+    public long lastTeleportCompletionSequence;
     public String untrackedTrustedWorld = null;
     public double untrackedTrustedX;
     public double untrackedTrustedY;
@@ -315,6 +316,14 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public double untrackedSeenAckX;
     public double untrackedSeenAckY;
     public double untrackedSeenAckZ;
+
+    public void resetUntrackedPosition(final Location location) {
+        untrackedTrustedValid = true;
+        untrackedTrustedWorld = location.getWorld().getName();
+        untrackedTrustedX = untrackedSeenRefX = location.getX();
+        untrackedTrustedY = untrackedSeenRefY = location.getY();
+        untrackedTrustedZ = untrackedSeenRefZ = location.getZ();
+    }
     /** Position teleported from into another world. Only used for certain contexts for workarounds. */
     public IPositionWithLook crossWorldFrom = null;
     /** Indicate there was a duplicate move */

@@ -63,6 +63,38 @@ import fr.neatmonster.nocheatplus.utilities.map.MapUtil;
  */
 public class MovingUtil {
 
+    /** Apply a successful Fox placement on the player's destination thread. */
+    public static void onTeleportComplete(final Player player, final Location to, final long sequence,
+            final MovingData data, final IPlayerData pData) {
+        final Location current = player.getLocation();
+        if (sequence <= data.lastTeleportCompletionSequence || to.getWorld() != current.getWorld()
+                || !TrigUtil.isSamePos(to, current)) {
+            // A nested teleport or another listener's move superseded this event.
+            return;
+        }
+        data.lastTeleportCompletionSequence = sequence;
+        if (data.isTeleported(to)) {
+            // Preserve violation and fall-distance state for NCP's own corrections.
+            confirmSetBack(player, data, pData, current);
+        } else {
+            final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+            final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
+            data.clearFlyData();
+            data.clearPlayerMorePacketsData();
+            data.clearWindChargeImpulse();
+            data.removeAllVelocity();
+            data.setSetBack(current);
+            aux.resetPositionsAndMediumProperties(player, current, data, cc);
+            // Preserve the server's actual fall distance after placement.
+            data.noFallFallDistance = player.getFallDistance();
+            data.noFallMaxY = to.getY();
+            data.noFallSkipAirCheck = true;
+            data.resetTeleported();
+            Combined.resetYawRate(player, current.getYaw(), System.currentTimeMillis(), true, pData);
+        }
+        data.resetUntrackedPosition(to);
+    }
+
     /** Issue a correction on the player's thread without waiting for destination chunks. */
     public static void teleportSetBack(final Player player, final Location location, final MovingData data) {
         final Location target = LocUtil.clone(location);
