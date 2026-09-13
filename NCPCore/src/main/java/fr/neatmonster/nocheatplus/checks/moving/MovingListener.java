@@ -2273,12 +2273,11 @@ catch (java.lang.Throwable thr) {}
                                 final MovingConfig cc, final IPlayerData pData, final Location fallbackTeleported) {
 
         // TODO: Find the reason why it can be null even passed the precondition not null.
-        final Location teleported = data.getTeleported();
+        final Location teleported = data.getTeleported() != null ? data.getTeleported() : fallbackTeleported;
         final PlayerMoveInfo moveInfo = aux.usePlayerMoveInfo();
-        moveInfo.set(player, teleported != null ? teleported : fallbackTeleported, null, cc.yOnGround);
+        moveInfo.set(player, teleported, null, cc.yOnGround);
         if (cc.loadChunksOnTeleport) {
-            MovingUtil.ensureChunksLoaded(player, teleported != null ? teleported : fallbackTeleported, 
-                    "teleport", data, cc, pData);
+            MovingUtil.ensureChunksLoaded(player, teleported, "teleport", data, cc, pData);
         }
         data.onSetBack(moveInfo.from);
         aux.returnPlayerMoveInfo(moveInfo);

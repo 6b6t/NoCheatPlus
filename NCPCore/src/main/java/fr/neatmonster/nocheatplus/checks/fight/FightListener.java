@@ -19,12 +19,10 @@ import java.util.Iterator;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.enchantments.Enchantment;
-import org.bukkit.entity.AbstractArrow;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.entity.TNTPrimed;
-import org.bukkit.entity.Trident;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
@@ -737,8 +735,9 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
         }
     }
 
-    /** AbstractArrow exists since MC 1.14. */
-    private static final boolean hasAbstractArrow = ReflectionUtil.getClass("org.bukkit.entity.AbstractArrow") != null;
+    /** AbstractArrow exists since MC 1.14, Trident since 1.13. Looked up by name to load on legacy servers. */
+    private static final Class<?> ABSTRACT_ARROW = ReflectionUtil.getClass("org.bukkit.entity.AbstractArrow");
+    private static final Class<?> TRIDENT = ReflectionUtil.getClass("org.bukkit.entity.Trident");
 
     /**
      * Arrows (all kinds, not tridents) inherit the shooter's movement, so don't launch them right after a set back.
@@ -746,7 +745,8 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
     @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
     public void onProjectileLaunch(final ProjectileLaunchEvent event) {
         final Entity projectile = event.getEntity();
-        if (!hasAbstractArrow || !(projectile instanceof AbstractArrow) || projectile instanceof Trident) {
+        if (ABSTRACT_ARROW == null || !ABSTRACT_ARROW.isInstance(projectile)
+            || TRIDENT != null && TRIDENT.isInstance(projectile)) {
             return;
         }
         final Player player = BridgeMisc.getShooterPlayer(event.getEntity());
