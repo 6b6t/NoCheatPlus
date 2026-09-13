@@ -2602,8 +2602,11 @@ catch (java.lang.Throwable thr) {}
     @Override
     public void playerJoins(final Player player) {
 
-        // Before the active check: the task checks that on each run.
-        scheduleUntrackedMoveCheck(player);
+        // Folia teleports, including ender pearls, can bypass PlayerTeleportEvent.
+        // Polling cannot distinguish those teleports from unchecked movement.
+        if (!Folia.isFoliaServer()) {
+            scheduleUntrackedMoveCheck(player);
+        }
         final IPlayerData pData = DataManager.getPlayerData(player);
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         dataOnJoin(player, player.getLocation(useJoinLoc), false, pData.getGenericInstance(MovingData.class), 
