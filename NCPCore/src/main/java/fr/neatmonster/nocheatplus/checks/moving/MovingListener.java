@@ -93,6 +93,7 @@ import fr.neatmonster.nocheatplus.checks.moving.velocity.AccountEntry;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.SimpleEntry;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.VelocityFlags;
 import fr.neatmonster.nocheatplus.checks.net.NetData;
+import fr.neatmonster.nocheatplus.checks.net.model.CountableLocation;
 import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.compat.Bridge1_17;
 import fr.neatmonster.nocheatplus.compat.Bridge1_9;
@@ -2983,7 +2984,6 @@ catch (java.lang.Throwable thr) {}
             || player.isInsideVehicle()) {
             // NCP doesn't follow the player here, don't correct towards an outdated position later on.
             data.untrackedTrustedValid = false;
-            data.untrackedDiscrepancy = false;
             return;
         }
         final Location loc = player.getLocation();
@@ -3002,35 +3002,28 @@ catch (java.lang.Throwable thr) {}
                 setUntrackedTrusted(data, world, ref.getX(), ref.getY(), ref.getZ());
             }
         }
+        // A teleport the client acknowledged is verified information: adopt it, whatever moved the player there.
+        // Only fed with packet level access, there is no Bukkit event for a Folia teleport within a region.
+        final CountableLocation ack = pData.getGenericInstance(NetData.class).teleportQueue.getLastAck();
+        if (ack != null
+            && (ack.getX() != data.untrackedSeenAckX || ack.getY() != data.untrackedSeenAckY
+                || ack.getZ() != data.untrackedSeenAckZ)) {
+            data.untrackedSeenAckX = ack.getX();
+            data.untrackedSeenAckY = ack.getY();
+            data.untrackedSeenAckZ = ack.getZ();
+            setUntrackedTrusted(data, world, ack.getX(), ack.getY(), ack.getZ());
+        }
         if (!data.untrackedTrustedValid || !world.equals(data.untrackedTrustedWorld)) {
             setUntrackedTrusted(data, world, loc.getX(), loc.getY(), loc.getZ());
-            data.untrackedDiscrepancy = false;
             return;
         }
         // More than 1/16 block away from the trusted position always fires a move event, unless the server reset
         // the event reference silently. Margin: a legit "moved too quickly" teleport also resets it.
         if (TrigUtil.distanceSquared(data.untrackedTrustedX, data.untrackedTrustedY, data.untrackedTrustedZ,
                                      loc.getX(), loc.getY(), loc.getZ()) <= 0.01) {
-            data.untrackedDiscrepancy = false;
             return;
         }
-        if (!data.untrackedDiscrepancy) {
-            // Wait one run: an eventless server teleport (e.g. /tp within a Folia region) lands and stays put,
-            // untracked movement keeps going.
-            data.untrackedDiscrepancy = true;
-            data.untrackedLastX = loc.getX();
-            data.untrackedLastY = loc.getY();
-            data.untrackedLastZ = loc.getZ();
-            return;
-        }
-        data.untrackedDiscrepancy = false;
-        if (TrigUtil.distanceSquared(data.untrackedLastX, data.untrackedLastY, data.untrackedLastZ,
-                                     loc.getX(), loc.getY(), loc.getZ()) < 0.0001) {
-            // Stayed where it landed: a teleport NCP got no event for, rather than continuous untracked movement.
-            setUntrackedTrusted(data, world, loc.getX(), loc.getY(), loc.getZ());
-            return;
-        }
-        // Still moving: correct back to the trusted position. The regular set back may have moved into the air.
+        // Correct back to the trusted position. The regular set back may have moved into the air.
         final Location newTo = new Location(loc.getWorld(), data.untrackedTrustedX, data.untrackedTrustedY,
                                             data.untrackedTrustedZ, loc.getYaw(), loc.getPitch());
         NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,

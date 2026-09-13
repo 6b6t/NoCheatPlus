@@ -311,11 +311,10 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public double untrackedSeenRefX;
     public double untrackedSeenRefY;
     public double untrackedSeenRefZ;
-    /** A discrepancy was already seen on the previous run, with the player position back then. */
-    public boolean untrackedDiscrepancy = false;
-    public double untrackedLastX;
-    public double untrackedLastY;
-    public double untrackedLastZ;
+    /** Last teleport ack adopted as trusted, to adopt each verified teleport only once. */
+    public double untrackedSeenAckX;
+    public double untrackedSeenAckY;
+    public double untrackedSeenAckZ;
     /** Position teleported from into another world. Only used for certain contexts for workarounds. */
     public IPositionWithLook crossWorldFrom = null;
     /** Indicate there was a duplicate move */
