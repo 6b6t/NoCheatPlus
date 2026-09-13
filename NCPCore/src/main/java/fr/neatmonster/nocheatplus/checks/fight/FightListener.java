@@ -699,10 +699,8 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
         if (player != null) {
             // Mace and spear damage scale with the attacker's movement: don't let a move that got set back (e.g. elytra vclip) land.
             // Swords and crystals are not affected.
-            final ItemStack weapon = Bridge1_9.getItemInMainHand(player);
-            final Material weaponType = weapon == null ? null : weapon.getType();
-            if (weaponType != null && (weaponType == BridgeMaterial.MACE || MaterialUtil.isSpear(weaponType))
-                && isRecentlySetBack(attackerPData)) {
+            final Material weaponType = getMovementWeapon(player);
+            if (weaponType != null && isRecentlySetBack(player, attackerPData)) {
                 if (attackerPData.isDebugActive(checkType)) {
                     debug(player, "Prevent " + weaponType + " damage, due to a recent set back.");
                 }
@@ -754,7 +752,7 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
             return;
         }
         final IPlayerData pData = DataManager.getPlayerData(player);
-        if (isRecentlySetBack(pData)) {
+        if (isRecentlySetBack(player, pData)) {
             if (pData.isDebugActive(checkType)) {
                 debug(player, "Prevent " + projectile.getType() + " launch, due to a recent set back.");
             }
@@ -762,11 +760,32 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
         }
     }
 
+    /** HumanEntity.getItemInUse does not exist on legacy servers. */
+    private static final boolean hasGetItemInUse = ReflectionUtil.getMethodNoArgs(HumanEntity.class, "getItemInUse", ItemStack.class) != null;
+
     /**
-     * @return True, if the player got a moving set back within the last 5 ticks.
+     * @return The mace or spear the player attacks with, null if none. A
+     *         spear charge uses the hand in use, which may be the offhand.
      */
-    private static boolean isRecentlySetBack(final IPlayerData pData) {
+    private static Material getMovementWeapon(final Player player) {
+        final ItemStack main = Bridge1_9.getItemInMainHand(player);
+        if (main != null && (main.getType() == BridgeMaterial.MACE || MaterialUtil.isSpear(main.getType()))) {
+            return main.getType();
+        }
+        final ItemStack used = hasGetItemInUse ? player.getItemInUse() : null;
+        return used != null && MaterialUtil.isSpear(used.getType()) ? used.getType() : null;
+    }
+
+    /**
+     * @return True, if a moving set back is pending or happened within the
+     *         last 5 ticks.
+     */
+    private static boolean isRecentlySetBack(final Player player, final IPlayerData pData) {
         final MovingData mData = pData.getGenericInstance(MovingData.class);
+        // Prepared / scheduled but not confirmed yet: the invalid move must not count either.
+        if (mData.hasTeleported() || MovingUtil.hasScheduledPlayerSetBack(player)) {
+            return true;
+        }
         // A negative age means the tick counter got reset (reload).
         final int age = TickTask.getTick() - mData.setBackTick;
         return mData.setBackTick >= 0 && age >= 0 && age < 5;

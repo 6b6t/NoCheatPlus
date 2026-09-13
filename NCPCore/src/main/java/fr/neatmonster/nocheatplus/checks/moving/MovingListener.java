@@ -73,6 +73,7 @@ import fr.neatmonster.nocheatplus.checks.combined.CombinedConfig;
 import fr.neatmonster.nocheatplus.checks.combined.CombinedData;
 import fr.neatmonster.nocheatplus.checks.moving.magic.Magic;
 import fr.neatmonster.nocheatplus.checks.moving.model.LiftOffEnvelope;
+import fr.neatmonster.nocheatplus.checks.moving.model.LocationData;
 import fr.neatmonster.nocheatplus.checks.moving.model.ModelFlying;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveInfo;
@@ -2962,30 +2963,34 @@ catch (java.lang.Throwable thr) {}
         final IPlayerData pData = DataManager.getPlayerData(player);
         final MovingData data = pData.getGenericInstance(MovingData.class);
         final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
+        // After a set back or teleport only "from" is set, and PacketFly never sends the move event that would set "to".
+        final LocationData ref = lastMove.toIsValid ? lastMove.to : lastMove.from;
         final Location loc = player.getLocation();
-        final int moveCount = data.getPlayerMoveCount();
-        final boolean skip = !pData.isCheckActive(CheckType.MOVING, player) || player.isDead() || player.isSleeping()
-                || player.isInsideVehicle() || data.hasTeleported() || !lastMove.toIsValid
-                || !loc.getWorld().getName().equals(lastMove.to.getWorldName());
-        // Only if the player moved since the last run while NCP saw no move event, legit players can't do that.
-        // Margin above 1/16: a legit "moved too quickly" teleport also resets the event reference.
-        if (!skip && data.untrackedValid && moveCount == data.untrackedMoveCount
-            && TrigUtil.distanceSquared(data.untrackedX, data.untrackedY, data.untrackedZ, loc.getX(), loc.getY(), loc.getZ()) > 0.0
-            && TrigUtil.distanceSquared(lastMove.to.getX(), lastMove.to.getY(), lastMove.to.getZ(), loc.getX(), loc.getY(), loc.getZ()) > 0.01) {
-            final Location newTo = enforceLocation(player, loc, data);
-            if (newTo != null) {
-                NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
-                        CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Untracked move (no PlayerMoveEvent) to "
-                        + LocUtil.simpleFormat(loc) + ", set back to " + LocUtil.simpleFormat(newTo) + ".");
-                data.prepareSetBack(newTo);
-                Folia.teleportEntityAsync(player, newTo, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
-            }
+        // NCP doesn't follow the player then, so its last position can be outdated.
+        final boolean notTracked = !pData.isCheckActive(CheckType.MOVING, player) || player.isDead() || player.isSleeping()
+                || player.isInsideVehicle() || !lastMove.valid || !loc.getWorld().getName().equals(ref.getWorldName());
+        if (notTracked) {
+            data.untrackedStale = true;
+            data.untrackedRefX = lastMove.valid ? ref.getX() : Double.NaN;
+            data.untrackedRefY = ref.getY();
+            data.untrackedRefZ = ref.getZ();
         }
-        data.untrackedValid = !skip;
-        data.untrackedX = loc.getX();
-        data.untrackedY = loc.getY();
-        data.untrackedZ = loc.getZ();
-        data.untrackedMoveCount = moveCount;
+        else if (data.untrackedStale) {
+            // Trust it again once NCP updated it (move event, teleport, set back).
+            data.untrackedStale = ref.getX() == data.untrackedRefX && ref.getY() == data.untrackedRefY && ref.getZ() == data.untrackedRefZ;
+        }
+        // More than 1/16 block away from the last position NCP saw always fires a move event, unless the server
+        // reset the event reference silently. Margin: a legit "moved too quickly" teleport also resets it.
+        else if (!data.hasTeleported()
+                 && TrigUtil.distanceSquared(ref.getX(), ref.getY(), ref.getZ(), loc.getX(), loc.getY(), loc.getZ()) > 0.01) {
+            // Back to the last position NCP saw, the regular set back may have been moved into the air.
+            final Location newTo = new Location(loc.getWorld(), ref.getX(), ref.getY(), ref.getZ(), loc.getYaw(), loc.getPitch());
+            NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
+                    CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Untracked move (no PlayerMoveEvent) to "
+                    + LocUtil.simpleFormat(loc) + ", set back to " + LocUtil.simpleFormat(newTo) + ".");
+            data.prepareSetBack(newTo);
+            Folia.teleportEntityAsync(player, newTo, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
+        }
     }
 
 

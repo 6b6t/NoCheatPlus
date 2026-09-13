@@ -167,9 +167,9 @@ public class CreativeFly extends Check {
         double resultH = resH[1];
         // Cut short by a wall (e.g. diagonal highways): keep the distance it could have covered as friction base for the next move.
         // Capped by sqrt(2), as a wall stops at most one axis, so hugging a wall slowly can't build up allowance.
-        // Only add the bunnyhop leniency where hDist grants it, else snapping to block edges would ratchet the limit up.
+        // Only add the bunnyhop leniency if hDist granted it to this move, else the limit would ratchet up move by move.
         if (isAgainstWall(to)) {
-            final double leniency = model.getApplyModifiers() && !flying ? 0.3 : 0.0;
+            final double leniency = tags.contains("bunnyhop") ? 0.3 : 0.0;
             thisMove.hClippedBase = Math.min(limitH + leniency, hDistance * Math.sqrt(2.0));
         }
         double[] rese = hackElytraH(player, from, to, hDistance, yDistance, thisMove, lastMove, lostGround, data, cc, debug); // Related to the elytra
@@ -232,8 +232,11 @@ public class CreativeFly extends Check {
         }
 
         // Hard cap for gliding, cheat clients vclip up and back down to gain speed for spear/bow damage.
+        // A vanilla dive goes beyond it (towards -3.92), but only gains gravity per move: (last - gravity) * friction.
         if (Bridge1_9.isGlidingWithElytra(player) && !Bridge1_13.isRiptiding(player)
-            && Math.abs(yDistance) > Magic.ELYTRA_MAX_Y_DISTANCE) {
+            && Math.abs(yDistance) > Magic.ELYTRA_MAX_Y_DISTANCE
+            && !(yDistance < 0.0 && lastMove.toIsValid && lastMove.yDistance < 0.0
+                 && yDistance >= (lastMove.yDistance - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR)) {
             resultV = Math.max(resultV, Math.abs(yDistance) - Magic.ELYTRA_MAX_Y_DISTANCE);
             tags.add("e_vclip");
         }
