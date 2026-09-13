@@ -34,6 +34,7 @@ public class Folia {
     //private static final Class<?> AsyncScheduler = ReflectionUtil.getClass("io.papermc.paper.threadedregions.scheduler.AsyncScheduler");
     private static final Class<?> GlobalRegionScheduler = ReflectionUtil.getClass("io.papermc.paper.threadedregions.scheduler.GlobalRegionScheduler");
     private static final Class<?> EntityScheduler = ReflectionUtil.getClass("io.papermc.paper.threadedregions.scheduler.EntityScheduler");
+    private static final Class<?> ScheduledTask = ReflectionUtil.getClass("io.papermc.paper.threadedregions.scheduler.ScheduledTask");
     private static final boolean isFoliaServer = RegionizedServer && GlobalRegionScheduler != null && EntityScheduler != null; // && AsyncScheduler != null
     
     /**
@@ -41,6 +42,39 @@ public class Folia {
      */
     public static boolean isFoliaServer() {
         return isFoliaServer;
+    }
+
+    public static boolean isOwnedByCurrentRegion(final Entity entity) {
+        if (!isFoliaServer) return Bukkit.isPrimaryThread();
+        try {
+            return (Boolean) Bukkit.class.getMethod("isOwnedByCurrentRegion", Entity.class).invoke(null, entity);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Cannot determine entity region ownership", e);
+        }
+    }
+
+    public static boolean isOwnedByCurrentRegion(final Location location) {
+        if (!isFoliaServer) return Bukkit.isPrimaryThread();
+        try {
+            return (Boolean) Bukkit.class.getMethod("isOwnedByCurrentRegion", Location.class).invoke(null, location);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Cannot determine location region ownership", e);
+        }
+    }
+
+    /** Schedule recurring work on the entity's region, or the Bukkit main thread. */
+    public static Object runSyncRepeatingTaskForEntity(final Entity entity, final Plugin plugin,
+            final Consumer<Object> run, final Runnable retired, final long delay, final long period) {
+        if (!isFoliaServer) {
+            return Bukkit.getScheduler().scheduleSyncRepeatingTask(plugin, () -> run.accept(null), delay, period);
+        }
+        try {
+            final Object scheduler = Entity.class.getMethod("getScheduler").invoke(entity);
+            return EntityScheduler.getMethod("runAtFixedRate", Plugin.class, Consumer.class,
+                    Runnable.class, long.class, long.class).invoke(scheduler, plugin, run, retired, delay, period);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Cannot schedule entity tick task", e);
+        }
     }
 
     /**
@@ -204,8 +238,12 @@ public class Folia {
             int taskId = (int)o;
             Bukkit.getScheduler().cancelTask(taskId);
         } else {
-            Method cancelMethod = ReflectionUtil.getMethodNoArgs(o.getClass(), "cancel");
-            ReflectionUtil.invokeMethodNoArgs(cancelMethod, o);
+            try {
+                // Folia's task implementation is private; invoke through its public interface.
+                ScheduledTask.getMethod("cancel").invoke(o);
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("Cannot cancel region task", e);
+            }
         }
     }
 
@@ -250,6 +288,23 @@ public class Folia {
             e.printStackTrace();
         }
         return false;
+    }
+
+    /** Teleport without blocking the region thread while the destination loads. */
+    @SuppressWarnings("unchecked")
+    public static CompletableFuture<Boolean> teleportEntityAsync(final Entity entity, final Location loc,
+            final TeleportCause cause) {
+        if (!isFoliaServer) {
+            return CompletableFuture.completedFuture(entity.teleport(loc, cause));
+        }
+        try {
+            return (CompletableFuture<Boolean>) Entity.class.getMethod("teleportAsync", Location.class,
+                    TeleportCause.class).invoke(entity, loc, cause);
+        } catch (ReflectiveOperationException e) {
+            final CompletableFuture<Boolean> result = new CompletableFuture<>();
+            result.completeExceptionally(e);
+            return result;
+        }
     }
 
     /**

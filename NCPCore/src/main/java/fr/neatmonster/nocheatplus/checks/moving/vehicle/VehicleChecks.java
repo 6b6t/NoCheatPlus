@@ -14,10 +14,10 @@
  */
 package fr.neatmonster.nocheatplus.checks.moving.vehicle;
 
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -88,18 +88,14 @@ public class VehicleChecks extends CheckListener {
 
     private final IWorldDataManager worldDataManager = NCPAPIProvider.getNoCheatPlusAPI().getWorldDataManager();
 
-    private final Set<EntityType> normalVehicles = new HashSet<EntityType>();
+    private final Set<EntityType> normalVehicles = ConcurrentHashMap.newKeySet();
 
     /** Temporary use, reset world to null afterwards, avoid nesting. */
     private final Location useLoc = new Location(null, 0, 0, 0);
     /** Temporary use, reset world to null afterwards, avoid nesting. */
     private final Location useLocEnter = new Location(null, 0, 0, 0);
     /** Temporary use, reset world to null afterwards, avoid nesting. */
-    private final Location useLocLeave = new Location(null, 0, 0, 0);
-    /** Temporary use, reset world to null afterwards, avoid nesting. */
     private final Location useLocVehicleEnter = new Location(null, 0, 0, 0);
-    /** Temporary use, reset world to null afterwards, avoid nesting. */
-    private final Location useLocVehicleLeave = new Location(null, 0, 0, 0);
 
     /** Temporary use, avoid nesting. */
     private final SimplePositionWithLook usePos1 = new SimplePositionWithLook();
@@ -891,26 +887,28 @@ public class VehicleChecks extends CheckListener {
      * @param vehicle May be null in case of "not possible to determine".
      */
     private void onPlayerVehicleLeave(final Player player, final Entity vehicle) {
+        if (!Folia.isOwnedByCurrentRegion(player)) {
+            Folia.runSyncTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> {
+                // Do not apply an old exit after the player has mounted a different vehicle.
+                if (player.isOnline() && (!player.isInsideVehicle() || player.getVehicle() == vehicle)) {
+                    onPlayerVehicleLeave(player, vehicle);
+                }
+            }, null);
+            return;
+        }
 
         final IPlayerData pData = DataManager.getPlayerData(player);
         final MovingData data = pData.getGenericInstance(MovingData.class);
         final boolean debug = pData.isDebugActive(checkType);
         data.wasInVehicle = false;
         data.joinOrRespawn = false;
-        //      if (data.vehicleSetBackTaskId != -1) {
-        //          // Await set back.
-        //          // TODO: might still set ordinary set backs ?
-        //          return;
-        //      }
 
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
         // TODO: Loc can be inconsistent, determine which to use ! 
-        final Location pLoc = player.getLocation(useLocLeave);
-        Location loc = pLoc; // The location to use as set back.
-        //  TODO: Which vehicle to use ?
-        // final Entity vehicle = player.getVehicle();
-        if (vehicle != null) {
-            final Location vLoc = vehicle.getLocation(useLocVehicleLeave);
+        final Location pLoc = player.getLocation();
+        Location loc = pLoc.clone(); // The location to use as set back.
+        if (vehicle != null && Folia.isOwnedByCurrentRegion(vehicle)) {
+            final Location vLoc = vehicle.getLocation();
             // (Don't override vehicle set back and last position here.)
             // Workaround for some entities/animals that don't fire VehicleMoveEventS.
             if (!normalVehicles.contains(vehicle.getType()) || cc.noFallVehicleReset) {
@@ -925,7 +923,7 @@ public class VehicleChecks extends CheckListener {
                 if (data.vehicleConsistency != MoveConsistency.INCONSISTENT) {
                     // TODO: This may need re-setting on player move -> vehicle move.
                     final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
-                    if (lastMove.toIsValid) {
+                    if (lastMove.toIsValid && pLoc.getWorld().getName().equals(lastMove.to.getWorldName())) {
                         final Location oldLoc = new Location(pLoc.getWorld(), lastMove.to.getX(), lastMove.to.getY(), lastMove.to.getZ());
                         if (MoveConsistency.getConsistency(oldLoc, null, pLoc) != MoveConsistency.INCONSISTENT) {
                             loc = oldLoc;
@@ -939,7 +937,10 @@ public class VehicleChecks extends CheckListener {
                 debug(player, "Vehicle leave: " + vehicle.getType() + "@" + (pWorld.equals(vWorld) ? pLoc.distance(vLoc) : "Player/Vehicle world mismatch"));
             }
         }
-if (true) return;
+        // A vehicle can have teleported away during dismount. Never inspect its destination region here.
+        if (!pLoc.getWorld().equals(loc.getWorld()) || !Folia.isOwnedByCurrentRegion(loc)) {
+            loc = pLoc.clone();
+        }
         // Adjust loc if in liquid (meant for boats !?).
         if (BlockProperties.isLiquid(loc.getBlock().getType())) {
             loc.setY(Location.locToBlock(loc.getY()) + 1.25);
@@ -957,8 +958,6 @@ if (true) return;
         //data.addHorizontalVelocity(new AccountEntry(0.9, 1, 1));
         //data.addVerticalVelocity(new SimpleEntry(0.6, 1)); // TODO: Typical margin?
         data.vehicleLeave = true;
-        useLocLeave.setWorld(null);
-        useLocVehicleLeave.setWorld(null);
     }
 
     //        @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled=false)

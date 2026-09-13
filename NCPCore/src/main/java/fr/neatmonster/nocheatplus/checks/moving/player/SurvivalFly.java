@@ -51,7 +51,6 @@ import fr.neatmonster.nocheatplus.compat.Bridge1_17;
 import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.compat.Bridge1_9;
 import fr.neatmonster.nocheatplus.compat.BridgeEnchant;
-import fr.neatmonster.nocheatplus.compat.BridgeMisc;
 import fr.neatmonster.nocheatplus.compat.BridgePotionEffect;
 import fr.neatmonster.nocheatplus.compat.versions.ServerVersion;
 import fr.neatmonster.nocheatplus.compat.blocks.changetracker.BlockChangeTracker;
@@ -2543,8 +2542,7 @@ public class SurvivalFly extends Check {
             // Set back or kick.
             final Location newTo = MovingUtil.getApplicableSetBackLocation(player, loc.getYaw(), loc.getPitch(), loc, data, cc);
             if (newTo != null) {
-                data.prepareSetBack(newTo);
-                player.teleport(newTo, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
+                MovingUtil.teleportSetBack(player, newTo, data);
             }
             else {
                 // Solve by extra actions ? Special case (probably never happens)?

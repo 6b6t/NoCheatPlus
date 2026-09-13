@@ -17,6 +17,7 @@ package fr.neatmonster.nocheatplus.checks.moving;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -113,6 +114,7 @@ import fr.neatmonster.nocheatplus.components.modifier.IAttributeAccess;
 import fr.neatmonster.nocheatplus.components.registry.event.IGenericInstanceHandle;
 import fr.neatmonster.nocheatplus.components.registry.factory.IFactoryOne;
 import fr.neatmonster.nocheatplus.components.registry.feature.IHaveCheckType;
+import fr.neatmonster.nocheatplus.components.registry.feature.IDisableListener;
 import fr.neatmonster.nocheatplus.event.mini.MiniListener;
 import fr.neatmonster.nocheatplus.components.registry.feature.INeedConfig;
 import fr.neatmonster.nocheatplus.components.registry.feature.IRemoveData;
@@ -147,7 +149,7 @@ import fr.neatmonster.nocheatplus.worlds.WorldFactoryArgument;
  * 
  * @see MovingEvent
  */
-public class MovingListener extends CheckListener implements TickListener, IRemoveData, IHaveCheckType, INeedConfig, JoinLeaveListener {
+public class MovingListener extends CheckListener implements TickListener, IRemoveData, IHaveCheckType, INeedConfig, JoinLeaveListener, IDisableListener {
 
     private static final double WIND_CHARGE_IMPULSE_RADIUS = 1.2;
     private static final double WIND_CHARGE_MIN_VERTICAL_VELOCITY = 0.7;
@@ -173,13 +175,15 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     /** Store events by player name, in order to invalidate moving processing on higher priority level in case of teleports. */
     private final Map<String, PlayerMoveEvent> processingEvents = new HashMap<String, PlayerMoveEvent>();
 
-    /** Player names to check hover for, case insensitive. */
+    /** Player names with pending hover checks. */
     private final Set<String> hoverTicks = ConcurrentHashMap.newKeySet(30); // TODO: Rename
 
-    /** Player names to check enforcing the location for in onTick, case insensitive. */
+    /** Player names with pending location enforcement. */
     private final Set<String> playersEnforce = ConcurrentHashMap.newKeySet(30);
 
-    private int hoverTicksStep = 5;
+    private final Map<String, PlayerTickTask> playerTickTasks = new ConcurrentHashMap<>();
+
+    private volatile int hoverTicksStep = 5;
 
     /** Location for temporary use with getLocation(useLoc). Always call setWorld(null) after use. Use LocUtil.clone before passing to other API. */
     final Location useLoc = new Location(null, 0, 0, 0); // TODO: Put to use...
@@ -190,7 +194,6 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     final Location useJoinLoc = new Location(null, 0, 0, 0);
     final Location useLeaveLoc = new Location(null, 0, 0, 0);
     final Location useToggleFlightLoc = new Location(null, 0, 0, 0);
-    final Location useTickLoc = new Location(null, 0, 0, 0);
 
     /** Auxiliary functionality. */
     private final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
@@ -2702,6 +2705,7 @@ catch (java.lang.Throwable thr) {}
     @Override
     public void playerLeaves(final Player player) {
 
+        removeData(player.getName());
         final IPlayerData pData = DataManager.getPlayerData(player);
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         final MovingData data = pData.getGenericInstance(MovingData.class);
@@ -2815,110 +2819,119 @@ catch (java.lang.Throwable thr) {}
 
     @Override
     public void onTick(final int tick, final long timeLast) {
-        if (true) return;
-        hoverTicks.clear(); // Folia compatibility, can't do stuff async
-        playersEnforce.clear(); // Folia
-
-        // TODO: Change to per world checking (as long as configs are per world).
-        // Legacy: enforcing location consistency.
-        if (!playersEnforce.isEmpty()) checkOnTickPlayersEnforce();
-        // Hover check (SurvivalFly).
-        if (tick % hoverTicksStep == 0 && !hoverTicks.isEmpty()) {
-            // Only check every so and so ticks.
-            checkOnTickHover();
+        // The global scheduler only discovers work. Player state belongs to the entity scheduler.
+        final Set<String> names = new HashSet<>(playersEnforce);
+        names.addAll(hoverTicks);
+        for (final String name : names) {
+            if (playerTickTasks.containsKey(name)) continue;
+            final Player player = DataManager.getPlayerExact(name);
+            if (player == null) {
+                removeData(name);
+                continue;
+            }
+            final PlayerTickTask task = new PlayerTickTask(player, name);
+            if (playerTickTasks.putIfAbsent(name, task) == null) task.start();
         }
-        // Cleanup.
-        useTickLoc.setWorld(null);
     }
 
+    private final class PlayerTickTask {
+        private final Player player;
+        private final String name;
+        private Object scheduledTask;
+        private boolean stopped;
+        private int ticksSinceHoverCheck;
 
-    /**
-     * Check for hovering.<br>
-     * NOTE: Makes use of useLoc, without resetting it.
-     */
-    private void checkOnTickHover() {
+        private PlayerTickTask(final Player player, final String name) {
+            this.player = player;
+            this.name = name;
+        }
 
-        final List<String> rem = new ArrayList<String>(hoverTicks.size()); // Pessimistic.
-        final PlayerMoveInfo info = aux.usePlayerMoveInfo();
-        for (final String playerName : hoverTicks) {
-            // TODO: put players into the set (+- one tick would not matter ?)
-            // TODO: might add an online flag to data !
-            final Player player = DataManager.getPlayerExact(playerName);
-            if (player == null || !player.isOnline()) {
-                rem.add(playerName);
-                continue;
+        private synchronized void start() {
+            if (stopped) return;
+            try {
+                scheduledTask = Folia.runSyncRepeatingTaskForEntity(player,
+                        Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> run(), this::stop, 1L, 1L);
+                if (!Folia.isTaskScheduled(scheduledTask)) stop();
+            } catch (RuntimeException e) {
+                stop();
+                throw e;
+            }
+        }
+
+        private synchronized void stop() {
+            stopped = true;
+            Folia.cancelTask(scheduledTask);
+            playerTickTasks.remove(name, this);
+        }
+
+        private void run() {
+            if (playerTickTasks.get(name) != this) return;
+            if (!player.isOnline()) {
+                stop();
+                return;
             }
             final IPlayerData pData = DataManager.getPlayerData(player);
+            if (!pData.isCheckActive(CheckType.MOVING, player)) {
+                hoverTicks.remove(name);
+                playersEnforce.remove(name);
+                stop();
+                return;
+            }
             final MovingData data = pData.getGenericInstance(MovingData.class);
-            if (player.isDead() || player.isSleeping() || player.isInsideVehicle()) {
-                data.sfHoverTicks = -1;
-                // (Removed below.)
-            }
-            if (data.sfHoverTicks < 0) {
-                data.sfHoverLoginTicks = 0;
-                rem.add(playerName);
-                continue;
-            }
-            else if (data.sfHoverLoginTicks > 0) {
-                // Additional "grace period".
-                data.sfHoverLoginTicks --;
-                continue;
-            }
             final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
-            // Check if enabled at all.
-            if (!cc.sfHoverCheck) {
-                rem.add(playerName);
-                data.sfHoverTicks = -1;
-                continue;
+            // A correction must finish before inspecting the player's position again.
+            if (data.hasTeleported()) return;
+            if (playersEnforce.contains(name)) {
+                if (!cc.enforceLocation) playersEnforce.remove(name);
+                else if (checkPlayerEnforce(player, data)) return;
             }
-            // Increase ticks here.
-            data.sfHoverTicks += hoverTicksStep;
-            if (data.sfHoverTicks < cc.sfHoverTicks) {
-                // Don't do the heavier checking here, let moving checks reset these.
-                continue;
+            final int step = hoverTicksStep;
+            if (++ticksSinceHoverCheck >= step) {
+                ticksSinceHoverCheck = 0;
+                if (hoverTicks.contains(name)) checkPlayerHover(player, pData, data, cc, step);
             }
-            if (checkHover(player, data, cc, pData, info)) {
-                rem.add(playerName);
-            }
+            if (!hoverTicks.contains(name) && !playersEnforce.contains(name)) stop();
         }
-        hoverTicks.removeAll(rem);
-        aux.returnPlayerMoveInfo(info);
     }
 
-
-    /**
-     * Legacy check: Enforce location of players, in case of inconsistencies.
-     * First move exploit / possibly vehicle leave.<br>
-     * NOTE: Makes use of useLoc, without resetting it.
-     */
-    private void checkOnTickPlayersEnforce() {
-
-        final List<String> rem = new ArrayList<String>(playersEnforce.size()); // Pessimistic.
-        for (final String playerName : playersEnforce) {
-            final Player player = DataManager.getPlayerExact(playerName);
-            if (player == null || !player.isOnline()) {
-                rem.add(playerName);
-                continue;
-            } 
-            else if (player.isDead() || player.isSleeping() || player.isInsideVehicle()) {
-                // Don't remove but also don't check [subject to change].
-                continue;
-            }
-            final MovingData data = DataManager.getGenericInstance(player, MovingData.class);
-            final Location newTo = enforceLocation(player, player.getLocation(useTickLoc), data);
-            if (newTo != null) {
-                data.prepareSetBack(newTo);
-                player.teleport(newTo, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
-            }
+    private void checkPlayerHover(final Player player, final IPlayerData pData, final MovingData data,
+            final MovingConfig cc, final int step) {
+        if (player.isDead() || player.isSleeping() || player.isInsideVehicle() || !cc.sfHoverCheck) {
+            data.sfHoverTicks = -1;
         }
-        if (!rem.isEmpty()) playersEnforce.removeAll(rem);
+        if (data.sfHoverTicks < 0) {
+            data.sfHoverLoginTicks = 0;
+            hoverTicks.remove(player.getName());
+            return;
+        }
+        if (data.sfHoverLoginTicks > 0) {
+            data.sfHoverLoginTicks--;
+            return;
+        }
+        data.sfHoverTicks += step;
+        if (data.sfHoverTicks < cc.sfHoverTicks) return;
+        final PlayerMoveInfo info = aux.usePlayerMoveInfo();
+        try {
+            if (checkHover(player, data, cc, pData, info)) hoverTicks.remove(player.getName());
+        } finally {
+            aux.returnPlayerMoveInfo(info);
+        }
+    }
+
+    private boolean checkPlayerEnforce(final Player player, final MovingData data) {
+        if (player.isDead() || player.isSleeping() || player.isInsideVehicle()) return false;
+        final Location newTo = enforceLocation(player, player.getLocation(), data);
+        if (newTo == null) return false;
+        MovingUtil.teleportSetBack(player, newTo, data);
+        return true;
     }
 
 
     private Location enforceLocation(final Player player, final Location loc, final MovingData data) {
 
         final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
-        if (lastMove.toIsValid && TrigUtil.distanceSquared(lastMove.to.getX(), lastMove.to.getY(), lastMove.to.getZ(), loc.getX(), loc.getY(), loc.getZ()) > 1.0 / 256.0) {
+        if (lastMove.toIsValid && loc.getWorld().getName().equals(lastMove.to.getWorldName())
+                && TrigUtil.distanceSquared(lastMove.to.getX(), lastMove.to.getY(), lastMove.to.getZ(), loc.getX(), loc.getY(), loc.getZ()) > 1.0 / 256.0) {
             // Teleport back. 
             if (data.hasSetBack()) {
                 // Might have to re-check all context with playerJoins and keeping old set backs...
@@ -2945,9 +2958,8 @@ catch (java.lang.Throwable thr) {}
                                final PlayerMoveInfo info) {
 
         // Check if player is on ground.
-        final Location loc = player.getLocation(useTickLoc); // useLoc.setWorld(null) is done in onTick.
+        final Location loc = player.getLocation();
         info.set(player, loc, null, cc.yOnGround);
-        // (Could use useLoc of MoveInfo here. Note orderm though.)
         final boolean res;
         // TODO: Collect flags, more margin ?
         final int loaded = info.from.ensureChunksLoaded();
@@ -2961,25 +2973,14 @@ catch (java.lang.Throwable thr) {}
         }
         else {
             if (data.sfHoverTicks > cc.sfHoverTicks) {
-                // Re-Check if survivalfly can apply at all.
-                final PlayerMoveInfo moveInfo = aux.usePlayerMoveInfo();
-                moveInfo.set(player, loc, null, cc.yOnGround);
-                if (MovingUtil.shouldCheckSurvivalFly(player, moveInfo.from, moveInfo.to, data, cc, pData)) {
-                    handleHoverViolation(player, moveInfo.from, cc, data, pData);
-                    // Assume the player might still be hovering.
-                    res = false;
-                    data.sfHoverTicks = 0;
+                if (MovingUtil.shouldCheckSurvivalFly(player, info.from, info.to, data, cc, pData)) {
+                    handleHoverViolation(player, info.from, cc, data, pData);
                 }
-                else {
-                    // Reset hover ticks and check next period.
-                    res = false;
-                    data.sfHoverTicks = 0;
-                }
-                aux.returnPlayerMoveInfo(moveInfo);
+                res = false;
+                data.sfHoverTicks = 0;
             }
             else res = false;
         }
-        info.cleanup();
         return res;
     }
 
@@ -3007,9 +3008,10 @@ catch (java.lang.Throwable thr) {}
 
     @Override
     public IData removeData(String playerName) {
-        // Let TickListener handle automatically
-        //hoverTicks.remove(playerName);
-        //playersEnforce.remove(playerName);
+        hoverTicks.remove(playerName);
+        playersEnforce.remove(playerName);
+        final PlayerTickTask task = playerTickTasks.get(playerName);
+        if (task != null) task.stop();
         return null;
     }
 
@@ -3018,7 +3020,14 @@ catch (java.lang.Throwable thr) {}
     public void removeAllData() {
         hoverTicks.clear();
         playersEnforce.clear();
+        for (final PlayerTickTask task : playerTickTasks.values()) task.stop();
         aux.clear();
+    }
+
+
+    @Override
+    public void onDisable() {
+        removeAllData();
     }
 
 
