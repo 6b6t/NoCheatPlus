@@ -16,6 +16,7 @@ package fr.neatmonster.nocheatplus.checks.moving.util;
 
 import java.util.UUID;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -59,6 +60,22 @@ import fr.neatmonster.nocheatplus.utilities.map.MapUtil;
  *
  */
 public class MovingUtil {
+
+    /** Issue a correction on the player's thread without waiting for destination chunks. */
+    public static void teleportSetBack(final Player player, final Location location, final MovingData data) {
+        final Location target = LocUtil.clone(location);
+        data.prepareSetBack(target);
+        Folia.teleportEntityAsync(player, target, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION)
+                .whenComplete((success, error) -> {
+                    if (error != null) StaticLog.logSevere(error);
+                    if (!Boolean.TRUE.equals(success)) {
+                        // Completion may run elsewhere. Clear the failed correction on the player's region.
+                        Folia.runSyncTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> {
+                            if (data.isTeleported(target)) data.resetTeleported();
+                        }, null);
+                    }
+                });
+    }
 
     /**
      * Always set world to null after use, careful with nested methods. Main thread only.
