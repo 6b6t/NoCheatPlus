@@ -2978,6 +2978,10 @@ catch (java.lang.Throwable thr) {}
         final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
         // After a set back or teleport only "from" is set, and PacketFly never sends the move event that would set "to".
         final LocationData ref = lastMove.toIsValid ? lastMove.to : lastMove.from;
+        if (data.hasTeleported()) {
+            // A set back is pending, positions are reset when it gets confirmed.
+            return;
+        }
         final Location loc = player.getLocation();
         // NCP doesn't follow the player then, so its last position can be outdated.
         final boolean notTracked = !pData.isCheckActive(CheckType.MOVING, player) || player.isDead() || player.isSleeping()
@@ -2994,15 +2998,30 @@ catch (java.lang.Throwable thr) {}
         }
         // More than 1/16 block away from the last position NCP saw always fires a move event, unless the server
         // reset the event reference silently. Margin: a legit "moved too quickly" teleport also resets it.
-        else if (!data.hasTeleported()
-                 && TrigUtil.distanceSquared(ref.getX(), ref.getY(), ref.getZ(), loc.getX(), loc.getY(), loc.getZ()) > 0.01) {
+        else if (TrigUtil.distanceSquared(ref.getX(), ref.getY(), ref.getZ(), loc.getX(), loc.getY(), loc.getZ()) > 0.01) {
             // Back to the last position NCP saw, the regular set back may have been moved into the air.
             final Location newTo = new Location(loc.getWorld(), ref.getX(), ref.getY(), ref.getZ(), loc.getYaw(), loc.getPitch());
             NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
                     CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Untracked move (no PlayerMoveEvent) to "
                     + LocUtil.simpleFormat(loc) + ", set back to " + LocUtil.simpleFormat(newTo) + ".");
             data.prepareSetBack(newTo);
-            Folia.teleportEntityAsync(player, newTo, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
+            // Folia teleports within a region without a PlayerTeleportEvent, and PacketFly sends no move event either,
+            // so confirm the set back here. Else it stays pending and this check waits forever.
+            Folia.teleportEntityAsync(player, newTo, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION).whenComplete((success, error) -> {
+                Folia.runSyncTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), (arg) -> {
+                    if (!data.isTeleportedPosition(newTo)) {
+                        // Already confirmed (teleport event) or replaced by another set back.
+                        return;
+                    }
+                    if (Boolean.TRUE.equals(success)) {
+                        confirmSetBack(player, false, data, pData.getGenericInstance(MovingConfig.class), pData, newTo);
+                    }
+                    else {
+                        // Failed: let the next run try again.
+                        data.resetTeleported();
+                    }
+                }, null);
+            });
         }
     }
 
