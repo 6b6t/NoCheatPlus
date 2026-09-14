@@ -363,16 +363,12 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         }
 
         // Shulker boxes.
+        // The model uses the fully open shape while the lid is out. The lid moves under players and the client's
+        // runs behind the server's, so all of it counts as ground. XZ100 would cut off the lid of sideways ones.
         for (final Material mat : MaterialUtil.SHULKER_BOXES) {
-            if (fetchShapes) {
-                // The lid grows the shape by up to 0.5 while opening and closing, fetch it live.
-                // XZ100 would cut off the lid of sideways shulker boxes.
-                BlockFlags.removeFlags(mat, BlockFlags.F_XZ100);
-                addModel(mat, MODEL_AUTO_FETCH);
-            }
-            else {
-                addModel(mat, MODEL_SHULKER_BOX);
-            }
+            BlockFlags.removeFlags(mat, BlockFlags.F_XZ100);
+            BlockFlags.addFlags(mat, BlockFlags.F_GROUND_HEIGHT);
+            addModel(mat, MODEL_SHULKER_BOX);
         }
 
         // Chests.
