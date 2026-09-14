@@ -255,8 +255,7 @@ public class BlockInteractListener extends CheckListener {
 
             // Ray tracing for freecam use etc.
             if (!cancelled && visible.isEnabled(player, pData) 
-                    && visible.check(player, loc, eyeHeight, block, face, action, flyingHandle, 
-                            data, cc, pData)) {
+                    && visible.check(player, loc, eyeHeight, block, data, cc, pData)) {
                 cancelled = true;
             }
         }
