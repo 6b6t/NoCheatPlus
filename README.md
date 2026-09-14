@@ -54,6 +54,8 @@ Links
 
 Compiling NoCheatPlus
 ---------
+This fork requires Java 25 or newer to build and run. Configure both Maven and the Minecraft server to use Java 25 or newer.
+
 * We use [Maven](http://maven.apache.org/download.cgi) 3 to handle the dependencies. Tested both with Eclipse and Jenkins is Maven 3.3.9.
 * You can compile with this Maven goal: `mvn clean package`, for a build without any of the "non free" modules, which depened on not publicly downloadable resources, such as the CraftBukkit/Spigot server jar - the reflection based compatibility module is still contained. 
 * To also (re-) build "non free" compatibility modules, use `-P nonfree_build` as well as activating the appropriate module to build via a profile such as `-P cbdev` - see the tables below for reference.
