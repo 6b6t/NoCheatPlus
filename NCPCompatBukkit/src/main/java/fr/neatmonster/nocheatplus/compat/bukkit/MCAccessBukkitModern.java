@@ -19,9 +19,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
 
 import fr.neatmonster.nocheatplus.compat.AlmostBoolean;
+import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.compat.BridgeHealth;
 import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
 import fr.neatmonster.nocheatplus.compat.blocks.init.BlockInit;
@@ -182,6 +184,8 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
 
         // Variables for repeated flags (Temporary flags, these should be fixed later so that they are not added here)
         final long blockFix = BlockFlags.SOLID_GROUND;
+        // Exact vanilla collision via Block#getCollisionShape (1.17+), older servers keep the static models.
+        final boolean fetchShapes = ReflectionUtil.getMethodNoArgs(Block.class, "getCollisionShape") != null;
         // Adjust flags for individual blocks.
         BlockFlags.setBlockFlags(Material.COCOA, blockFix);
         BlockFlags.setBlockFlags(Material.TURTLE_EGG, blockFix);
@@ -273,7 +277,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
             Material.ANVIL,
             Material.CHIPPED_ANVIL,
             Material.DAMAGED_ANVIL}) {
-            addModel(mat, MODEL_ANVIL);
+            addModel(mat, fetchShapes ? MODEL_AUTO_FETCH : MODEL_ANVIL);
         }
         
         // Lily pad
@@ -292,6 +296,10 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
 
         // Hoppers - min height changed in 1.13+
         addModel(Material.HOPPER, MODEL_HOPPER);
+        if (Bridge1_13.hasBoundingBox()) {
+            // The model fetches the real shape then. The full block flags (set as coal ore) would stretch its first box to a full block.
+            BlockFlags.removeFlags(Material.HOPPER, BlockFlags.F_XZ100 | BlockFlags.F_HEIGHT100);
+        }
 
         // Ladder
         addModel(Material.LADDER, MODEL_LADDER);
@@ -356,22 +364,30 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
 
         // Shulker boxes.
         for (final Material mat : MaterialUtil.SHULKER_BOXES) {
-            addModel(mat, MODEL_SHULKER_BOX);
+            if (fetchShapes) {
+                // The lid grows the shape by up to 0.5 while opening and closing, fetch it live.
+                // XZ100 would cut off the lid of sideways shulker boxes.
+                BlockFlags.removeFlags(mat, BlockFlags.F_XZ100);
+                addModel(mat, MODEL_AUTO_FETCH);
+            }
+            else {
+                addModel(mat, MODEL_SHULKER_BOX);
+            }
         }
 
         // Chests.
-        // TOOD: Might add a facing/directional extension for double chests.
+        // Double chests reach into the other half.
         for (Material mat : BridgeMaterial.getAllBlocks(
             "chest", "trapped_chest", "ender_chest")) {
-            addModel(mat, MODEL_SINGLE_CHEST);
+            addModel(mat, fetchShapes ? MODEL_AUTO_FETCH : MODEL_SINGLE_CHEST);
         }
         for (final Material mat : MaterialUtil.COPPER_CHESTS) {
-            addModel(mat, MODEL_SINGLE_CHEST);
+            addModel(mat, fetchShapes ? MODEL_AUTO_FETCH : MODEL_SINGLE_CHEST);
         }
 
         // Beds
         for (Material mat : MaterialUtil.BEDS) {
-            addModel(mat, MODEL_XZ100_HEIGHT16_9);
+            addModel(mat, fetchShapes ? MODEL_AUTO_FETCH : MODEL_XZ100_HEIGHT16_9);
         }
 
         // Flower pots.
@@ -406,6 +422,10 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         // Carpets.
         for (final Material mat : MaterialUtil.CARPETS) {
             addModel(mat, MODEL_XZ100_HEIGHT16_1);
+        }
+        // Pale moss carpet only collides with its bottom. The upper part of a two-high growth up a wall has none.
+        for (final Material mat : BridgeMaterial.getAllBlocks("pale_moss_carpet")) {
+            addModel(mat, MODEL_AUTO_FETCH);
         }
 
         // Ground heads.
@@ -504,7 +524,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
 
         // Bell.
         mt = BridgeMaterial.getBlock("bell");
-        if (mt != null) addModel(mt, MODEL_BELL);
+        if (mt != null) addModel(mt, fetchShapes ? MODEL_AUTO_FETCH : MODEL_BELL);
 
         // Composter.
         mt = BridgeMaterial.getBlock("composter");
