@@ -12,8 +12,8 @@ mkdir -p "$DIR/plugins"
 
 jver() { "$1" -version 2>&1 | sed -n '1s/.*version "\([0-9]*\).*/\1/p'; }
 
-# Minecraft 26.1+ needs Java 25, older needs 21.
-case "$MC_VERSION" in 1.*) NEED=21;; *) NEED=25;; esac
+# NCP builds with Java 25 (ScopedValue), which also runs every server version.
+NEED=25
 JAVA=java
 if [ "$(jver "$JAVA")" -lt "$NEED" ]; then
   JAVA=""
@@ -41,7 +41,7 @@ if ! command -v mvn >/dev/null; then
 fi
 
 if [ "${1:-}" != "--no-build" ]; then
-  "$MVN" -q package -DskipTests   # NCP itself targets Java 21, build with whatever mvn picks
+  JAVA_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v "$JAVA")")")")" "$MVN" -q package -DskipTests
 fi
 cp target/NoCheatPlus.jar "$DIR/plugins/"
 
