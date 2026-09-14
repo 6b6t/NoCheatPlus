@@ -1,0 +1,6 @@
+name: NcpAudit
+version: '1'
+main: audit.Audit
+api-version: '1.21'
+folia-supported: true
+depend: [NoCheatPlus]

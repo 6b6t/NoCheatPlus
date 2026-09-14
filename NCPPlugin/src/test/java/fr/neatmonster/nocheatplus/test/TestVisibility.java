@@ -1,7 +1,10 @@
 package fr.neatmonster.nocheatplus.test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+
+import java.util.Arrays;
 
 import org.bukkit.Material;
 import org.junit.Test;
@@ -46,5 +49,25 @@ public class TestVisibility {
         assertFalse("Eight snow layers are a full block.", canSeeTarget(65.62, Material.SNOW, 7, FULL));
         // Fences collide up to 1.5 but look 1.0 high, lines just below the top are blocked.
         assertFalse("Fence top hides the target.", canSeeTarget(65.9, Material.OAK_FENCE, 0, new double[]{0.0, 0.0, 0.0, 1.0, 1.5, 1.0}));
+    }
+
+    @Test
+    public void testAllSides() {
+        final int[][] directions = {{1, 0, 0}, {-1, 0, 0}, {0, 1, 0}, {0, -1, 0}, {0, 0, 1}, {0, 0, -1}};
+        for (final int[] d : directions) {
+            // Block at (0, 65, 0), target right behind it, eye 1.7 blocks in front of the block's center.
+            final int tx = d[0], ty = 65 + d[1], tz = d[2];
+            for (final boolean between : new boolean[] {false, true}) {
+                final FakeBlockCache bc = new FakeBlockCache();
+                bc.set(tx, ty, tz, Material.STONE);
+                if (between) {
+                    bc.set(0, 65, 0, Material.STONE);
+                }
+                final boolean visible = CollisionUtil.canSeeBox(bc, 0.5 - 1.7 * d[0], 65.5 - 1.7 * d[1], 0.5 - 1.7 * d[2],
+                        tx, ty, tz, tx + 1, ty + 1, tz + 1, tx, ty, tz);
+                bc.cleanup();
+                assertEquals("Direction " + Arrays.toString(d) + ", block between: " + between, !between, visible);
+            }
+        }
     }
 }
