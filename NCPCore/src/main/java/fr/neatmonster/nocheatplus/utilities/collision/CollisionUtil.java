@@ -15,6 +15,7 @@
 package fr.neatmonster.nocheatplus.utilities.collision;
 
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
@@ -24,6 +25,7 @@ import org.bukkit.util.Vector;
 import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
 import fr.neatmonster.nocheatplus.utilities.location.TrigUtil;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
+import fr.neatmonster.nocheatplus.utilities.map.BlockFlags;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
 
 /**
@@ -600,20 +602,25 @@ public class CollisionUtil {
      */
     private static boolean blocksLine(final BlockCache blockCache, final int x, final int y, final int z, 
             final double oX, final double oY, final double oZ, final double dX, final double dY, final double dZ) {
-        if (BlockProperties.isPassable(blockCache.getType(x, y, z))) {
+        final Material type = blockCache.getType(x, y, z);
+        if (BlockProperties.isPassable(type)) {
             return false;
         }
         final double[] bounds = blockCache.getBounds(x, y, z);
         if (bounds == null) {
             return false;
         }
+        // Snow bounds are kept full, the layers are in the data. It looks one layer higher than it collides.
+        final double maxHeight = (BlockFlags.getBlockFlags(type) & BlockFlags.F_HEIGHT_8_INC) != 0
+                ? 0.125 * ((blockCache.getData(x, y, z) & 0xF) % 8 + 1) : 1.0;
         for (int i = 0; i + 5 < bounds.length; i += 6) {
-            // Fences and walls collide up to 1.5, but only look 1.0 high.
-            final double enter = Math.max(enterTime(oX, dX, bounds[i], bounds[i + 3]), 
-                    Math.max(enterTime(oY, dY, bounds[i + 1], Math.min(bounds[i + 4], 1.0)), 
+            // Fences, walls and gates collide up to 1.5, but only look 0.8125 (gate in a wall) to 1.0 high.
+            final double maxY = bounds[i + 4] > 1.0 ? 0.8125 : Math.min(bounds[i + 4], maxHeight);
+            final double enter = Math.max(enterTime(oX, dX, bounds[i], bounds[i + 3]),
+                    Math.max(enterTime(oY, dY, bounds[i + 1], maxY),
                             enterTime(oZ, dZ, bounds[i + 2], bounds[i + 5])));
-            final double exit = Math.min(exitTime(oX, dX, bounds[i], bounds[i + 3]), 
-                    Math.min(exitTime(oY, dY, bounds[i + 1], Math.min(bounds[i + 4], 1.0)), 
+            final double exit = Math.min(exitTime(oX, dX, bounds[i], bounds[i + 3]),
+                    Math.min(exitTime(oY, dY, bounds[i + 1], maxY),
                             exitTime(oZ, dZ, bounds[i + 2], bounds[i + 5])));
             // Entering within the line. Starting inside a box (eye in a block) doesn't count.
             if (enter < exit && enter > 0.0 && enter < 1.0) {
