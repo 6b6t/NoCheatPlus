@@ -2168,6 +2168,12 @@ catch (java.lang.Throwable thr) {}
         
         // Special cases.
         final Location to = event.getTo();
+        final var attempt = data.getSetBackTeleport();
+        if (to != null && attempt != null && attempt.isFor(player) && attempt.isDestination(to)
+                && attempt.getSequence() != data.getSetBackSequence()) {
+            // A newer correction must survive both cancellation and approval of the older attempt.
+            return;
+        }
         if (event.isCancelled()) {
             onPlayerTeleportMonitorCancelled(player, event, to, data, pData);
             return;
@@ -2318,8 +2324,8 @@ catch (java.lang.Throwable thr) {}
     private void confirmSetBack(final Player player, final boolean fakeNews, final MovingData data, 
                                 final MovingConfig cc, final IPlayerData pData, final Location fallbackTeleported) {
 
-        // TODO: Find the reason why it can be null even passed the precondition not null.
-        final Location teleported = data.getTeleported() != null ? data.getTeleported() : fallbackTeleported;
+        final Location stored = data.getTeleported();
+        final Location teleported = stored != null ? stored : fallbackTeleported;
         final PlayerMoveInfo moveInfo = aux.usePlayerMoveInfo();
         moveInfo.set(player, teleported, null, cc.yOnGround);
         if (cc.loadChunksOnTeleport) {
@@ -2652,6 +2658,7 @@ catch (java.lang.Throwable thr) {}
         final Location location = player.getLocation();
         final MovingData data = pData.getGenericInstance(MovingData.class);
         data.lastTeleportCompletionSequence = 0L;
+        data.resetSetBackTeleport();
         data.resetUntrackedPosition(location);
         dataOnJoin(player, location, false, data,
                 pData.getGenericInstance(MovingConfig.class), pData.isDebugActive(checkType));

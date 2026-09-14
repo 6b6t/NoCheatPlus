@@ -30,6 +30,7 @@ import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.combined.Improbable;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
+import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
 import fr.neatmonster.nocheatplus.checks.net.NetConfig;
 import fr.neatmonster.nocheatplus.checks.net.NetData;
 import fr.neatmonster.nocheatplus.checks.net.model.DataPacketFlying;
@@ -40,7 +41,6 @@ import fr.neatmonster.nocheatplus.utilities.location.TrigUtil;
 import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.logging.Streams;
 import fr.neatmonster.nocheatplus.compat.AlmostBoolean;
-import fr.neatmonster.nocheatplus.compat.BridgeMisc;
 import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.utilities.CheckUtils;
 import fr.neatmonster.nocheatplus.utilities.StringUtil;
@@ -85,7 +85,6 @@ public class Moving extends Check {
         // Work as ExtremeMove but for packet sent!
         // Observed: this seems to prevent long/mid distance blink cheats.
         else if (packetData.hasPos) {
-            final MovingData mData = pData.getGenericInstance(MovingData.class);
             final Location knownLocation = player.getLocation();
             final Location packetLocation = new Location(null, packetData.getX(), packetData.getY(), packetData.getZ());
             final double hDistanceDiff = TrigUtil.distance(knownLocation, packetLocation);
@@ -110,10 +109,12 @@ public class Moving extends Check {
                 data.movingVL = 0.0;
                 Object task = null;
                 task = Folia.runSyncTaskForEntity(player, plugin, (arg) -> {
-                    final Location newTo = mData.hasSetBack() ? mData.getSetBack(knownLocation) :
+                    final MovingData mData = pData.getGenericInstance(MovingData.class);
+                    final Location currentLocation = player.getLocation();
+                    final Location newTo = mData.hasSetBack() ? mData.getSetBack(currentLocation) :
                                            mData.hasMorePacketsSetBack() ? mData.getMorePacketsSetBack() :
                                            // Unsafe position! Null world or world not updated
-                                           knownLocation;
+                                           currentLocation;
                                            //null;
                     if (newTo == null) {
                         StaticLog.logSevere("[NoCheatPlus] Could not restore location for " + player.getName() + ", kicking them.");
@@ -121,8 +122,7 @@ public class Moving extends Check {
                     } 
                     else {
                         // Mask player teleport as a set back.
-                        mData.prepareSetBack(newTo);
-                        Folia.teleportEntity(player, LocUtil.clone(newTo), BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
+                        MovingUtil.teleportSetBack(player, newTo, mData);
                         // Request an Improbable update, unlikely that this is legit.
                         TickTask.requestImprobableUpdate(player.getUniqueId(), 0.3f);
                         if (pData.isDebugActive(CheckType.NET_MOVING)) 
@@ -132,7 +132,6 @@ public class Moving extends Check {
                 if (!Folia.isTaskScheduled(task)) {
                     StaticLog.logWarning("[NoCheatPlus] Failed to schedule task. Player: " + player.getName());
                 }
-                mData.resetTeleported(); // Cleanup, just in case.
             }
         }
         return cancel;

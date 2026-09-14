@@ -16,7 +16,6 @@ package fr.neatmonster.nocheatplus.checks.moving;
 
 import java.util.Collection;
 import java.util.concurrent.Callable;
-import java.util.concurrent.atomic.AtomicLong;
 
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -37,6 +36,7 @@ import fr.neatmonster.nocheatplus.checks.moving.model.MoveConsistency;
 import fr.neatmonster.nocheatplus.checks.moving.model.MoveTrace;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.model.VehicleMoveData;
+import fr.neatmonster.nocheatplus.checks.moving.util.SetBackTeleport;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.AccountEntry;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.FrictionAxisVelocity;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.SimpleAxisVelocity;
@@ -195,8 +195,9 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     private Location setBack = null;
     /** Telepot location, shared between fly checks */
     private Location teleported = null;
-    /** Time the last on-tick set back teleport was issued, 0 once it has completed. */
-    public final AtomicLong setBackTeleportPendingSince = new AtomicLong(0L);
+    private long setBackSequence;
+    /** Only the player's owning thread reads or replaces the attempt; its result is published asynchronously. */
+    private SetBackTeleport setBackTeleport;
     public World currentWorldToChange = null;
 
 
@@ -594,6 +595,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Called when a player leaves the server.
      */
     public void onPlayerLeave() {
+        resetSetBackTeleport();
         removeAllPlayerSpeedModifiers();
         trace.reset();
         playerMoves.invalidate();
@@ -833,13 +835,29 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     }
 
 
-    /**
-     * Return a copy of the teleported-to Location.
-     * @return
-     */
+    /** Identifies a correction even when a later one uses the same destination. */
+    public final long getSetBackSequence() {
+        return setBackSequence;
+    }
+
+    public final SetBackTeleport getSetBackTeleport() {
+        return setBackTeleport;
+    }
+
+    public final void setSetBackTeleport(final SetBackTeleport attempt) {
+        setBackTeleport = attempt;
+    }
+
+    /** Invalidate work from the previous player connection. */
+    public final void resetSetBackTeleport() {
+        setBackTeleport = null;
+        resetTeleported();
+    }
+
+    /** Return a copy of the current correction destination, or null. */
     public final Location getTeleported() {
-        // TODO: here a reference might do.
-        return teleported == null ? teleported : LocUtil.clone(teleported);
+        final Location destination = teleported;
+        return destination == null ? null : LocUtil.clone(destination);
     }
 
 
@@ -892,6 +910,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      */
     public final void setTeleported(final Location loc) {
         teleported = LocUtil.clone(loc); // Always overwrite.
+        ++setBackSequence;
     }
 
 
@@ -945,6 +964,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
 
     public final void resetTeleported() {
         teleported = null;
+        ++setBackSequence;
     }
 
 
@@ -1528,7 +1548,6 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         timeRiptiding = Math.min(timeRiptiding, time);
         delayWorkaround = Math.min(delayWorkaround, time);
         vehicleMorePacketsLastTime = Math.min(vehicleMorePacketsLastTime, time);
-        setBackTeleportPendingSince.accumulateAndGet(time, Math::min);
         clearAccounting(); // Not sure: adding up might not be nice.
         removeAllPlayerSpeedModifiers(); // TODO: This likely leads to problems.
         // (ActionFrequency can handle this.)

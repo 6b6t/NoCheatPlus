@@ -579,6 +579,8 @@ public class PlayerDataManager  implements IPlayerDataManager, ComponentWithName
      * @param player
      */
     private void addOnlinePlayer(final Player player) {
+        final PlayerData pData = getPlayerData(player, true);
+        if (pData != null) pData.onPlayerOnline(player);
         playerMap.updatePlayer(player);
     }
 

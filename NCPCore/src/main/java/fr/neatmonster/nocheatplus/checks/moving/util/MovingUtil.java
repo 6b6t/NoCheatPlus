@@ -16,7 +16,6 @@ package fr.neatmonster.nocheatplus.checks.moving.util;
 
 import java.util.UUID;
 
-import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -73,6 +72,14 @@ public class MovingUtil {
             return;
         }
         data.lastTeleportCompletionSequence = sequence;
+        final SetBackTeleport attempt = data.getSetBackTeleport();
+        if (attempt != null && attempt.isFor(player) && attempt.isDestination(to)
+                && attempt.getSequence() != data.getSetBackSequence()) {
+            // This correction was confirmed already, or a newer correction is waiting for it.
+            // Neither case turns our old arrival into an ordinary teleport that clears movement state.
+            data.resetUntrackedPosition(to);
+            return;
+        }
         if (data.isTeleported(to)) {
             // Preserve violation and fall-distance state for NCP's own corrections.
             confirmSetBack(player, data, pData, current);
@@ -97,23 +104,62 @@ public class MovingUtil {
 
     /** Issue a correction on the player's thread without waiting for destination chunks. */
     public static void teleportSetBack(final Player player, final Location location, final MovingData data) {
+        requirePlayerRegion(player);
         final Location target = LocUtil.clone(location);
         final IPlayerData pData = DataManager.getPlayerData(player);
         data.prepareSetBack(target);
-        Folia.teleportEntityAsync(player, target, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION)
-                .whenComplete((success, error) -> {
-                    if (error != null) StaticLog.logSevere(error);
-                    // Completion may run elsewhere. Finish on the player's region.
-                    Folia.runSyncTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> {
-                        if (!data.isTeleported(target)) {
-                            // Confirmed by a teleport event already, or replaced by a newer set back.
-                            return;
-                        }
-                        if (Boolean.TRUE.equals(success)) confirmSetBack(player, data, pData, target);
-                        // Failed: clear it, so the next run can correct again.
-                        else data.resetTeleported();
-                    }, null);
-                });
+        if (finishPendingSetBack(player, pData, data)) {
+            startSetBackTeleport(player, pData, data, target);
+        }
+    }
+
+    private static void requirePlayerRegion(final Player player) {
+        if (!Folia.isOwnedByCurrentRegion(player)) {
+            throw new IllegalStateException("Setbacks must run on the player's owning region");
+        }
+    }
+
+    private static void startSetBackTeleport(final Player player, final IPlayerData pData,
+            final MovingData data, final Location target) {
+        final SetBackTeleport attempt = new SetBackTeleport(player, data.getSetBackSequence(), target);
+        // Reserve and queue before calling Bukkit: a teleport event can reenter this code or move ownership.
+        pData.requestPlayerSetBack();
+        data.setSetBackTeleport(attempt);
+        try {
+            Folia.teleportEntityAsync(player, target, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION)
+                    .whenComplete(attempt::complete);
+        } catch (RuntimeException failure) {
+            attempt.complete(false, failure);
+        }
+    }
+
+    /** Consume the result on the entity thread; a rejected scheduler must not reissue the teleport. */
+    private static boolean finishPendingSetBack(final Player player, final IPlayerData pData,
+            final MovingData data) {
+        final SetBackTeleport attempt = data.getSetBackTeleport();
+        if (attempt == null) return true;
+        if (!attempt.isFor(player)) {
+            data.setSetBackTeleport(null);
+            return true;
+        }
+        final SetBackTeleport.Result result = attempt.getResult();
+        if (result == null) {
+            pData.requestPlayerSetBack();
+            return false;
+        }
+        if (data.getSetBackSequence() == attempt.getSequence() && data.hasTeleported()) {
+            final Location current = player.getLocation();
+            if (result.success() && attempt.isDestination(current)) {
+                confirmSetBack(player, data, pData, current);
+            } else {
+                // Respect cancellation or another teleport; do not confirm an obsolete destination.
+                data.resetTeleported();
+            }
+        }
+        // Keep the result until state processing succeeds, so an exception can be retried.
+        data.setSetBackTeleport(null);
+        if (result.error() != null) StaticLog.logSevere(result.error());
+        return true;
     }
 
     /**
@@ -139,7 +185,6 @@ public class MovingUtil {
     /**
      * Always set world to null after use, careful with nested methods. Main thread only.
      */
-    private static final Location useLoc = new Location(null, 0, 0, 0);
     private static final Location useLoc2 = new Location(null, 0, 0, 0);
     //    /** Fast scan flags for 'mostly air'. */
     //    private static final long FLAGS_SCAN_FOR_GROUND_OR_RESETCOND = 
@@ -719,9 +764,12 @@ public class MovingUtil {
      * @return True, if a teleport has been issued.
      */
     public static boolean processStoredSetBack(final Player player, final String debugMessagePrefix, final IPlayerData pData) {
+        requirePlayerRegion(player);
         final MovingData data = pData.getGenericInstance(MovingData.class);
+        if (!finishPendingSetBack(player, pData, data)) return false;
         final boolean debug = pData.isDebugActive(CheckType.MOVING);
-        if (!data.hasTeleported()) {
+        final Location teleported = data.getTeleported();
+        if (teleported == null) {
             if (debug) {
                 CheckUtils.debug(player, CheckType.MOVING, debugMessagePrefix + "No stored location available.");
             }
@@ -729,17 +777,15 @@ public class MovingUtil {
         }
         // (teleported is set.).
 
-        final Location loc = player.getLocation(useLoc);
-        if (data.isTeleportedPosition(loc)) {
+        final Location loc = player.getLocation();
+        if (teleported.getWorld() == loc.getWorld() && TrigUtil.isSamePos(teleported, loc)) {
             // Skip redundant teleport.
             if (debug) {
                 CheckUtils.debug(player, CheckType.MOVING, debugMessagePrefix + "Skip teleport, player is there, already.");
             }
             data.resetTeleported(); // Not necessary to keep.
-            useLoc.setWorld(null);
             return false;
         }
-        useLoc.setWorld(null);
         // (player is somewhere else.)
 
         // Post-1.9 packet level workaround.
@@ -778,34 +824,10 @@ public class MovingUtil {
         // (No ACK received yet.)
 
         // Attempt to teleport.
-        final Location teleported = data.getTeleported();
         // (Data resetting is done during PlayerTeleportEvent handling.)
-        // Called from the TickTask (off region thread on Folia): don't wait for the teleport there, but don't stack them either.
+        // The entity scheduler owns this state. Never wait for the asynchronous teleport.
         // (The cancelled move already sent the player back, this is a backup, so not waiting can't skip a set back.)
-        final long now = System.currentTimeMillis();
-        if (now - data.setBackTeleportPendingSince.get() < 1000L) {
-            if (debug) {
-                CheckUtils.debug(player, CheckType.MOVING, debugMessagePrefix + "Skip teleport, previous one still pending.");
-            }
-            return false;
-        }
-        data.setBackTeleportPendingSince.set(now);
-        Folia.teleportEntityAsync(player, LocUtil.clone(teleported), BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION).whenComplete((success, error) -> {
-            // Only clear our own request, a newer one may be pending by now.
-            data.setBackTeleportPendingSince.compareAndSet(now, 0L);
-            if (debug && !Boolean.TRUE.equals(success)) {
-                CheckUtils.debug(player, CheckType.MOVING, "Player set back on tick: Teleport failed.");
-            }
-            // Nothing else confirms it on Folia (no PlayerTeleportEvent within a region), and PlayerData already
-            // cleared the request: finish it here, or hasTeleported() would stay set without a pending teleport.
-            Folia.runSyncTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> {
-                if (!data.isTeleported(teleported)) {
-                    return;
-                }
-                if (Boolean.TRUE.equals(success)) confirmSetBack(player, data, pData, teleported);
-                else data.resetTeleported();
-            }, null);
-        });
+        startSetBackTeleport(player, pData, data, teleported);
         return true;
     }
 

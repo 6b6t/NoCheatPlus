@@ -32,7 +32,9 @@ import org.bukkit.entity.Player;
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
+import fr.neatmonster.nocheatplus.checks.moving.util.SetBackRequest;
 import fr.neatmonster.nocheatplus.compat.AlmostBoolean;
+import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.components.config.value.OverrideType;
 import fr.neatmonster.nocheatplus.components.data.ICanHandleTimeRunningBackwards;
 import fr.neatmonster.nocheatplus.components.data.IData;
@@ -171,7 +173,7 @@ public class PlayerData implements IPlayerData {
     /** If is Bedrock Player. This is set if CompatNoCheatPlus is present. */
     private boolean bedrockPlayer = false;
     private boolean requestUpdateInventory = false;
-    private boolean requestPlayerSetBack = false;
+    private final SetBackRequest<Player> setBackRequest = new SetBackRequest<>();
 
     private boolean frequentPlayerTaskShouldBeScheduled = false;
     /** Actually queried ones. */
@@ -259,7 +261,7 @@ public class PlayerData implements IPlayerData {
     private boolean hasFrequentTasks() {
         return !updatePermissions.isEmtpyAfterMergePrimaryThread() 
                 // Should be primary thread:
-                || requestPlayerSetBack || requestUpdateInventory;
+                || setBackRequest.isPending() || requestUpdateInventory;
     }
 
     private void frequentTasks(final int tick, final long timeLast, final Player player) {
@@ -267,10 +269,13 @@ public class PlayerData implements IPlayerData {
             if (player.isOnline()) {
                 long nanos = System.nanoTime();
                 // Set back.
-                if (requestPlayerSetBack) {
-                    requestPlayerSetBack = false;
-                    MovingUtil.processStoredSetBack(player, "Player set back on tick: ", this);
-                }
+                setBackRequest.dispatch(player, (run, retired) -> Folia.isTaskScheduled(
+                        Folia.runSyncTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"),
+                                ignored -> run.run(), retired)), () -> {
+                    if (player.isOnline()) {
+                        MovingUtil.processStoredSetBack(player, "Player set back on tick: ", this);
+                    }
+                });
                 // Inventory update.
                 if (requestUpdateInventory) {
                     requestUpdateInventory = false;
@@ -447,7 +452,12 @@ public class PlayerData implements IPlayerData {
         registerFrequentPlayerTaskAsynchronous();
     }
 
+    void onPlayerOnline(final Player player) {
+        setBackRequest.bind(player);
+    }
+
     void onPlayerLeave(final Player player, final long timeNow, Collection<Class<? extends IDataOnLeave>> types) {
+        setBackRequest.retire(player);
         // (Might collect to be removed types first.)
         for (final Class<? extends IDataOnLeave> type : types) {
             final IDataOnLeave instance = dataCache.get(type);
@@ -868,14 +878,13 @@ public class PlayerData implements IPlayerData {
 
     @Override
     public void requestPlayerSetBack() {
-        this.requestPlayerSetBack = true;
+        this.setBackRequest.request();
         registerFrequentPlayerTask();
     }
 
     @Override
     public boolean isPlayerSetBackScheduled() {
-        return this.requestPlayerSetBack 
-                && (frequentPlayerTaskShouldBeScheduled || isFrequentPlayerTaskScheduled());
+        return this.setBackRequest.isPending();
     }
 
     /**
