@@ -27,6 +27,7 @@ import fr.neatmonster.nocheatplus.utilities.location.TrigUtil;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
 import fr.neatmonster.nocheatplus.utilities.map.BlockFlags;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 
 /**
  * Collision related static utility.
@@ -610,12 +611,15 @@ public class CollisionUtil {
         if (bounds == null) {
             return false;
         }
+        final long flags = BlockFlags.getBlockFlags(type);
         // Snow bounds are kept full, the layers are in the data. It looks one layer higher than it collides.
-        final double maxHeight = (BlockFlags.getBlockFlags(type) & BlockFlags.F_HEIGHT_8_INC) != 0
+        final double maxHeight = (flags & BlockFlags.F_HEIGHT_8_INC) != 0
                 ? 0.125 * ((blockCache.getData(x, y, z) & 0xF) % 8 + 1) : 1.0;
+        // Fences, walls and gates collide up to 1.5, but look lower: fences 1.0, low wall sides 0.875, gates in a wall 0.8125.
+        final double tallHeight = (flags & BlockFlags.F_PASSABLE_X4) != 0 ? 0.8125
+                : MaterialUtil.ALL_WALLS.contains(type) ? 0.875 : 1.0;
         for (int i = 0; i + 5 < bounds.length; i += 6) {
-            // Fences, walls and gates collide up to 1.5, but only look 0.8125 (gate in a wall) to 1.0 high.
-            final double maxY = bounds[i + 4] > 1.0 ? 0.8125 : Math.min(bounds[i + 4], maxHeight);
+            final double maxY = bounds[i + 4] > 1.0 ? tallHeight : Math.min(bounds[i + 4], maxHeight);
             final double enter = Math.max(enterTime(oX, dX, bounds[i], bounds[i + 3]),
                     Math.max(enterTime(oY, dY, bounds[i + 1], maxY),
                             enterTime(oZ, dZ, bounds[i + 2], bounds[i + 5])));

@@ -10,7 +10,8 @@ MEM="${MEM:-2G}"
 MVN_VERSION="${MVN_VERSION:-3.9.16}"
 mkdir -p "$DIR/plugins"
 
-jver() { "$1" -version 2>&1 | sed -n '1s/.*version "\([0-9]*\).*/\1/p'; }
+# Major version of a java binary, 0 if it is missing.
+jver() { "$1" -version 2>&1 | sed -n '1s/.*version "\([0-9]*\).*/\1/p' | grep . || echo 0; }
 
 # NCP builds with Java 25 (ScopedValue), which also runs every server version.
 NEED=25
@@ -70,7 +71,8 @@ if [ ! -f "$JAR" ]; then
 fi
 
 echo eula=true > "$DIR/eula.txt"
-[ -f "$DIR/server.properties" ] || printf 'online-mode=false\nmotd=NCP test server\nspawn-protection=0\n' > "$DIR/server.properties"
+# Offline mode, so only reachable from this machine. Clear server-ip in server.properties to let others join.
+[ -f "$DIR/server.properties" ] || printf 'online-mode=false\nserver-ip=127.0.0.1\nmotd=NCP test server\nspawn-protection=0\n' > "$DIR/server.properties"
 
 cd "$DIR"
 # Folia patch (test only): no "Invalid move player packet received" kicks. Delete foliapatch.jar to revert.
