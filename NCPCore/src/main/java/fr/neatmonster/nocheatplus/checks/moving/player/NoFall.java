@@ -73,7 +73,6 @@ public class NoFall extends Check {
      */
 
     /** For temporary use: LocUtil.clone before passing deeply, call setWorld(null) after use. */
-    private final Location useLoc = new Location(null, 0, 0, 0);
     private final Location useLoc2 = new Location(null, 0, 0, 0);
 
     private final static boolean ServerIsAtLeast1_12 = ServerVersion.compareMinecraftVersion("1.12") >= 0;
@@ -584,8 +583,7 @@ public class NoFall extends Check {
         final float fallDistance = player.getFallDistance();
         // TODO: Might also detect too high mc fall dist.
         if (data.noFallFallDistance > fallDistance) {
-            final double playerY = player.getLocation(useLoc).getY();
-            useLoc.setWorld(null);
+            final double playerY = player.getLocation().getY();
             if (player.isFlying() || player.getGameMode() == GameMode.CREATIVE
                     || player.getAllowFlight() 
                     && pData.getGenericInstance(MovingConfig.class).noFallSkipAllowFlight) {
