@@ -92,6 +92,33 @@ public class TestVisibility {
         wall.cleanup();
     }
 
+    @Test
+    public void testSeamBetweenBlocks() {
+        // Two stacked full blocks in front of the target (3, 65, 0), their seam at y = 66 is no gap.
+        final FakeBlockCache bc = new FakeBlockCache();
+        bc.set(3, 65, 0, Material.STONE);
+        bc.set(2, 65, 0, Material.STONE);
+        bc.set(2, 66, 0, Material.STONE);
+        assertFalse("Line exactly along the seam.", CollisionUtil.canSeeBlockPoint(bc, 0.5, 66.0, 0.5, 3, 65, 0, 0.0, 1.0, 0.5));
+        assertFalse("Line a hair below the seam, point clamped onto the target's top edge.",
+                CollisionUtil.canSeeBlockPoint(bc, 0.5, 66.0 - 3.0E-5, 0.5, 3, 65, 0, -0.5, 1.3, 0.5));
+        assertFalse("Line a hair above the seam.", CollisionUtil.canSeeBlockPoint(bc, 0.5, 66.0 + 3.0E-5, 0.5, 3, 65, 0, 0.0, 1.0, 0.5));
+        bc.cleanup();
+        // Side by side, seam at z = 1.
+        final FakeBlockCache side = new FakeBlockCache();
+        side.set(3, 65, 0, Material.STONE);
+        side.set(2, 65, 0, Material.STONE);
+        side.set(2, 65, 1, Material.STONE);
+        assertFalse("Line along a vertical seam.", CollisionUtil.canSeeBlockPoint(side, 0.5, 65.5, 1.0, 3, 65, 0, 0.0, 0.5, 1.0));
+        side.cleanup();
+        // Only touching the top of a block (nothing above it) doesn't hide the target.
+        final FakeBlockCache top = new FakeBlockCache();
+        top.set(3, 65, 0, Material.STONE);
+        top.set(2, 65, 0, Material.STONE);
+        assertTrue("Line along the top face of a single block.", CollisionUtil.canSeeBlockPoint(top, 0.5, 66.0, 0.5, 3, 65, 0, 0.0, 1.0, 0.5));
+        top.cleanup();
+    }
+
     /** Local axes of the random scenes (forward, slit, side) to world axes. */
     private static final int[][] AXES = {{0, 1, 2}, {0, 2, 1}, {1, 0, 2}, {1, 2, 0}, {2, 0, 1}, {2, 1, 0}};
     private static final int BASE = 64;
