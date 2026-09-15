@@ -14,6 +14,10 @@
  */
 package fr.neatmonster.nocheatplus.compat.bukkit.model;
 
+import org.bukkit.util.BoundingBox;
+
+import fr.neatmonster.nocheatplus.compat.Bridge1_13;
+
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
@@ -33,13 +37,10 @@ public class BukkitShulkerBox implements BukkitShapeModel {
             final World world, final int x, final int y, final int z) {
 
         final Block block = world.getBlockAt(x, y, z);
-        final BlockState state = block.getState();
-        if (!(state instanceof ShulkerBox)) {
+        if (!isLidOut(block)) {
             return FULL_BLOCK;
         }
-        if (((ShulkerBox) state).getInventory().getViewers().isEmpty()) {
-            return FULL_BLOCK;
-        }
+        // Lid out or moving: use the fully open shape, the client's lid runs a bit behind the server's.
         BlockFace face = BlockFace.UP;
         final BlockData blockData = block.getBlockData();
         if (blockData instanceof Directional) {
@@ -60,6 +61,16 @@ public class BukkitShulkerBox implements BukkitShapeModel {
             default:
                 return new double[] {0.0, 0.0, 0.0, 1.0, 1.5, 1.0};
         }
+    }
+
+    private static boolean isLidOut(final Block block) {
+        if (Bridge1_13.hasBoundingBox()) {
+            // Follows the lid while it moves.
+            final BoundingBox box = block.getBoundingBox();
+            return box.getWidthX() > 1.001 || box.getHeight() > 1.001 || box.getWidthZ() > 1.001;
+        }
+        final BlockState state = block.getState();
+        return state instanceof ShulkerBox && !((ShulkerBox) state).getInventory().getViewers().isEmpty();
     }
 
     @Override

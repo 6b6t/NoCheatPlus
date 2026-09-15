@@ -4157,6 +4157,26 @@ public class BlockProperties {
                 }
             }
         }
+        // Open shulker box lids reach up to 0.5 into the neighbor blocks, like vanilla's large collision shapes.
+        final int rMinX = Location.locToBlock(minX - 0.5);
+        final int rMaxX = Location.locToBlock(maxX + 0.5);
+        final int rMinZ = Location.locToBlock(minZ - 0.5);
+        final int rMaxZ = Location.locToBlock(maxZ + 0.5);
+        for (int x = rMinX; x <= rMaxX; x++) {
+            for (int z = rMinZ; z <= rMaxZ; z++) {
+                if (x >= iMinX && x <= iMaxX && z >= iMinZ && z <= iMaxZ) {
+                    // Checked above.
+                    continue;
+                }
+                for (int y = iMaxY; y >= iMinY; y --) {
+                    final IBlockCacheNode node = access.getOrCreateBlockCacheNode(x, y, z, false);
+                    if (MaterialUtil.SHULKER_BOXES.contains(node.getType())
+                            && isOnGround(access, minX, minY, minZ, maxX, maxY, maxZ, ignoreFlags, x, y, z, node, null) == AlmostBoolean.YES) {
+                        return true;
+                    }
+                }
+            }
+        }
         return false;
     }
 

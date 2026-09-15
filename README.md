@@ -17,7 +17,7 @@ Installation
 
 Hints
 ---------
-* Be sure that your Spigot/CraftBukkit and NoCheatPlus versions match together. The latest version of NCP is compatible with a wide range of CraftBukkit/Spigot versions.
+* This fork supports Paper and Folia 1.21.11 to 26.2 on Java 25 or newer. Older server versions are not supported.
 * Don't use tabs in the config.yml file.
 * Use [ProtocolLib](https://www.spigotmc.org/resources/protocollib.1997/) for full efficiency of the fight checks and other. Using a version of ProtocolLib that is supported by NCP is essential, as otherwise some checks will be disabled.
 * For compatibility with other plugins such as mcMMO, citizens and more check out [CompatNoCheatPlus](https://github.com/Updated-NoCheatPlus/CompatNoCheatPlus).
