@@ -1,5 +1,0 @@
-# Known differences between NCP and vanilla that are fine, one per line: <collision|ground|sight> <block>  # reason
-collision moving_piston  # Vanilla takes the shape from the piston block entity (empty in the audit). NCP treats it as a full, passable block.
-collision scaffolding  # Collision depends on where the player is. NCP's model is player-aware, the audit has no player.
-collision piston_head  # The extended arm reaches 0.25 into the piston base, which is a full block anyway.
-ground piston_head  # Same arm part, it lies in the hollow front of the piston base where no player fits.
