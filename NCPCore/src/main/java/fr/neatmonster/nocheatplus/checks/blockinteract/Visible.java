@@ -17,6 +17,7 @@ package fr.neatmonster.nocheatplus.checks.blockinteract;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.entity.Player;
+import org.bukkit.util.Vector;
 
 import fr.neatmonster.nocheatplus.checks.Check;
 import fr.neatmonster.nocheatplus.checks.CheckType;
@@ -36,7 +37,11 @@ public class Visible extends Check {
         super(CheckType.BLOCKINTERACT_VISIBLE);
     }
 
-    public boolean check(final Player player, final Location loc, final double eyeHeight, final Block block,
+    /**
+     * @param clicked
+     *            Where the player clicked, relative to the block. May be null.
+     */
+    public boolean check(final Player player, final Location loc, final double eyeHeight, final Block block, final Vector clicked,
             final BlockInteractData data, final BlockInteractConfig cc, final IPlayerData pData) {
         final int blockX = block.getX();
         final int blockY = block.getY();
@@ -53,7 +58,10 @@ public class Visible extends Check {
             // New cache per call, check instances are shared between Folia region threads.
             final BlockCache blockCache = mcAccess.getHandle().getBlockCache();
             blockCache.setAccess(loc.getWorld());
-            visible = CollisionUtil.canSeeBox(blockCache, eyeX, eyeY, eyeZ,
+            // The clicked point first: a sliver of the block can be visible between the sample points of canSeeBox.
+            visible = clicked != null && CollisionUtil.canSeeBlockPoint(blockCache, eyeX, eyeY, eyeZ,
+                    blockX, blockY, blockZ, clicked.getX(), clicked.getY(), clicked.getZ())
+                    || CollisionUtil.canSeeBox(blockCache, eyeX, eyeY, eyeZ,
                     blockX, blockY, blockZ, blockX + 1, blockY + 1, blockZ + 1, blockX, blockY, blockZ);
             blockCache.cleanup();
         }

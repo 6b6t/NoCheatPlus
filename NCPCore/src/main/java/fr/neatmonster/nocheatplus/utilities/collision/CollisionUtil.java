@@ -533,7 +533,7 @@ public class CollisionUtil {
     public static boolean canSeeBox(final BlockCache blockCache, final double eyeX, final double eyeY, final double eyeZ, 
             final double minX, final double minY, final double minZ, final double maxX, final double maxY, final double maxZ, 
             final int ignoreX, final int ignoreY, final int ignoreZ) {
-        // ponytail: 27 fixed points, a view through a gap narrower than ~half the box can be missed. Add points if that gets reported.
+        // ponytail: 27 fixed points, a view through a gap narrower than ~half the box can be missed. Block interaction covers that with canSeeBlockPoint.
         for (final double sX : SAMPLES) {
             for (final double sY : SAMPLES) {
                 for (final double sZ : SAMPLES) {
@@ -546,6 +546,23 @@ public class CollisionUtil {
             }
         }
         return false;
+    }
+
+    /**
+     * Test if a straight line from the eye reaches a point on a block, such as
+     * where the player clicked it. This sees slivers of a block that the
+     * sample points of canSeeBox miss. The point is clamped into the block, so
+     * it can't be moved in front of an obstacle.
+     *
+     * @param relX
+     *            Point relative to the block.
+     * @return true if visible.
+     */
+    public static boolean canSeeBlockPoint(final BlockCache blockCache, final double eyeX, final double eyeY, final double eyeZ,
+            final int blockX, final int blockY, final int blockZ, final double relX, final double relY, final double relZ) {
+        return isLineClear(blockCache, eyeX, eyeY, eyeZ,
+                blockX + Math.clamp(relX, 0.0, 1.0), blockY + Math.clamp(relY, 0.0, 1.0), blockZ + Math.clamp(relZ, 0.0, 1.0),
+                blockX, blockY, blockZ);
     }
 
     /**

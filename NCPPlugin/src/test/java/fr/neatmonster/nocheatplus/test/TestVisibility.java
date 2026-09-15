@@ -70,4 +70,24 @@ public class TestVisibility {
             }
         }
     }
+
+    @Test
+    public void testClickedSliver() {
+        // Target at (3, 65, 0), wall in front 0.99 high, ceiling above it: a 0.01 slit at the target's top edge.
+        final FakeBlockCache bc = new FakeBlockCache();
+        bc.set(3, 65, 0, Material.STONE);
+        bc.set(2, 65, 0, Material.STONE, 0, new double[]{0.0, 0.0, 0.0, 1.0, 0.99, 1.0});
+        bc.set(2, 66, 0, Material.STONE);
+        final double eyeY = 65.995;
+        assertFalse("Sample points miss the slit.", CollisionUtil.canSeeBox(bc, 0.5, eyeY, 0.5, 3, 65, 0, 4, 66, 1, 3, 65, 0));
+        assertTrue("Clicked point in the slit.", CollisionUtil.canSeeBlockPoint(bc, 0.5, eyeY, 0.5, 3, 65, 0, 0.0, 0.995, 0.5));
+        assertFalse("Clicked point below the slit.", CollisionUtil.canSeeBlockPoint(bc, 0.5, eyeY, 0.5, 3, 65, 0, 0.0, 0.5, 0.5));
+        bc.cleanup();
+        // Clamped into the block, a point in front of a full wall doesn't count. New cache, nodes are cached once read.
+        final FakeBlockCache wall = new FakeBlockCache();
+        wall.set(3, 65, 0, Material.STONE);
+        wall.set(2, 65, 0, Material.STONE);
+        assertFalse("Point moved in front of the wall.", CollisionUtil.canSeeBlockPoint(wall, 0.5, eyeY, 0.5, 3, 65, 0, -0.9, 0.995, 0.5));
+        wall.cleanup();
+    }
 }
