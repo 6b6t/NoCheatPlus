@@ -194,7 +194,6 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     final Location useChangeWorldLoc = new Location(null, 0, 0, 0);
     final Location useDeathLoc = new Location(null, 0, 0, 0);
     final Location useFallLoc = new Location(null, 0, 0, 0);
-    final Location useLeaveLoc = new Location(null, 0, 0, 0);
     final Location useToggleFlightLoc = new Location(null, 0, 0, 0);
 
     /** Auxiliary functionality. */
@@ -2766,7 +2765,7 @@ catch (java.lang.Throwable thr) {}
         final IPlayerData pData = DataManager.getPlayerData(player);
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         final MovingData data = pData.getGenericInstance(MovingData.class);
-        final Location loc = player.getLocation(useLeaveLoc);
+        final Location loc = player.getLocation();
         // Debug logout.
         if (pData.isDebugActive(checkType)) StaticLog.logInfo("Player " + player.getName() + " leaves at location: " + loc.toString());
 
@@ -2774,7 +2773,7 @@ catch (java.lang.Throwable thr) {}
             // Check for missed moves.
             // TODO: Force-load chunks [log if (!)] ?
             // Check only from the old versions, newer versions don't seem like a problem to account for
-            if (!BlockProperties.isPassable(loc) && !Bridge1_13.hasIsSwimming()) {
+            if (!Bridge1_13.hasIsSwimming() && !BlockProperties.isPassable(loc)) {
 
                 final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
                 final PlayerMoveData lastMove2 = data.playerMoves.getNumberOfPastMoves() > 1 ? data.playerMoves.getSecondPastMove() : null;
@@ -2820,7 +2819,6 @@ catch (java.lang.Throwable thr) {}
                 }
             }
         }
-        useLeaveLoc.setWorld(null);
         // Adjust data.
         survivalFly.setReallySneaking(player, false);
         noFall.onLeave(player, data, pData);
