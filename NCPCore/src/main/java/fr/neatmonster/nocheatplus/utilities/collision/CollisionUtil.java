@@ -503,8 +503,11 @@ public class CollisionUtil {
     /** Relative sample positions per axis, center first. Inset, so lines don't graze the neighbor blocks. */
     private static final double[] SAMPLES = {0.5, 0.02, 0.98};
 
-    /** Lines only touching a box edge don't count as blocked. */
-    private static final double EDGE_TOLERANCE = 0.0001;
+    /**
+     * Lines only touching a box (no length inside it) don't count as blocked. Boxes are not shrunk for this, a line
+     * along the seam of two solid blocks is blocked.
+     */
+    private static final double TOUCH = 1.0E-9;
 
     /**
      * Test if a straight line from the eye reaches the box without passing
@@ -643,8 +646,8 @@ public class CollisionUtil {
             final double exit = Math.min(exitTime(oX, dX, bounds[i], bounds[i + 3]),
                     Math.min(exitTime(oY, dY, bounds[i + 1], maxY),
                             exitTime(oZ, dZ, bounds[i + 2], bounds[i + 5])));
-            // Entering within the line. Starting inside a box (eye in a block) doesn't count.
-            if (enter < exit && enter > 0.0 && enter < 1.0) {
+            // Passing through the box within the line. Starting inside a box (eye in a block) doesn't count.
+            if (exit - enter > TOUCH && enter >= 0.0 && enter < 1.0) {
                 return true;
             }
         }
@@ -654,16 +657,16 @@ public class CollisionUtil {
     /** Line time (o + t * d) of entering [min, max] on one axis. */
     private static double enterTime(final double o, final double d, final double min, final double max) {
         if (d == 0.0) {
-            return o > min + EDGE_TOLERANCE && o < max - EDGE_TOLERANCE ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
+            return o >= min && o <= max ? Double.NEGATIVE_INFINITY : Double.POSITIVE_INFINITY;
         }
-        return ((d > 0.0 ? min + EDGE_TOLERANCE : max - EDGE_TOLERANCE) - o) / d;
+        return ((d > 0.0 ? min : max) - o) / d;
     }
 
     /** Line time (o + t * d) of leaving [min, max] on one axis. */
     private static double exitTime(final double o, final double d, final double min, final double max) {
         if (d == 0.0) {
-            return o > min + EDGE_TOLERANCE && o < max - EDGE_TOLERANCE ? Double.POSITIVE_INFINITY : Double.NEGATIVE_INFINITY;
+            return o >= min && o <= max ? Double.POSITIVE_INFINITY : Double.NEGATIVE_INFINITY;
         }
-        return ((d > 0.0 ? max - EDGE_TOLERANCE : min + EDGE_TOLERANCE) - o) / d;
+        return ((d > 0.0 ? max : min) - o) / d;
     }
 }
