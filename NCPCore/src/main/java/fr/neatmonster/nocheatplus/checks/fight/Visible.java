@@ -25,10 +25,12 @@ import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.util.Vector;
 
 /**
  * Check if the attacked entity can be seen from the eye position (straight
- * line, no blocks in between). Look independent.
+ * line, no blocks in between): where the look hits the hitbox, else any of the
+ * sample points.
  *
  * @author xaw3ep
  */
@@ -70,7 +72,11 @@ public class Visible extends Check{
         // New cache per call, check instances are shared between Folia region threads.
         final BlockCache blockCache = mcAccess.getBlockCache();
         blockCache.setAccess(loc.getWorld());
-        final boolean visible = CollisionUtil.canSeeBox(blockCache, eyeX, eyeY, eyeZ,
+        // Attacks come without a hit position, the look direction gives one: a sliver of the hitbox can be visible
+        // between the sample points of canSeeBox. The samples stay for a look that misses (rotation a tick behind).
+        final Vector look = CollisionUtil.getLookPoint(eyeX, eyeY, eyeZ, loc.getDirection(), dminX, dminY, dminZ, dmaxX, dmaxY, dmaxZ);
+        final boolean visible = look != null && CollisionUtil.canSeePoint(blockCache, eyeX, eyeY, eyeZ, look.getX(), look.getY(), look.getZ())
+                || CollisionUtil.canSeeBox(blockCache, eyeX, eyeY, eyeZ,
                 dminX, dminY, dminZ, dmaxX, dmaxY, dmaxZ, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
         blockCache.cleanup();
         if (visible) {

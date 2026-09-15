@@ -235,13 +235,152 @@ public class TestVisibility {
         assertTrue("Not enough visible slivers under 0.1% tested.", tinier > 5000);
     }
 
+    @Test
+    public void testEntitySliver() {
+        // Player hitbox (0.6 x 1.8) behind a two block high wall with a 0.01 slit at y 65.99 - 66.
+        final FakeBlockCache bc = new FakeBlockCache();
+        for (int z = -1; z <= 1; z++) {
+            bc.set(2, 65, z, Material.STONE, 0, z == 0 ? new double[]{0.0, 0.0, 0.0, 1.0, 0.99, 1.0} : FULL);
+            bc.set(2, 66, z, Material.STONE);
+        }
+        final double eyeY = 65.995;
+        final double[] box = {3.2, 65.0, 0.2, 3.8, 66.8, 0.8};
+        assertFalse("Sample points miss the slit.", CollisionUtil.canSeeBox(bc, 0.5, eyeY, 0.5, box[0], box[1], box[2], box[3], box[4], box[5],
+                Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE));
+        final Vector slit = CollisionUtil.getLookPoint(0.5, eyeY, 0.5, new Vector(1.0, 0.0, 0.0), box[0], box[1], box[2], box[3], box[4], box[5]);
+        assertTrue("Looking through the slit.", CollisionUtil.canSeePoint(bc, 0.5, eyeY, 0.5, slit.getX(), slit.getY(), slit.getZ()));
+        final Vector hidden = CollisionUtil.getLookPoint(0.5, eyeY, 0.5, new Vector(2.7, -0.5, 0.0).normalize(),
+                box[0], box[1], box[2], box[3], box[4], box[5]);
+        assertFalse("Looking at the part behind the wall.", CollisionUtil.canSeePoint(bc, 0.5, eyeY, 0.5, hidden.getX(), hidden.getY(), hidden.getZ()));
+        assertNull("Looking away.", CollisionUtil.getLookPoint(0.5, eyeY, 0.5, new Vector(0.0, 0.0, 1.0), box[0], box[1], box[2], box[3], box[4], box[5]));
+        bc.cleanup();
+    }
+
+    /**
+     * Vanilla hitboxes (width, height) from 26.2: player standing, sneaking and swimming, zombie, baby zombie, chicken,
+     * spider, iron golem, small slime, ghast, end crystal, silverfish, enderman, shulker, armor stand, boat.
+     */
+    private static final double[][] HITBOXES = {{0.6, 1.8}, {0.6, 1.5}, {0.6, 0.6}, {0.6, 1.95}, {0.3, 0.975}, {0.4, 0.7},
+            {1.4, 0.9}, {1.4, 2.7}, {0.52, 0.52}, {4.0, 4.0}, {2.0, 2.0}, {0.4, 0.3}, {0.6, 2.9}, {1.0, 1.0}, {0.5, 1.975},
+            {1.375, 0.5625}};
+    /** Wall blocks from -WALL to WALL on the slit and side axes, wider than any hitbox. */
+    private static final int WALL = 5;
+
+    /**
+     * Random scenes in all directions like testRandomSlits, the target is a real entity hitbox behind an 11 x 11 wall
+     * with a slit. The look ray hits the hitbox, NCP must see that point exactly when its line runs through the slit.
+     */
+    @Test
+    public void testRandomEntitySlits() {
+        final Random random = new Random(2);
+        int clear = 0, blocked = 0, tiny = 0, sampleMisses = 0;
+        for (int scene = 0; scene < 20000; scene++) {
+            final int[] axes = AXES[random.nextInt(AXES.length)];
+            final boolean[] flip = {random.nextBoolean(), random.nextBoolean(), random.nextBoolean()};
+            final double[] hitbox = HITBOXES[random.nextInt(HITBOXES.length)];
+            // Local size of the hitbox, the world y axis gets the height.
+            final double[] size = new double[3];
+            for (int i = 0; i < 3; i++) {
+                size[i] = axes[i] == 1 ? hitbox[1] : hitbox[0];
+            }
+            final double width = Math.exp(Math.log(1.0E-4) + random.nextDouble() * Math.log(0.3 / 1.0E-4));
+            final double low = 0.01 + random.nextDouble() * (0.98 - width);
+            final double high = low + width;
+            final FakeBlockCache bc = new FakeBlockCache();
+            for (int s = -WALL; s <= WALL; s++) {
+                for (int t = -WALL; t <= WALL; t++) {
+                    final int[] c = cell(axes, flip, 2, s, t);
+                    if (s == 0) {
+                        bc.set(c[0], c[1], c[2], Material.STONE, 0, bounds(axes, flip, 0, 0, 0, 1, low, 1, 0, high, 0, 1, 1, 1));
+                    }
+                    else {
+                        bc.set(c[0], c[1], c[2], Material.STONE);
+                    }
+                }
+            }
+            // Hitbox behind the wall, overlapping the slit's rows.
+            final double near = 3.0 + random.nextDouble() * 0.5;
+            final double sMin = low - size[1] + random.nextDouble() * (width + size[1]);
+            final double tMin = -1.0 + random.nextDouble() * 2.0;
+            final double[] a = point(axes, flip, near, sMin, tMin);
+            final double[] b = point(axes, flip, near + size[0], sMin + size[1], tMin + size[2]);
+            final double minX = Math.min(a[0], b[0]), minY = Math.min(a[1], b[1]), minZ = Math.min(a[2], b[2]);
+            final double maxX = Math.max(a[0], b[0]), maxY = Math.max(a[1], b[1]), maxZ = Math.max(a[2], b[2]);
+            final double eyeF = 0.2 + random.nextDouble() * 1.6;
+            // 3 of 4 eyes line up with the slit, up to a bit past the offset where nothing is visible anymore.
+            final double reach = width * (2.5 - eyeF);
+            final double eyeS = Math.clamp(random.nextInt(4) > 0 ? (low + high) / 2.0 + (random.nextDouble() * 2.4 - 1.2) * reach
+                    : -1.0 + random.nextDouble() * 3.0, -1.0, 2.0);
+            final double[] eye = point(axes, flip, eyeF, eyeS, -1.0 + random.nextDouble() * 3.0);
+            // Points s on the near face whose line passes the slit at both wall faces.
+            final double k2 = (2.0 - eyeF) / (near - eyeF);
+            final double k3 = (3.0 - eyeF) / (near - eyeF);
+            final double throughLow = Math.max(eyeS + (low - eyeS) / k2, eyeS + (low - eyeS) / k3);
+            final double throughHigh = Math.min(eyeS + (high - eyeS) / k2, eyeS + (high - eyeS) / k3);
+            final double visibleLow = Math.max(sMin, throughLow);
+            final double visibleHigh = Math.min(sMin + size[1], throughHigh);
+            final double fraction = Math.max(0.0, visibleHigh - visibleLow) / size[1];
+
+            // The sample points must not see through the wall where no line passes the slit.
+            final boolean samples = CollisionUtil.canSeeBox(bc, eye[0], eye[1], eye[2], minX, minY, minZ, maxX, maxY, maxZ,
+                    Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
+            assertTrue("Scene " + scene + ": samples see a hidden hitbox.", !samples || throughHigh > throughLow - MARGIN);
+            if (!samples && fraction > 0.01) {
+                sampleMisses++;
+            }
+
+            for (int i = 0; i < 12; i++) {
+                // Look at a point on the near face, every second one at the visible part.
+                final boolean aim = i % 2 == 0 && visibleHigh > visibleLow;
+                final double ps = aim ? visibleLow + random.nextDouble() * (visibleHigh - visibleLow) : sMin + random.nextDouble() * size[1];
+                final double pt = tMin + 0.001 + random.nextDouble() * (size[2] - 0.002);
+                final double s2 = eyeS + (ps - eyeS) * k2;
+                final double s3 = eyeS + (ps - eyeS) * k3;
+                final boolean expect;
+                if (within(s2, low + MARGIN, high - MARGIN) && within(s3, low + MARGIN, high - MARGIN)) {
+                    expect = true;
+                }
+                else if (!within(s2, low - MARGIN, high + MARGIN) || !within(s3, low - MARGIN, high + MARGIN)) {
+                    expect = false;
+                }
+                else {
+                    continue; // Grazes a slit edge.
+                }
+                final double[] q = point(axes, flip, near, ps, pt);
+                final Vector look = CollisionUtil.getLookPoint(eye[0], eye[1], eye[2],
+                        new Vector(q[0] - eye[0], q[1] - eye[1], q[2] - eye[2]).normalize(), minX, minY, minZ, maxX, maxY, maxZ);
+                final String message = String.format("Scene %d: axes %s flip %s hitbox %s slit %.5f-%.5f eye %.4f,%.4f look at %.4f,%.4f visible %.5f",
+                        scene, Arrays.toString(axes), Arrays.toString(flip), Arrays.toString(hitbox), low, high, eyeF, eyeS, near, ps, fraction);
+                assertTrue(message + ": look misses the hitbox.", look != null);
+                assertEquals(message, expect, CollisionUtil.canSeePoint(bc, eye[0], eye[1], eye[2], look.getX(), look.getY(), look.getZ()));
+                if (expect) {
+                    clear++;
+                    if (fraction < 0.01) {
+                        tiny++;
+                    }
+                }
+                else {
+                    blocked++;
+                }
+            }
+            bc.cleanup();
+        }
+        System.out.println("TestVisibility random entity slits: clear=" + clear + " (under 1% of the face visible: " + tiny
+                + ") blocked=" + blocked + " scenes with >1% visible that the sample points miss=" + sampleMisses);
+        assertTrue("Not enough visible slivers under 1% tested.", tiny > 2000);
+    }
+
     private static boolean within(final double v, final double min, final double max) {
         return v >= min && v <= max;
     }
 
     /** World block of a local block (side axis 0). */
     private static int[] cell(final int[] axes, final boolean[] flip, final int f, final int s) {
-        final int[] local = {f, s, 0};
+        return cell(axes, flip, f, s, 0);
+    }
+
+    private static int[] cell(final int[] axes, final boolean[] flip, final int f, final int s, final int t) {
+        final int[] local = {f, s, t};
         final int[] world = new int[3];
         for (int i = 0; i < 3; i++) {
             world[axes[i]] = flip[i] ? BASE - local[i] - 1 : BASE + local[i];

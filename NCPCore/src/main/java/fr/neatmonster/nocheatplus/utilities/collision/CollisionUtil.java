@@ -571,16 +571,37 @@ public class CollisionUtil {
     }
 
     /**
-     * Where the look direction from the eye hits the full box of a block, for
-     * interactions without a clicked point (left clicks).
+     * Where the look direction from the eye first hits a box, for actions
+     * without a hit position (left clicks, attacks).
+     *
+     * @return The point, null if the look misses the box.
+     */
+    public static Vector getLookPoint(final double eyeX, final double eyeY, final double eyeZ, final Vector direction,
+            final double minX, final double minY, final double minZ, final double maxX, final double maxY, final double maxZ) {
+        final RayTraceResult hit = new BoundingBox(minX, minY, minZ, maxX, maxY, maxZ)
+                .rayTrace(new Vector(eyeX, eyeY, eyeZ), direction, MAX_LINE_BLOCKS);
+        return hit == null ? null : hit.getHitPosition();
+    }
+
+    /**
+     * Where the look direction from the eye hits the full box of a block.
      *
      * @return The point relative to the block, null if the look misses it.
      */
     public static Vector getLookPoint(final double eyeX, final double eyeY, final double eyeZ, final Vector direction,
             final int blockX, final int blockY, final int blockZ) {
-        final RayTraceResult hit = new BoundingBox(blockX, blockY, blockZ, blockX + 1, blockY + 1, blockZ + 1)
-                .rayTrace(new Vector(eyeX, eyeY, eyeZ), direction, MAX_LINE_BLOCKS);
-        return hit == null ? null : hit.getHitPosition().subtract(new Vector(blockX, blockY, blockZ));
+        final Vector hit = getLookPoint(eyeX, eyeY, eyeZ, direction, blockX, blockY, blockZ, blockX + 1, blockY + 1, blockZ + 1);
+        return hit == null ? null : hit.subtract(new Vector(blockX, blockY, blockZ));
+    }
+
+    /**
+     * Test if a straight line from the eye reaches a point without passing
+     * through the collision box of any block, e.g. where the look hits an
+     * entity.
+     */
+    public static boolean canSeePoint(final BlockCache blockCache, final double eyeX, final double eyeY, final double eyeZ,
+            final double x, final double y, final double z) {
+        return isLineClear(blockCache, eyeX, eyeY, eyeZ, x, y, z, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE);
     }
 
     /**
