@@ -20,6 +20,8 @@ import org.bukkit.block.Block;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
+import org.bukkit.util.BoundingBox;
+import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Vector;
 
 import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
@@ -566,6 +568,19 @@ public class CollisionUtil {
         return isLineClear(blockCache, eyeX, eyeY, eyeZ,
                 blockX + Math.clamp(relX, 0.0, 1.0), blockY + Math.clamp(relY, 0.0, 1.0), blockZ + Math.clamp(relZ, 0.0, 1.0),
                 blockX, blockY, blockZ);
+    }
+
+    /**
+     * Where the look direction from the eye hits the full box of a block, for
+     * interactions without a clicked point (left clicks).
+     *
+     * @return The point relative to the block, null if the look misses it.
+     */
+    public static Vector getLookPoint(final double eyeX, final double eyeY, final double eyeZ, final Vector direction,
+            final int blockX, final int blockY, final int blockZ) {
+        final RayTraceResult hit = new BoundingBox(blockX, blockY, blockZ, blockX + 1, blockY + 1, blockZ + 1)
+                .rayTrace(new Vector(eyeX, eyeY, eyeZ), direction, MAX_LINE_BLOCKS);
+        return hit == null ? null : hit.getHitPosition().subtract(new Vector(blockX, blockY, blockZ));
     }
 
     /**

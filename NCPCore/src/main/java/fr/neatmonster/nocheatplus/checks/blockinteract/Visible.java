@@ -39,7 +39,8 @@ public class Visible extends Check {
 
     /**
      * @param clicked
-     *            Where the player clicked, relative to the block. May be null.
+     *            Where the player clicked, relative to the block. May be null
+     *            (left clicks), then the point the look direction hits is used.
      */
     public boolean check(final Player player, final Location loc, final double eyeHeight, final Block block, final Vector clicked,
             final BlockInteractData data, final BlockInteractConfig cc, final IPlayerData pData) {
@@ -59,8 +60,11 @@ public class Visible extends Check {
             final BlockCache blockCache = mcAccess.getHandle().getBlockCache();
             blockCache.setAccess(loc.getWorld());
             // The clicked point first: a sliver of the block can be visible between the sample points of canSeeBox.
-            visible = clicked != null && CollisionUtil.canSeeBlockPoint(blockCache, eyeX, eyeY, eyeZ,
-                    blockX, blockY, blockZ, clicked.getX(), clicked.getY(), clicked.getZ())
+            // Left clicks come without one, there the look direction gives the point.
+            final Vector point = clicked != null ? clicked
+                    : CollisionUtil.getLookPoint(eyeX, eyeY, eyeZ, loc.getDirection(), blockX, blockY, blockZ);
+            visible = point != null && CollisionUtil.canSeeBlockPoint(blockCache, eyeX, eyeY, eyeZ,
+                    blockX, blockY, blockZ, point.getX(), point.getY(), point.getZ())
                     || CollisionUtil.canSeeBox(blockCache, eyeX, eyeY, eyeZ,
                     blockX, blockY, blockZ, blockX + 1, blockY + 1, blockZ + 1, blockX, blockY, blockZ);
             blockCache.cleanup();

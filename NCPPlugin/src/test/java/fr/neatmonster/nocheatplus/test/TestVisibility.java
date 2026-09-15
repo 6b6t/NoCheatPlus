@@ -2,12 +2,14 @@ package fr.neatmonster.nocheatplus.test;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
 import java.util.Random;
 
 import org.bukkit.Material;
+import org.bukkit.util.Vector;
 import org.junit.Test;
 
 import fr.neatmonster.nocheatplus.logging.StaticLog;
@@ -117,6 +119,22 @@ public class TestVisibility {
         top.set(2, 65, 0, Material.STONE);
         assertTrue("Line along the top face of a single block.", CollisionUtil.canSeeBlockPoint(top, 0.5, 66.0, 0.5, 3, 65, 0, 0.0, 1.0, 0.5));
         top.cleanup();
+    }
+
+    @Test
+    public void testLookPointSliver() {
+        // Left clicks have no clicked point, the look direction gives one. Same slit as testClickedSliver.
+        final FakeBlockCache bc = new FakeBlockCache();
+        bc.set(3, 65, 0, Material.STONE);
+        bc.set(2, 65, 0, Material.STONE, 0, new double[]{0.0, 0.0, 0.0, 1.0, 0.99, 1.0});
+        bc.set(2, 66, 0, Material.STONE);
+        final double eyeY = 65.995;
+        final Vector slit = CollisionUtil.getLookPoint(0.5, eyeY, 0.5, new Vector(1.0, 0.0, 0.0), 3, 65, 0);
+        assertTrue("Looking through the slit.", CollisionUtil.canSeeBlockPoint(bc, 0.5, eyeY, 0.5, 3, 65, 0, slit.getX(), slit.getY(), slit.getZ()));
+        final Vector wall = CollisionUtil.getLookPoint(0.5, eyeY, 0.5, new Vector(2.5, -0.5, 0.0).normalize(), 3, 65, 0);
+        assertFalse("Looking at the hidden part.", CollisionUtil.canSeeBlockPoint(bc, 0.5, eyeY, 0.5, 3, 65, 0, wall.getX(), wall.getY(), wall.getZ()));
+        assertNull("Looking away.", CollisionUtil.getLookPoint(0.5, eyeY, 0.5, new Vector(-1.0, 0.0, 0.0), 3, 65, 0));
+        bc.cleanup();
     }
 
     /** Local axes of the random scenes (forward, slit, side) to world axes. */
