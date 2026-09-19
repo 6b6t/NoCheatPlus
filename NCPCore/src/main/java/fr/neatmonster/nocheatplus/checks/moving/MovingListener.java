@@ -3074,12 +3074,19 @@ catch (java.lang.Throwable thr) {}
     private boolean checkHover(final Player player, final MovingData data, final MovingConfig cc, final IPlayerData pData,
                                final PlayerMoveInfo info) {
 
-        // Check if player is on ground.
+        // Check the entire block query area before info.set or any collision reads.
         final Location loc = player.getLocation();
+        final boolean folia = Folia.isFoliaServer();
+        if (folia && !MapUtil.areChunksLoadedAndOwned(loc.getWorld(), loc.getX(), loc.getZ(),
+                Math.max(1.0, player.getWidth() / 2.0 + 1.0))) {
+            // Keep polling, but unavailable geometry is not evidence of hovering.
+            data.sfHoverTicks = 0;
+            return false;
+        }
         info.set(player, loc, null, cc.yOnGround);
         final boolean res;
         // TODO: Collect flags, more margin ?
-        final int loaded = info.from.ensureChunksLoaded();
+        final int loaded = folia ? 0 : info.from.ensureChunksLoaded();
         if (loaded > 0 && pData.isDebugActive(checkType)) {
             // DEBUG
             StaticLog.logInfo("Hover check: Needed to load " + loaded + " chunk" + (loaded == 1 ? "" : "s") + " for the world " + loc.getWorld().getName() +  " around " + loc.getBlockX() + "," + loc.getBlockZ() + " in order to check player: " + player.getName());

@@ -16,6 +16,8 @@ package fr.neatmonster.nocheatplus.utilities.map;
 
 import org.bukkit.Location;
 import org.bukkit.World;
+
+import fr.neatmonster.nocheatplus.compat.Folia;
 import org.bukkit.block.BlockFace;
 
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
@@ -66,7 +68,9 @@ public class MapUtil {
     /**
      * Check if chunks are loaded and load all not yet loaded chunks, using
      * normal world coordinates.<br>
-     * NOTE: Not sure where to put this. Method does not use any caching.
+     * On Folia this does not load chunks: blocking a region tick can prevent the
+     * requested chunk from becoming ready. Callers inspecting blocks must first
+     * establish that their complete query area is loaded and owned.
      *
      * @param world
      *            the world
@@ -79,11 +83,12 @@ public class MapUtil {
      * @return Number of loaded chunks.
      */
     public static int ensureChunksLoaded(final World world, final double x, final double z, final double xzMargin) {
+        if (Folia.isFoliaServer()) return 0;
         int loaded = 0;
-        final int minX = Location.locToBlock(x - xzMargin) / 16;
-        final int maxX = Location.locToBlock(x + xzMargin) / 16;
-        final int minZ = Location.locToBlock(z - xzMargin) / 16;
-        final int maxZ = Location.locToBlock(z + xzMargin) / 16;
+        final int minX = Location.locToBlock(x - xzMargin) >> 4;
+        final int maxX = Location.locToBlock(x + xzMargin) >> 4;
+        final int minZ = Location.locToBlock(z - xzMargin) >> 4;
+        final int maxZ = Location.locToBlock(z + xzMargin) >> 4;
         for (int cx = minX; cx <= maxX; cx ++) {
             for (int cz = minZ; cz <= maxZ; cz ++) {
                 if (!world.isChunkLoaded(cx, cz)) {
@@ -99,6 +104,25 @@ public class MapUtil {
             }
         }
         return loaded;
+    }
+
+    /** Check readiness without loading chunks or reading blocks across region boundaries. */
+    public static boolean areChunksLoadedAndOwned(final World world, final double x, final double z,
+                                                  final double xzMargin) {
+        final int minX = Location.locToBlock(x - xzMargin) >> 4;
+        final int maxX = Location.locToBlock(x + xzMargin) >> 4;
+        final int minZ = Location.locToBlock(z - xzMargin) >> 4;
+        final int maxZ = Location.locToBlock(z + xzMargin) >> 4;
+        final boolean folia = Folia.isFoliaServer();
+        for (int cx = minX; cx <= maxX; cx++) {
+            for (int cz = minZ; cz <= maxZ; cz++) {
+                if (!world.isChunkLoaded(cx, cz)
+                        || folia && !Folia.isOwnedByCurrentRegion(new Location(world, cx * 16, 0, cz * 16))) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
 }
