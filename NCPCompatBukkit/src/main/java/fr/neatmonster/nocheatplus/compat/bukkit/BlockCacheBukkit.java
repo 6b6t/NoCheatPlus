@@ -14,11 +14,11 @@
  */
 package fr.neatmonster.nocheatplus.compat.bukkit;
 
-import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
+import org.bukkit.util.BoundingBox;
 
 import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
@@ -29,9 +29,6 @@ import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 public class BlockCacheBukkit extends BlockCache {
 
     protected World world;
-
-    /** Temporary use. Use LocUtil.clone before passing on. Call setWorld(null) after use. */
-    protected final Location useLoc = new Location(null, 0, 0, 0);
 
     public BlockCacheBukkit(World world) {
         setAccess(world);
@@ -78,21 +75,19 @@ public class BlockCacheBukkit extends BlockCache {
 
     @Override
     public boolean standsOnEntity(final Entity entity, final double minX, final double minY, final double minZ, final double maxX, final double maxY, final double maxZ){
+        // Use the given bounds, not the entity's current location: moves are checked before the entity is at "to".
+        final double margin = 0.01;
         try{
-            // TODO: Probably check other ids too before doing this ?
-            for (final Entity other : entity.getNearbyEntities(2.0, 2.0, 2.0)){
-                final EntityType type = other.getType();
-                if (!MaterialUtil.isBoat(type) && type != EntityType.SHULKER){ //  && !(other instanceof Minecart)) 
-                    continue;
-                }
-                final double locY = entity.getLocation(useLoc).getY();
-                useLoc.setWorld(null);
-                if (Math.abs(locY - minY) < 0.7){
-                    // TODO: A "better" estimate is possible, though some more tolerance would be good. 
-                    return true;
-                }
-                else return false;
-            }
+            return !entity.getWorld().getNearbyEntities(
+                    new BoundingBox(minX, minY - margin, minZ, maxX, maxY + margin, maxZ),
+                    other -> {
+                        final EntityType type = other.getType();
+                        if (!MaterialUtil.isBoat(type) && type != EntityType.SHULKER) {
+                            return false;
+                        }
+                        final double top = other.getBoundingBox().getMaxY();
+                        return top >= minY - margin && top <= maxY + margin;
+                    }).isEmpty();
         }
         catch (Throwable t){
             // Ignore exceptions (Context: DisguiseCraft).
