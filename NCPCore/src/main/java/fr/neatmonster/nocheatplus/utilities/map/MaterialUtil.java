@@ -20,12 +20,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Set;
 import java.util.logging.Level;
 
 import org.bukkit.Material;
+import org.bukkit.entity.Boat;
 import org.bukkit.entity.EntityType;
 
 import fr.neatmonster.nocheatplus.compat.AlmostBoolean;
@@ -53,17 +53,6 @@ public class MaterialUtil {
             "acacia", "birch", "dark_oak", "jungle", "oak", "spruce", "warped", "crimson", "mangrove", "bamboo", "cherry", "pale",
             "wood" // Legacy
             );
-
-    private final static List<EntityType> collectTypesBySuffix(String prefix) {
-        prefix = prefix.toLowerCase();
-        final List<EntityType> res = new LinkedList<EntityType>();
-        for (final EntityType type : EntityType.values()) {
-            if (type.name().toLowerCase().endsWith(prefix)) {
-                res.add(type);
-            }
-        }
-        return res;
-    }
 
     /**
      * Get a new set containing the given set, as well as all non-null results
@@ -264,13 +253,12 @@ public class MaterialUtil {
         seedsTemp.addAll(InventoryUtil.collectItemsBySuffix("_SEEDS"));
         temp.addAll(InventoryUtil.collectItemsByPrefix("BOAT_"));
         temp.addAll(InventoryUtil.collectItemsBySuffix("_BOAT"));
+        temp.addAll(InventoryUtil.collectItemsBySuffix("_RAFT"));
         spearTemp.addAll(InventoryUtil.collectItemsBySuffix("_SPEAR"));
         BOATS = Collections.unmodifiableSet(temp);
         ALL_SEEDS = Collections.unmodifiableSet(seedsTemp);
         ALL_SPEARS = Collections.unmodifiableSet(spearTemp);
     }
-
-    private static final List<EntityType> BOATSTYPE = collectTypesBySuffix("BOAT");
 
     public static final Set<Material> CARPETS = Collections.unmodifiableSet(addBlocks(
             BridgeMaterial.getBySuffix("_carpet", AlmostBoolean.YES, "legacy"), 
@@ -744,7 +732,8 @@ public class MaterialUtil {
      * @return 
      */
     public static boolean isBoat(final EntityType entity) {
-        return BOATSTYPE.contains(entity);
+        final Class<?> type = entity.getEntityClass();
+        return type != null && Boat.class.isAssignableFrom(type);
     }
     
     /**
