@@ -655,6 +655,15 @@ public class NoFall extends Check {
     public void checkDamage(final Player player,  final double y, 
             final MovingData data, final IPlayerData pData) {
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+        if (!cc.noFallDealDamage && ServerVersion.compareMinecraftVersion("26.1") >= 0) {
+            // A rejected move/correction is not a landing. Keep its descent for
+            // native contact instead of consuming it through immediate damage.
+            if (!(cc.noFallSkipAllowFlight && player.getAllowFlight())) {
+                final float distance = (float) getApplicableFallHeight(player, y, data);
+                if (distance > player.getFallDistance()) player.setFallDistance(distance);
+            }
+            return;
+        }
         // Deal damage.
         handleOnGround(player, y, data.hasSetBack() ? data.getSetBackY() : Double.NEGATIVE_INFINITY, 
                 false, data, cc, pData);

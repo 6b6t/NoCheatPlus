@@ -2518,6 +2518,15 @@ catch (java.lang.Throwable thr) {}
         final double damage = BridgeHealth.getRawDamage(event); // Raw damage.
         if (debug) debug(player, "Damage(FALL/PRE): " + damage + " / mc=" + player.getFallDistance() + " nf=" + data.noFallFallDistance + " yDiff=" + yDiff);
 
+        if (!cc.noFallDealDamage && ServerVersion.compareMinecraftVersion("26.1") >= 0
+                && !pLoc.isOnGround(yOnGround) && !pLoc.isResetCond()) {
+            // Native landing mode never charges a client-only support/ground bit,
+            // even while a preceding correction has skip-air-check set.
+            event.setCancelled(true);
+            aux.returnPlayerMoveInfo(moveInfo);
+            return;
+        }
+
         // NoFall bypass checks.
         // TODO: data.noFallSkipAirCheck is used to skip checking in general, thus move into that block or not?
         // TODO: Could consider skipping accumulated fall distance for NoFall in general as well.

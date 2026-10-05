@@ -106,6 +106,20 @@ public class TestNoFallLandingConsumption {
         NoFall.afterTeleport(f.player, f.data, f.player.getLocation(), 9, false);
         verify(f.player, never()).setFallDistance(9);
     }
+    @Test public void nativeCorrectionRetainsDescentWithoutInventingALanding() throws Exception {
+        String previous = fr.neatmonster.nocheatplus.compat.versions.ServerVersion.getMinecraftVersion();
+        try {
+            fr.neatmonster.nocheatplus.compat.versions.ServerVersion.setMinecraftVersion("26.2");
+            Fixture f = new Fixture();
+            when(f.pData.getGenericInstance(MovingConfig.class)).thenReturn(f.config);
+            f.data.noFallFallDistance = 12; f.data.noFallMaxY = 93;
+            f.check.checkDamage(f.player, 81, f.data, f.pData);
+            verify(f.player).setFallDistance(12);
+            verify(f.access, never()).dealFallDamage(any(), anyDouble());
+            assertEquals(12, f.data.noFallFallDistance, 0);
+            assertFalse(f.data.noFallSkipAirCheck);
+        } finally { fr.neatmonster.nocheatplus.compat.versions.ServerVersion.setMinecraftVersion(previous); }
+    }
     @Test public void acceptedSlimeContactCannotCarryItsDescentIntoTheNextFall() throws Exception {
         Fixture f = new Fixture();
         var to = mock(fr.neatmonster.nocheatplus.utilities.location.PlayerLocation.class);
