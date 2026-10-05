@@ -33,9 +33,11 @@ public final class FallStateSnapshot {
     }
 
     public static void save(Player player, MovingData data, Location accepted) {
-        if (!(data.noFallFallDistance > 0) && data.noFallCurrentLocOnWindChargeHit == null
-                || !Double.isFinite(data.noFallMaxY)
-                || !Float.isFinite(data.noFallFallDistance)) {
+        // A short glide keeps the debt in the carry even when the per-tick distance was parked.
+        final boolean owed = data.noFallFallDistance > 0f || data.noFallGlideCarry > 0f
+                || data.noFallCurrentLocOnWindChargeHit != null;
+        if (!owed || !Double.isFinite(data.noFallMaxY) || !Float.isFinite(data.noFallFallDistance)
+                || !Float.isFinite(data.noFallGlideCarry)) {
             clear(player);
             return;
         }
@@ -45,7 +47,10 @@ public final class FallStateSnapshot {
                 new long[] {Double.doubleToRawLongBits(accepted.getY()),
                         Double.doubleToRawLongBits(data.noFallMaxY), Double.doubleToRawLongBits(data.noFallFallDistance),
                         Double.doubleToRawLongBits(data.noFallCurrentLocOnWindChargeHit == null
-                                ? Double.NaN : data.noFallCurrentLocOnWindChargeHit.getY())});
+                                ? Double.NaN : data.noFallCurrentLocOnWindChargeHit.getY()),
+                        Double.doubleToRawLongBits(data.noFallGlideTicks),
+                        Double.doubleToRawLongBits(data.noFallGlideCarry),
+                        Double.doubleToRawLongBits(data.noFallGlideEstablished ? 1.0 : 0.0)});
     }
 
     public static void restore(Player player, MovingData data) {
@@ -66,7 +71,10 @@ public final class FallStateSnapshot {
         double[] state = bits == null ? null : java.util.stream.LongStream.of(bits).mapToDouble(Double::longBitsToDouble).toArray();
         Location current = player.getLocation();
         if (state == null) return;
-        if (state.length != 4 || !Double.isFinite(state[0]) || !Double.isFinite(state[1])
+        final boolean glide = state.length == 7 && Double.isFinite(state[4]) && state[4] >= 0 && state[4] <= 20 * 60 * 30
+                && Double.isFinite(state[5]) && state[5] >= 0 && state[5] <= Float.MAX_VALUE
+                && (state[6] == 0.0 || state[6] == 1.0);
+        if ((state.length != 4 && !glide) || !Double.isFinite(state[0]) || !Double.isFinite(state[1])
                 || !Double.isFinite(state[2]) || state[2] < 0 || state[2] > Float.MAX_VALUE || state[1] < state[0]
                 || Math.abs(state[0]) > 30_000_000 || Math.abs(state[1]) > 30_000_000
                 || (!Double.isNaN(state[3]) && (!Double.isFinite(state[3]) || Math.abs(state[3]) > 30_000_000))
@@ -89,5 +97,10 @@ public final class FallStateSnapshot {
         data.noFallMaxY = Math.max(data.noFallMaxY, state[1]);
         data.noFallCurrentLocOnWindChargeHit = Double.isNaN(state[3]) ? null :
                 new Location(current.getWorld(), current.getX(), state[3], current.getZ());
+        if (glide) {
+            data.noFallGlideTicks = (int) state[4];
+            data.noFallGlideCarry = Math.max(data.noFallGlideCarry, (float) state[5]);
+            data.noFallGlideEstablished = state[6] == 1.0;
+        }
     }
 }

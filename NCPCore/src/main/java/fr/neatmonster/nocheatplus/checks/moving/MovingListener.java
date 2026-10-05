@@ -931,6 +931,13 @@ catch (java.lang.Throwable thr) {}
         if (multiMoveCount > 0) {
             thisMove.multiMoveCount = multiMoveCount;
         }
+        // Record a glide before creative-fly can treat a one-tick deploy as a landing.
+        // Stopping the glide restores the pre-deploy distance on this same move.
+        if (Bridge1_9.isGlidingWithElytra(player)) {
+            noFall.onGlidingMove(player, data, thisMove.yDistance);
+        } else {
+            noFall.stopGlide(player, data);
+        }
     
 
         ////////////////////////////
@@ -1811,8 +1818,9 @@ catch (java.lang.Throwable thr) {}
             onMoveMonitorNotCancelled(player, TrigUtil.isSamePosAndLook(pLoc, from) ? from : pLoc, event.getTo(), now, tick, data, mData, mCc, pData);
             useLoc.setWorld(null);
             if (Folia.isFoliaServer()) {
+                // A short glide or an airborne mount is still the same fall.
+                // Dropping the checkpoint at a worker handoff was the cancel.
                 if (noFall.isEnabled(player, pData) && !mData.hasTeleported()
-                        && !player.isGliding() && !player.isInsideVehicle()
                         && !(player.getAllowFlight() && mCc.noFallSkipAllowFlight)) {
                     FallStateSnapshot.save(player, mData, event.getTo());
                 } else FallStateSnapshot.clear(player);
@@ -2471,6 +2479,7 @@ catch (java.lang.Throwable thr) {}
             final Player player = (Player) pearlTarget;
             final MovingData data = DataManager.getPlayerData(player).getGenericInstance(MovingData.class);
             data.clearNoFallData();
+            data.clearGlideDebt();
             data.clearWindChargeImpulse();
             if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
             return;
@@ -2495,6 +2504,7 @@ catch (java.lang.Throwable thr) {}
         if (player.isInsideVehicle()) {
             // Ignore vehicles (noFallFallDistance will be inaccurate anyway).
             data.clearNoFallData();
+            data.clearGlideDebt();
             return;
         }
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
@@ -2508,6 +2518,7 @@ catch (java.lang.Throwable thr) {}
         if (event.isCancelled() || !MovingUtil.shouldCheckSurvivalFly(player, pLoc, moveInfo.to, data, cc, pData) 
             || !noFall.isEnabled(player, pData)) {
             data.clearNoFallData();
+            data.clearGlideDebt();
             aux.returnPlayerMoveInfo(moveInfo);
             return;
         }
@@ -2524,11 +2535,23 @@ catch (java.lang.Throwable thr) {}
             // and attributes there. Recomputing damage from geometric distance here
             // would undo legitimate wind-charge mitigation (and other native rules).
             // Client-only support still cannot consume the descent or cause damage.
-            if (!pLoc.isOnGround(yOnGround) && !pLoc.isResetCond()) {
+            if (!pLoc.isOnGround(yOnGround) && !pLoc.isResetCond() && !entitySupportsFeet(player)) {
+                // Still airborne. Cancelling is required so a ground spoof cannot
+                // consume the fall, but the server zeroes fallDistance anyway.
+                // Put that distance back on the next tick.
+                final float owed = Math.max(Math.max(0f, player.getFallDistance()),
+                        Math.max(0f, Math.max(yDiff, data.noFallFallDistance)));
                 event.setCancelled(true);
+                // Unit tests have no server. A live server zeroes the distance after this event returns.
+                if (owed > 0f && Bukkit.getServer() != null) {
+                    Folia.runSyncDelayedTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> {
+                        if (player.isOnline() && player.getFallDistance() + 0.05f < owed) player.setFallDistance(owed);
+                    }, null, 1L);
+                }
             }
             else {
                 data.clearNoFallData();
+                data.clearGlideDebt();
                 data.vDistAcc.clear();
                 if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
                 if (debug) debug(player, "Preserve native FALL damage and consume contact.");
@@ -2622,6 +2645,7 @@ catch (java.lang.Throwable thr) {}
         if (allowReset) {
             // Normal fall damage, reset data.
             data.clearNoFallData();
+            data.clearGlideDebt();
             if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
             if (debug) debug(player, "Reset NoFall data on fall damage.");
         }
@@ -2642,6 +2666,23 @@ catch (java.lang.Throwable thr) {}
         // Cleanup.
     }
 
+
+    /** Collision support vanilla will damage, which a block-only ground test misses. */
+    private boolean entitySupportsFeet(final Player player) {
+        try {
+            final Location feet = player.getLocation();
+            for (final Entity entity : player.getNearbyEntities(1.5, 1.5, 1.5)) {
+                if (!entity.isValid() || entity.getUniqueId().equals(player.getUniqueId())) continue;
+                final org.bukkit.util.BoundingBox box = entity.getBoundingBox();
+                if (NoFall.boxSupportsFeet(feet.getX(), feet.getY(), feet.getZ(),
+                        box.getMinX(), box.getMinY(), box.getMinZ(),
+                        box.getMaxX(), box.getMaxY(), box.getMaxZ())) return true;
+            }
+        } catch (RuntimeException crossRegion) {
+            // Folia refuses an entity lookup outside this region. Treat that as no support.
+        }
+        return false;
+    }
 
     private final boolean noFallVL(final Player player, final String tag, final MovingData data, final MovingConfig cc) {
 

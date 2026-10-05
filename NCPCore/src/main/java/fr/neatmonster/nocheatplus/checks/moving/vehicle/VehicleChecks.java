@@ -38,6 +38,7 @@ import org.bukkit.plugin.Plugin;
 
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.CheckListener;
+import fr.neatmonster.nocheatplus.checks.moving.player.NoFall;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
@@ -526,10 +527,11 @@ public class VehicleChecks extends CheckListener {
         data.sfNoLowJump = true;
 
         if (cc.noFallVehicleReset) {
-            // Reset noFall data.
-            data.noFallSkipAirCheck = true; // Might allow one time cheat.
+            // A boat that is still in the air has not landed. Clearing here let
+            // a one-tick mount erase the fall. A grounded vehicle did land.
             data.sfLowJump = false;
-            data.clearNoFallData();
+            if (player.isOnGround()) NoFall.onVehicleLanded(data);
+            else NoFall.onVehicleAir(player, data, false);
         }
 
         if (debug) {
@@ -835,10 +837,7 @@ public class VehicleChecks extends CheckListener {
         }
         onPlayerVehicleLeave(player, null);
         //      if (BlockProperties.isRails(pFrom.getTypeId())) {
-        // Always clear no fall data, let Minecraft do fall damage.
-        data.noFallSkipAirCheck = true; // Might allow one time cheat.
-        data.sfLowJump = false;
-        data.clearNoFallData();
+        // The leave handler keeps an airborne fall. Do not clear it again here.
         // TODO: What with processingEvents.remove(player.getName());
         //      }
     }
@@ -912,8 +911,8 @@ public class VehicleChecks extends CheckListener {
             // (Don't override vehicle set back and last position here.)
             // Workaround for some entities/animals that don't fire VehicleMoveEventS.
             if (!normalVehicles.contains(vehicle.getType()) || cc.noFallVehicleReset) {
-                data.noFallSkipAirCheck = true; // Might allow one time cheat.
-                data.clearNoFallData();
+                if (player.isOnGround()) NoFall.onVehicleLanded(data);
+                else NoFall.onVehicleAir(player, data, true);
             }
             // Check consistency with vehicle location.
             if (MoveConsistency.getConsistency(vLoc, null, pLoc) == MoveConsistency.INCONSISTENT) {

@@ -232,6 +232,19 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public boolean noFallSkipAirCheck = false;
     /** Last coordinate from when the player was affected wind charge explosion */
     public Location noFallCurrentLocOnWindChargeHit = null;
+    /** Continuous glide ticks for the open deploy. Zero while not gliding. */
+    public int noFallGlideTicks = 0;
+    /** Fall distance owed if this deploy ends before it is a real glide. */
+    public float noFallGlideCarry = 0f;
+    /** The open deploy has lasted long enough that vanilla owns the landing. */
+    public boolean noFallGlideEstablished = false;
+
+    /** Drop a finished glide. A landing, a real deploy, or a grounded vehicle calls this. */
+    public void clearGlideDebt() {
+        noFallGlideTicks = 0;
+        noFallGlideCarry = 0f;
+        noFallGlideEstablished = false;
+    }
 
     // *----------Data of the SurvivalFly check----------*
     /** Default lift-off envelope, used after resetting. <br> TODO: Test, might be better ground. */
@@ -1537,6 +1550,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         noFallMaxY = BlockProperties.getMinWorldY();
         noFallFallDistance = 0f;
         noFallSkipAirCheck = true;
+        clearGlideDebt();
         prependVerticalVelocity(verticalBounce);
         verticalBounce = null;
     }
@@ -1614,6 +1628,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
                 case MOVING_NOFALL:
                     noFallVL = 0;
                     clearNoFallData();
+                    clearGlideDebt();
                     break;
                 case MOVING_MOREPACKETS:
                     morePacketsVL = 0;

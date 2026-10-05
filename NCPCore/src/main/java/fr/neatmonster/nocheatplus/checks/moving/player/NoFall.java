@@ -162,6 +162,7 @@ public class NoFall extends Check {
                 // may be suppressed by cooldown or cancelled without firing our
                 // damage listener; neither permits replay on later ground moves.
                 data.clearNoFallData();
+                data.clearGlideDebt();
                 if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
                 data.noFallSkipAirCheck = true;
                 dealFallDamage(player, maxD);
@@ -169,6 +170,7 @@ public class NoFall extends Check {
         }
         else {
             data.clearNoFallData();
+            data.clearGlideDebt();
             player.setFallDistance(0);
         }
     }
@@ -402,6 +404,7 @@ public class NoFall extends Check {
             }
         }
         data.clearNoFallData();
+        data.clearGlideDebt();
         // Force damage on event fire, no need air checking!
         // TODO: Later on use deal damage and override on ground at packet level
         // (don't have to calculate reduced damage or account for block change things)
@@ -409,10 +412,87 @@ public class NoFall extends Check {
     }
 
 
+    /**
+     * A boat, minecart, or other collision box under the feet. Vanilla still
+     * applies fall damage for that landing. The block-only ground test does not
+     * see it, and cancelling the event lets the server wipe the distance.
+     */
+    public static boolean boxSupportsFeet(final double x, final double y, final double z,
+            final double minX, final double minY, final double minZ,
+            final double maxX, final double maxY, final double maxZ) {
+        if (maxX - minX < 0.2 || maxZ - minZ < 0.2 || maxY - minY < 0.1) return false;
+        // Feet sit on the top face, or a little inside a sinking boat.
+        if (y < maxY - 0.6 || y > maxY + 0.85) return false;
+        if (x < minX - 0.35 || x > maxX + 0.35) return false;
+        if (z < minZ - 0.35 || z > maxZ + 0.35) return false;
+        return true;
+    }
+
+    /** Ticks of continuous gliding before vanilla, not the pre-glide fall, owns the landing. */
+    public static final int GLIDE_ESTABLISH_TICKS = 10;
+
+    /**
+     * A one-tick elytra deploy zeroes the vanilla fall distance. Keep the
+     * distance from before that deploy until the glide has actually lasted.
+     * Gentle glide ticks otherwise wipe the check (y delta above -0.5).
+     */
+    public static void onGlidingMove(final Player player, final MovingData data, final double yDistance) {
+        if (data.noFallGlideTicks == 0) {
+            final float geometric = (float) Math.max(0.0, data.noFallMaxY - player.getLocation().getY());
+            final float owed = Math.max(data.noFallFallDistance, Math.max(geometric, Math.max(0f, player.getFallDistance())));
+            data.noFallGlideCarry = Math.max(data.noFallGlideCarry, owed);
+            data.noFallGlideEstablished = false;
+        }
+        if (data.noFallGlideTicks < Integer.MAX_VALUE) data.noFallGlideTicks++;
+        if (data.noFallGlideTicks >= GLIDE_ESTABLISH_TICKS) {
+            data.noFallGlideEstablished = true;
+            data.noFallGlideCarry = 0f;
+        }
+        // Steep dives keep ordinary accounting. Only the gentle clear was a cancel.
+        if (yDistance <= -0.5) return;
+        if (data.noFallGlideEstablished) {
+            data.clearNoFallData();
+            return;
+        }
+        final float carry = data.noFallGlideCarry;
+        final int ticks = data.noFallGlideTicks;
+        data.clearNoFallData();
+        data.noFallFallDistance = carry;
+        data.noFallMaxY = player.getLocation().getY();
+        data.noFallGlideTicks = ticks;
+        data.noFallGlideCarry = carry;
+    }
+
+    /** The elytra closed before the deploy counted. Put the owed fall back. */
+    public static void stopGlide(final Player player, final MovingData data) {
+        if (data.noFallGlideTicks <= 0) return;
+        if (!data.noFallGlideEstablished && data.noFallGlideCarry > 0f) {
+            data.noFallFallDistance = Math.max(data.noFallFallDistance, data.noFallGlideCarry);
+            if (player.getFallDistance() < data.noFallFallDistance) player.setFallDistance(data.noFallFallDistance);
+        }
+        data.noFallGlideTicks = 0;
+        data.noFallGlideEstablished = false;
+    }
+
+    /** The vehicle is on the ground, so this landing is the vehicle's, not a later foot landing. */
+    public static void onVehicleLanded(final MovingData data) {
+        data.clearNoFallData();
+        data.clearGlideDebt();
+        data.noFallSkipAirCheck = true;
+    }
+
+    /** Mounting or leaving a vehicle in the air must not erase the fall. */
+    public static void onVehicleAir(final Player player, final MovingData data, final boolean leaving) {
+        final float owed = Math.max(data.noFallFallDistance, Math.max(data.noFallGlideCarry, Math.max(0f, player.getFallDistance())));
+        data.noFallFallDistance = Math.max(data.noFallFallDistance, owed);
+        if (leaving && owed > player.getFallDistance()) player.setFallDistance(owed);
+    }
+
     /** Consume a server-confirmed slime contact even though bounce handling skips NoFall. */
     public static void consumeSlimeContact(PlayerLocation to, MovingData data, double yOnGround) {
         if (to.getTypeIdBelow() == Material.SLIME_BLOCK && to.isOnGround(yOnGround)) {
             data.clearNoFallData();
+            data.clearGlideDebt();
             data.noFallMaxY = to.getY();
             data.noFallSkipAirCheck = true;
             data.clearWindChargeImpulse();
@@ -431,6 +511,7 @@ public class NoFall extends Check {
         // if immunity/cancellation suppresses its event; later moves cannot repay it.
         data.noFallFallDistance = contact ? 0f : distance;
         data.noFallSkipAirCheck = !preserve || contact;
+        if (contact) data.clearGlideDebt();
         if (distance > nativeDistance) player.setFallDistance(distance);
         if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
     }
@@ -512,8 +593,9 @@ public class NoFall extends Check {
         final double minY = Math.min(fromY, toY);
 
         if (fromReset || toReset) {
-            // Just reset.
+            // Water, web, powder snow, climbables: vanilla ends the fall here.
             data.clearNoFallData();
+            data.clearGlideDebt();
             // Ensure very big/strange moves don't yield violations.
             if (toY - fromY <= -Magic.FALL_DAMAGE_DIST) {
                 data.noFallSkipAirCheck = true;

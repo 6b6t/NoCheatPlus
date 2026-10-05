@@ -267,6 +267,7 @@ public class MovingUtil {
                                                          BlockFlags.F_STICKY)
         ) {
             data.clearNoFallData();
+            data.clearGlideDebt();
         }
         return isFlagCollected;
     }
