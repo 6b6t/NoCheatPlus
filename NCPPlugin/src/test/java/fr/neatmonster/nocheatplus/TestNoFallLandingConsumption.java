@@ -114,7 +114,9 @@ public class TestNoFallLandingConsumption {
             when(f.pData.getGenericInstance(MovingConfig.class)).thenReturn(f.config);
             f.data.noFallFallDistance = 12; f.data.noFallMaxY = 93;
             f.check.checkDamage(f.player, 81, f.data, f.pData);
-            verify(f.player).setFallDistance(12);
+            f.check.checkDamage(f.player, 69, f.data, f.pData); // Rejected endpoint cannot add distance.
+            verify(f.player, times(2)).setFallDistance(12);
+            verify(f.player, never()).setFallDistance(24);
             verify(f.access, never()).dealFallDamage(any(), anyDouble());
             assertEquals(12, f.data.noFallFallDistance, 0);
             assertFalse(f.data.noFallSkipAirCheck);

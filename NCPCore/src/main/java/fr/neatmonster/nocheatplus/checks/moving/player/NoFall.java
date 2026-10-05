@@ -659,7 +659,9 @@ public class NoFall extends Check {
             // A rejected move/correction is not a landing. Keep its descent for
             // native contact instead of consuming it through immediate damage.
             if (!(cc.noFallSkipAllowFlight && player.getAllowFlight())) {
-                final float distance = (float) getApplicableFallHeight(player, y, data);
+                // The rejected endpoint is not accepted descent. Use the
+                // current owned position and previously accepted accounting.
+                final float distance = (float) getApplicableFallHeight(player, player.getLocation().getY(), data);
                 if (distance > player.getFallDistance()) player.setFallDistance(distance);
             }
             return;
