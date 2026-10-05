@@ -100,4 +100,17 @@ public class TestNoFallGlideDebt {
         assertEquals(4f, air.data.noFallFallDistance, 0);
         assertEquals(90, air.data.noFallMaxY, 0);
     }
+    @Test public void teleportAfterGlideUsesTheCurrentNativeReset() {
+        Player player = mock(Player.class);
+        MovingData data = mock(MovingData.class);
+        data.noFallGlideEstablished = true;
+        data.noFallFallDistance = 1f;
+        when(player.getFallDistance()).thenReturn(0f);
+        assertEquals(0f, NoFall.distanceForTeleport(player, data), 0f);
+        when(player.getFallDistance()).thenReturn(3f);
+        assertEquals(3f, NoFall.distanceForTeleport(player, data), 0f);
+        data.noFallGlideEstablished = false;
+        assertEquals(1f, NoFall.distanceForTeleport(player, data), 0f);
+        verify(player, never()).setFallDistance(anyFloat());
+    }
 }

@@ -87,7 +87,7 @@ public class MovingUtil {
         } else {
             final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
             final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
-            final float sourceFallDistance = data.noFallFallDistance;
+            final float sourceFallDistance = NoFall.distanceForTeleport(player, data);
             final boolean preserveNoFall = !cc.noFallTpReset && pData.isCheckActive(CheckType.MOVING_NOFALL, player);
             data.clearFlyData();
             data.clearPlayerMorePacketsData();

@@ -2332,7 +2332,7 @@ catch (java.lang.Throwable thr) {}
         }
 
         // Normal teleport
-        final double fallDistance = data.noFallFallDistance;
+        final double fallDistance = NoFall.distanceForTeleport(player, data);
         //        final LiftOffEnvelope oldEnv = data.liftOffEnvelope; // Remember for workarounds.
         data.clearFlyData();
         data.clearPlayerMorePacketsData();

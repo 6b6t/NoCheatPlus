@@ -480,6 +480,12 @@ public class NoFall extends Check {
         }
     }
 
+    /** A valid glide's native resets must survive a subsequent teleport. */
+    public static float distanceForTeleport(final Player player, final MovingData data) {
+        return data.noFallGlideEstablished || Bridge1_9.isGlidingWithElytra(player)
+                ? Math.max(0f, player.getFallDistance()) : data.noFallFallDistance;
+    }
+
     /** Transfer an accepted ordinary teleport's fall distance to its native landing. */
     public static void afterTeleport(Player player, MovingData data, Location to, float sourceDistance, boolean preserve) {
         final float nativeDistance = player.getFallDistance();
