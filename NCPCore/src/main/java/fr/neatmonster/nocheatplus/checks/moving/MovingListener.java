@@ -2518,11 +2518,21 @@ catch (java.lang.Throwable thr) {}
         final double damage = BridgeHealth.getRawDamage(event); // Raw damage.
         if (debug) debug(player, "Damage(FALL/PRE): " + damage + " / mc=" + player.getFallDistance() + " nf=" + data.noFallFallDistance + " yDiff=" + yDiff);
 
-        if (!cc.noFallDealDamage && ServerVersion.compareMinecraftVersion("26.1") >= 0
-                && !pLoc.isOnGround(yOnGround) && !pLoc.isResetCond()) {
-            // Native landing mode never charges a client-only support/ground bit,
-            // even while a preceding correction has skip-air-check set.
-            event.setCancelled(true);
+        if (!cc.noFallDealDamage && ServerVersion.compareMinecraftVersion("26.1") >= 0) {
+            // Distance has already been restored before native collision processing.
+            // Fox applies its authoritative impulse-impact limit, support modifiers
+            // and attributes there. Recomputing damage from geometric distance here
+            // would undo legitimate wind-charge mitigation (and other native rules).
+            // Client-only support still cannot consume the descent or cause damage.
+            if (!pLoc.isOnGround(yOnGround) && !pLoc.isResetCond()) {
+                event.setCancelled(true);
+            }
+            else {
+                data.clearNoFallData();
+                data.vDistAcc.clear();
+                if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+                if (debug) debug(player, "Preserve native FALL damage and consume contact.");
+            }
             aux.returnPlayerMoveInfo(moveInfo);
             return;
         }
