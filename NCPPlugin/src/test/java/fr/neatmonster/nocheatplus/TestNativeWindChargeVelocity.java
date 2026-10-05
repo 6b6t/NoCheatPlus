@@ -62,4 +62,35 @@ public class TestNativeWindChargeVelocity {
         MovingListener.acceptNativeWindChargeVelocity(player, data, mock(MovingConfig.class), new Vector(Double.NaN, 1, 0));
         verify(data, never()).addVelocity(any(), any(), anyDouble(), anyDouble(), anyDouble());
     }
+    @Test public void hitAndExplosionBothKeepTheirSentAllowancesWithoutBanking() {
+        Player player = mock(Player.class);
+        MovingData data = mock(MovingData.class);
+        MovingConfig config = mock(MovingConfig.class);
+        when(player.getTicksLived()).thenReturn(23);
+        when(player.getVelocity()).thenReturn(new Vector(0, -1, 0));
+        data.windChargeImpulseEntityTick = 23;
+        data.windChargeImpulseSource = java.util.UUID.randomUUID();
+        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, new Vector(0, 0, .4));
+        // The server has restored its old momentum after sending hit velocity.
+        MovingListener.acceptNativeWindChargeVelocity(player, data, config, new Vector(0, -.305, 0));
+        verify(data).addVelocity(player, config, 0, -1, .4);
+        verify(data).addVelocity(player, config, 0, -1.305, 0);
+        verify(data, never()).removeAllVelocity();
+        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, new Vector(0, 0, .4));
+        verify(data, times(2)).addVelocity(any(), any(), anyDouble(), anyDouble(), anyDouble());
+    }
+
+    @Test public void unrelatedOrExpiredProjectileHitGetsNoAllowance() {
+        Player player = mock(Player.class);
+        MovingData data = mock(MovingData.class);
+        MovingConfig config = mock(MovingConfig.class);
+        when(player.getTicksLived()).thenReturn(24);
+        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, new Vector(0, 0, .4));
+        data.windChargeImpulseSource = java.util.UUID.randomUUID();
+        data.windChargeImpulseEntityTick = 23;
+        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, new Vector(0, 0, .4));
+        verifyNoInteractions(data);
+        verify(player, never()).getVelocity();
+    }
+
 }

@@ -304,7 +304,8 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
             @Override public void onEvent(final E event) {
                 if (((org.bukkit.event.Cancellable) event).isCancelled()) return;
                 try {
-                    if (!"EXPLOSION".equals(((Enum<?>) cause.invoke(event)).name())) return;
+                    final String impulseCause = ((Enum<?>) cause.invoke(event)).name();
+                    if (!"EXPLOSION".equals(impulseCause) && !"ENTITY_ATTACK".equals(impulseCause)) return;
                     final Object target = entity.invoke(event);
                     if (!(target instanceof Player)) return;
                     final Player player = (Player) target;
@@ -312,13 +313,30 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                     final IPlayerData pData = DataManager.getPlayerData(player);
                     if (!pData.isCheckActive(CheckType.MOVING, player)) return;
                     final MovingData data = pData.getGenericInstance(MovingData.class);
-                    acceptNativeWindChargeVelocity(player, data, pData.getGenericInstance(MovingConfig.class),
-                            (Vector) knockback.invoke(event));
+                    if ("ENTITY_ATTACK".equals(impulseCause)) {
+                        acceptNativeWindChargeHitVelocity(player, data, pData.getGenericInstance(MovingConfig.class),
+                                (Vector) knockback.invoke(event));
+                    } else {
+                        acceptNativeWindChargeVelocity(player, data, pData.getGenericInstance(MovingConfig.class),
+                                (Vector) knockback.invoke(event));
+                    }
                 } catch (ReflectiveOperationException invalid) {
                     StaticLog.logWarning("Failed to read native wind-charge impulse: " + invalid.getMessage());
                 }
             }
         }, EventPriority.MONITOR, null, true);
+    }
+
+    /** Credit the projectile hit before its separate explosion, at the event's tick. */
+    public static void acceptNativeWindChargeHitVelocity(final Player player, final MovingData data,
+            final MovingConfig cc, final Vector impulse) {
+        if (data.windChargeImpulseSource == null || data.windChargeImpulseEntityTick != player.getTicksLived()) return;
+        final Vector result = player.getVelocity().clone().add(impulse);
+        if (!Double.isFinite(result.getX()) || !Double.isFinite(result.getY()) || !Double.isFinite(result.getZ())) return;
+        // ServerPlayer sends the hit knockback and can restore its old momentum
+        // before explosion processing. Do not rely on getVelocity at the later
+        // explosion to contain the already-sent horizontal hit. No pending credit.
+        data.addVelocity(player, cc, result.getX(), result.getY(), result.getZ());
     }
 
     /** Consume only the synchronous impulse following an attributed wind-charge hit. */
