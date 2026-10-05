@@ -72,8 +72,6 @@ public class NoFall extends Check {
      * if a packet has already been related to a Bukkit event.
      */
 
-    /** For temporary use: LocUtil.clone before passing deeply, call setWorld(null) after use. */
-    private final Location useLoc2 = new Location(null, 0, 0, 0);
 
     private final static boolean ServerIsAtLeast1_12 = ServerVersion.compareMinecraftVersion("1.12") >= 0;
 
@@ -162,7 +160,8 @@ public class NoFall extends Check {
     private void fallOn(final Player player, final double fallDist) {
 
         // TODO: Need move data pTo, this location isn't updated
-        Block block = player.getLocation(useLoc2).subtract(0.0, 1.0, 0.0).getBlock();
+        // Each region can process a different player concurrently.
+        Block block = player.getLocation().subtract(0.0, 1.0, 0.0).getBlock();
         if (block.getType() == BridgeMaterial.FARMLAND && fallDist > 0.5 && ThreadLocalRandom.current().nextFloat() < fallDist - 0.5) {
             final BlockState newState = block.getState();
             newState.setType(Material.DIRT);
@@ -183,7 +182,6 @@ public class NoFall extends Check {
                 } else block.setType(Material.AIR);
             }
         }
-        useLoc2.setWorld(null);
     }
     
 

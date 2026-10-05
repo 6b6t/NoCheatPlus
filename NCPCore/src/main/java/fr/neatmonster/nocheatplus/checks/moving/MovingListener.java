@@ -193,7 +193,6 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     final Location useBedLeaveLoc = new Location(null, 0, 0, 0);
     final Location useChangeWorldLoc = new Location(null, 0, 0, 0);
     final Location useDeathLoc = new Location(null, 0, 0, 0);
-    final Location useFallLoc = new Location(null, 0, 0, 0);
     final Location useToggleFlightLoc = new Location(null, 0, 0, 0);
 
     /** Auxiliary functionality. */
@@ -2469,7 +2468,7 @@ catch (java.lang.Throwable thr) {}
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
         final PlayerMoveInfo moveInfo = aux.usePlayerMoveInfo();
         final double yOnGround = Math.max(cc.noFallyOnGround, cc.yOnGround);
-        final Location loc = player.getLocation(useFallLoc);
+        final Location loc = player.getLocation();
         moveInfo.set(player, loc, null, yOnGround);
         final PlayerLocation pLoc = moveInfo.from;
         pLoc.collectBlockFlags(yOnGround);
@@ -2477,7 +2476,6 @@ catch (java.lang.Throwable thr) {}
         if (event.isCancelled() || !MovingUtil.shouldCheckSurvivalFly(player, pLoc, moveInfo.to, data, cc, pData) 
             || !noFall.isEnabled(player, pData)) {
             data.clearNoFallData();
-            useFallLoc.setWorld(null);
             aux.returnPlayerMoveInfo(moveInfo);
             return;
         }
@@ -2522,7 +2520,6 @@ catch (java.lang.Throwable thr) {}
                     if (dataDamage <= 0.0) {
                         // Cancel the event.
                         event.setCancelled(true);
-                        useFallLoc.setWorld(null);
                         aux.returnPlayerMoveInfo(moveInfo);
                         return;
                     }
@@ -2581,7 +2578,6 @@ catch (java.lang.Throwable thr) {}
         }
         // Entity fall-distance should be reset elsewhere.
         // Cleanup.
-        useFallLoc.setWorld(null);
     }
 
 

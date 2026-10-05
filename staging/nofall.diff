@@ -1,0 +1,8 @@
+--- live-config/NoCheatPlus/config.yml
++++ staging/NoCheatPlus/config.yml
+@@ -549,4 +549,4 @@
+     nofall:
+-      active: false
++      active: true
+       dealdamage: true
+       skipallowflight: true
