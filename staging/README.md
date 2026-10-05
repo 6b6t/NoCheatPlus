@@ -1,5 +1,7 @@
-NoFall activation remains WITHDRAWN. The default lab proposed-config.yml is byte-identical to supplied live config (active=false).
+NoFall v2 replaces deferred damage with the native landing pipeline. Its configuration is `checks.moving.nofall.active: true` and `dealdamage: false`; `resetonteleport` and all other live settings stay as supplied.
 
-The review 2 response replaces the global delayed TickListener with a bounded entity-owned prototype. This is not activation approval: expiry can discard unpaid damage, and coalescing does not distinguish separate landings during one invulnerability window. The Fox suppression/transfer coverage, teleport completion ordering and native landing gates in ../NOFALL.md remain unresolved. Do not enable NoFall using this candidate.
+The measured deployment verdict is in [NOFALL-V2.md](../../NOFALL-V2.md). The shaded jar, exact live configuration diff, hashes, and rollback instructions are in [NOFALL-V2-RELEASE](../../NOFALL-V2-RELEASE/).
 
-nofall-experimental.diff is solely for isolated local reproductions. Retain per-call location isolation. The Paper-only NoFallLab must never be deployed to Fox/Folia.
+The v2 source removes the global damage tick listener and the withdrawn entity-deferred prototype. Accepted movement checkpoints carry unfinished geometric descent across Fox workers; landing damage, immunity, and modifiers belong to the native server.
+
+`nofall-experimental.diff` belongs to the withdrawn `dealdamage: true` experiment. Use the v2 release diff for this implementation.
