@@ -92,8 +92,8 @@ public final class FallStateSnapshot {
             return;
         }
         if (Math.abs(current.getY() - state[0]) > 1.0e-5) {
-            // Fox ordinary teleports arrive through join. Carry only the descent
-            // before placement, never the spatial gap or its wind context.
+            // Fox ordinary teleports arrive through join. Native entity data
+            // owns retention/resets; the checkpoint must not resurrect old debt.
             data.clearWindChargeImpulse();
             NoFall.afterTeleport(player, data, current, (float) state[2], true);
             clear(player);

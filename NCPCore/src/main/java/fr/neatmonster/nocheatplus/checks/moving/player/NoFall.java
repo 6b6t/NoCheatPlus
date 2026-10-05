@@ -480,16 +480,19 @@ public class NoFall extends Check {
         }
     }
 
-    /** A valid glide's native resets must survive a subsequent teleport. */
+    /**
+     * An accepted ordinary placement must respect authoritative native resets.
+     * Packet ground claims and NCP corrections are handled on their own paths;
+     * check distance must not resurrect a plugin-cleared descent here.
+     */
     public static float distanceForTeleport(final Player player, final MovingData data) {
-        return data.noFallGlideEstablished || Bridge1_9.isGlidingWithElytra(player)
-                ? Math.max(0f, player.getFallDistance()) : data.noFallFallDistance;
+        return Math.max(0f, player.getFallDistance());
     }
 
-    /** Transfer an accepted ordinary teleport's fall distance to its native landing. */
+    /** Rebase an accepted ordinary placement without overriding native reset/retention. */
     public static void afterTeleport(Player player, MovingData data, Location to, float sourceDistance, boolean preserve) {
         final float nativeDistance = player.getFallDistance();
-        final float distance = Math.max(nativeDistance, preserve ? sourceDistance : 0f);
+        final float distance = Math.max(0f, nativeDistance);
         final PlayerMoveData placement = data.playerMoves.getFirstPastMove();
         final boolean contact = placement != null && (placement.from.onGround || placement.from.resetCond);
         data.clearNoFallData();
@@ -499,7 +502,6 @@ public class NoFall extends Check {
         data.noFallFallDistance = contact ? 0f : distance;
         data.noFallSkipAirCheck = !preserve || contact;
         if (contact) data.clearGlideDebt();
-        if (distance > nativeDistance) player.setFallDistance(distance);
         if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
     }
 

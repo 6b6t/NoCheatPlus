@@ -85,15 +85,28 @@ public class TestTeleportCompletion {
         }).when(aux).resetPositionsAndMediumProperties(any(), any(), same(data), same(config));
     }
 
-    @Test public void ordinaryFoxPlacementKeepsOnlyPreTeleportDescentWhenNoFallIsActive() throws Exception {
+    @Test public void ordinaryFoxPlacementKeepsNativeDescentWhenNoFallIsActive() throws Exception {
         var reset = MovingConfig.class.getField("noFallTpReset");reset.setAccessible(true);reset.setBoolean(config,false);
         when(pData.isCheckActive(CheckType.MOVING_NOFALL,player)).thenReturn(true);
-        data.noFallFallDistance=5;data.noFallMaxY=120;
+        data.noFallFallDistance=12;data.noFallMaxY=120;
+        when(player.getFallDistance()).thenReturn(5f);
         Location to=new Location(world,16,81,16);when(player.getLocation()).thenReturn(to);
         MovingUtil.onTeleportComplete(player,to,1,data,pData);
         assertEquals(5,data.noFallFallDistance,0);assertEquals(81,data.noFallMaxY,0);
-        verify(player).setFallDistance(5);
+        verify(player, never()).setFallDistance(anyFloat());
         assertFalse(data.noFallSkipAirCheck);
+    }
+    @Test public void authoritativeResetBeforeFoxPlacementCannotReviveBounce() throws Exception {
+        var reset = MovingConfig.class.getField("noFallTpReset");reset.setAccessible(true);reset.setBoolean(config,false);
+        when(pData.isCheckActive(CheckType.MOVING_NOFALL,player)).thenReturn(true);
+        data.noFallFallDistance=1.086f;data.noFallMaxY=95;
+        when(player.getFallDistance()).thenReturn(0f);
+        Location to=new Location(world,16,93,16);when(player.getLocation()).thenReturn(to);
+        long generation=data.noFallGeneration;
+        MovingUtil.onTeleportComplete(player,to,1,data,pData);
+        assertEquals(0,data.noFallFallDistance,0);assertEquals(93,data.noFallMaxY,0);
+        assertFalse(fr.neatmonster.nocheatplus.checks.moving.player.NoFall.mayRestoreCancelledFall(data,generation));
+        verify(player, never()).setFallDistance(anyFloat());
     }
     @Test
     public void distantArrivalThenSmallMoveDoesNotRollBackButUncheckedDriftDoes() throws Exception {

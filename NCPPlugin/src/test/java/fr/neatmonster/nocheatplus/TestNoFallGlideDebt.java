@@ -110,7 +110,15 @@ public class TestNoFallGlideDebt {
         when(player.getFallDistance()).thenReturn(3f);
         assertEquals(3f, NoFall.distanceForTeleport(player, data), 0f);
         data.noFallGlideEstablished = false;
-        assertEquals(1f, NoFall.distanceForTeleport(player, data), 0f);
+        assertEquals(3f, NoFall.distanceForTeleport(player, data), 0f);
         verify(player, never()).setFallDistance(anyFloat());
+    }
+    @Test public void ordinaryTeleportRespectsAuthoritativeResetOutsideGlide() {
+        Air air = new Air(90, 1.086f);
+        when(air.player.getFallDistance()).thenReturn(0f);
+        assertEquals(0f, NoFall.distanceForTeleport(air.player, air.data), 0f);
+        when(air.player.getFallDistance()).thenReturn(6f);
+        assertEquals(6f, NoFall.distanceForTeleport(air.player, air.data), 0f);
+        verify(air.player, never()).setFallDistance(anyFloat());
     }
 }

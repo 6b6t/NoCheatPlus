@@ -96,7 +96,7 @@ public class MovingUtil {
             data.setSetBack(current);
             aux.resetPositionsAndMediumProperties(player, current, data, cc);
             // Fox placements do not fire Bukkit's cancellable teleport event.
-            // Carry accepted descent under the live reset policy, not a damage debt.
+            // Respect native retention/resets; stale check debt is not a new descent.
             NoFall.afterTeleport(player, data, to, sourceFallDistance, preserveNoFall);
             data.resetTeleported();
             Combined.resetYawRate(player, current.getYaw(), System.currentTimeMillis(), true, pData);
