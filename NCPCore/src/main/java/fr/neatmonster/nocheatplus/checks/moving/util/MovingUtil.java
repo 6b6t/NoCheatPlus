@@ -35,6 +35,7 @@ import fr.neatmonster.nocheatplus.checks.moving.model.MoveData;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveInfo;
 import fr.neatmonster.nocheatplus.checks.moving.player.PlayerSetBackMethod;
+import fr.neatmonster.nocheatplus.checks.moving.player.NoFall;
 import fr.neatmonster.nocheatplus.checks.net.NetData;
 import fr.neatmonster.nocheatplus.checks.net.model.CountableLocation;
 import fr.neatmonster.nocheatplus.compat.Bridge1_13;
@@ -86,16 +87,17 @@ public class MovingUtil {
         } else {
             final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
             final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
+            final float sourceFallDistance = data.noFallFallDistance;
+            final boolean preserveNoFall = !cc.noFallTpReset && pData.isCheckActive(CheckType.MOVING_NOFALL, player);
             data.clearFlyData();
             data.clearPlayerMorePacketsData();
             data.clearWindChargeImpulse();
             data.removeAllVelocity();
             data.setSetBack(current);
             aux.resetPositionsAndMediumProperties(player, current, data, cc);
-            // Preserve the server's actual fall distance after placement.
-            data.noFallFallDistance = player.getFallDistance();
-            data.noFallMaxY = to.getY();
-            data.noFallSkipAirCheck = true;
+            // Fox placements do not fire Bukkit's cancellable teleport event.
+            // Carry accepted descent under the live reset policy, not a damage debt.
+            NoFall.afterTeleport(player, data, to, sourceFallDistance, preserveNoFall);
             data.resetTeleported();
             Combined.resetYawRate(player, current.getYaw(), System.currentTimeMillis(), true, pData);
         }

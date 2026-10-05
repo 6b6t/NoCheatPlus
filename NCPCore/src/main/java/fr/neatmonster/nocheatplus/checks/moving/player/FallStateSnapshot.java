@@ -49,6 +49,10 @@ public final class FallStateSnapshot {
     }
 
     public static void restore(Player player, MovingData data) {
+        restore(player, data, false);
+    }
+
+    public static void restore(Player player, MovingData data, boolean preserveOrdinaryTeleport) {
         var container = player.getPersistentDataContainer();
         final long[] bits;
         final String world;
@@ -67,7 +71,15 @@ public final class FallStateSnapshot {
                 || Math.abs(state[0]) > 30_000_000 || Math.abs(state[1]) > 30_000_000
                 || (!Double.isNaN(state[3]) && (!Double.isFinite(state[3]) || Math.abs(state[3]) > 30_000_000))
                 || !current.getWorld().getKey().toString().equals(world)
-                || Math.abs(current.getY() - state[0]) > 1.0e-5) {
+                || !preserveOrdinaryTeleport && Math.abs(current.getY() - state[0]) > 1.0e-5) {
+            clear(player);
+            return;
+        }
+        if (Math.abs(current.getY() - state[0]) > 1.0e-5) {
+            // Fox ordinary teleports arrive through join. Carry only the descent
+            // before placement, never the spatial gap or its wind context.
+            data.clearWindChargeImpulse();
+            NoFall.afterTeleport(player, data, current, (float) state[2], true);
             clear(player);
             return;
         }

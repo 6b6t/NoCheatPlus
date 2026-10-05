@@ -91,6 +91,21 @@ public class TestNoFallLandingConsumption {
             assertEquals(4, distance.getValue() - move.yDistance, 1.0e-6);
         } finally { fr.neatmonster.nocheatplus.compat.versions.ServerVersion.setMinecraftVersion(previous); }
     }
+    @Test public void ordinaryTeleportCarriesDescentButConsumesAContactBeforeImmunity() throws Exception {
+        Fixture f = new Fixture();
+        var placement = new fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData();
+        when(f.data.playerMoves.getFirstPastMove()).thenReturn(placement);
+        NoFall.afterTeleport(f.player, f.data, f.player.getLocation(), 5, true);
+        verify(f.player).setFallDistance(5);
+        assertEquals(5, f.data.noFallFallDistance, 0);
+        assertFalse(f.data.noFallSkipAirCheck);
+        placement.from.onGround = true;
+        NoFall.afterTeleport(f.player, f.data, f.player.getLocation(), 5, true);
+        assertEquals(0, f.data.noFallFallDistance, 0);
+        assertTrue(f.data.noFallSkipAirCheck);
+        NoFall.afterTeleport(f.player, f.data, f.player.getLocation(), 9, false);
+        verify(f.player, never()).setFallDistance(9);
+    }
     @Test public void immunityWithoutDamageEventStillConsumesEachLanding() throws Exception {
         Fixture f = new Fixture();
         f.fall(12); assertEquals(0, f.data.noFallFallDistance, 0);

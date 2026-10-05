@@ -409,6 +409,22 @@ public class NoFall extends Check {
     }
 
 
+    /** Transfer an accepted ordinary teleport's fall distance to its native landing. */
+    public static void afterTeleport(Player player, MovingData data, Location to, float sourceDistance, boolean preserve) {
+        final float nativeDistance = player.getFallDistance();
+        final float distance = Math.max(nativeDistance, preserve ? sourceDistance : 0f);
+        final PlayerMoveData placement = data.playerMoves.getFirstPastMove();
+        final boolean contact = placement != null && (placement.from.onGround || placement.from.resetCond);
+        data.clearNoFallData();
+        data.noFallMaxY = to.getY();
+        // Contact is consumed now. Native collision owns the one landing, even
+        // if immunity/cancellation suppresses its event; later moves cannot repay it.
+        data.noFallFallDistance = contact ? 0f : distance;
+        data.noFallSkipAirCheck = !preserve || contact;
+        if (distance > nativeDistance) player.setFallDistance(distance);
+        if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+    }
+
     private void dealFallDamage(final Player player, final double damage) {
         if (mcAccess.getHandle().dealFallDamageFiresAnEvent().decide()) {
             // TODO: Better decideOptimistically?

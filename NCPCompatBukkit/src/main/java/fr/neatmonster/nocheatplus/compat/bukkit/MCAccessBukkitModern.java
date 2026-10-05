@@ -622,6 +622,13 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         else BridgeHealth.damage(player, damage);
     }
 
+    @Override
+    public boolean isEnderPearlDamage(org.bukkit.event.entity.EntityDamageEvent event) {
+        return HAS_DAMAGE_SOURCE_API
+                && "minecraft:ender_pearl".equals(event.getDamageSource().getDamageType().getKey().toString())
+                || super.isEnderPearlDamage(event);
+    }
+
     protected void dealNativeFallDamage(Player player, double damage) {
         if (!Folia.isOwnedByCurrentRegion(player)) {
             throw new IllegalStateException("Fall damage requires the player owning region");

@@ -85,6 +85,16 @@ public class TestTeleportCompletion {
         }).when(aux).resetPositionsAndMediumProperties(any(), any(), same(data), same(config));
     }
 
+    @Test public void ordinaryFoxPlacementKeepsOnlyPreTeleportDescentWhenNoFallIsActive() throws Exception {
+        var reset = MovingConfig.class.getField("noFallTpReset");reset.setAccessible(true);reset.setBoolean(config,false);
+        when(pData.isCheckActive(CheckType.MOVING_NOFALL,player)).thenReturn(true);
+        data.noFallFallDistance=5;data.noFallMaxY=120;
+        Location to=new Location(world,16,81,16);when(player.getLocation()).thenReturn(to);
+        MovingUtil.onTeleportComplete(player,to,1,data,pData);
+        assertEquals(5,data.noFallFallDistance,0);assertEquals(81,data.noFallMaxY,0);
+        verify(player).setFallDistance(5);
+        assertFalse(data.noFallSkipAirCheck);
+    }
     @Test
     public void distantArrivalThenSmallMoveDoesNotRollBackButUncheckedDriftDoes() throws Exception {
         final Location to = new Location(world, 8000000, 90, -8000000);

@@ -2461,6 +2461,15 @@ catch (java.lang.Throwable thr) {}
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onEntityDamage(final EntityDamageEvent event) {
 
+        final Entity pearlTarget = event.getEntity();
+        if (pearlTarget instanceof Player && mcAccess.getHandle().isEnderPearlDamage(event)) {
+            final Player player = (Player) pearlTarget;
+            final MovingData data = DataManager.getPlayerData(player).getGenericInstance(MovingData.class);
+            data.clearNoFallData();
+            data.clearWindChargeImpulse();
+            if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+            return;
+        }
         if (event.getCause() != DamageCause.FALL) {
             return;
         }
@@ -2692,7 +2701,8 @@ catch (java.lang.Throwable thr) {}
         dataOnJoin(player, location, false, data,
                 pData.getGenericInstance(MovingConfig.class), pData.isDebugActive(checkType));
         if (Folia.isFoliaServer()) {
-            if (noFall.isEnabled(player, pData)) FallStateSnapshot.restore(player, data);
+            if (noFall.isEnabled(player, pData)) FallStateSnapshot.restore(player, data,
+                    !pData.getGenericInstance(MovingConfig.class).noFallTpReset);
             else FallStateSnapshot.clear(player);
         }
     }

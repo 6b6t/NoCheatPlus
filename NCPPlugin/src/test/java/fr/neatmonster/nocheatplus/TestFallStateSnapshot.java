@@ -72,6 +72,17 @@ public class TestFallStateSnapshot {
         Fixture f = new Fixture(); f.save(); f.data.clearNoFallData();
         FallStateSnapshot.save(f.player, f.data, f.location); assertTrue(f.serialized.isEmpty());
     }
+    @Test public void ordinaryWorkerTeleportCarriesOnlySourceDistanceUnderTheResetPolicy() throws Exception {
+        Fixture f=new Fixture();f.save();f.data.clearNoFallData();f.location.setY(81);
+        var trace=mock(fr.neatmonster.nocheatplus.checks.moving.model.MoveTrace.class);
+        var placement=new fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData();placement.from.onGround=true;
+        when(trace.getFirstPastMove()).thenReturn(placement);
+        var field=MovingData.class.getField("playerMoves");field.setAccessible(true);field.set(f.data,trace);
+        FallStateSnapshot.restore(f.player,f.data,true);
+        verify(f.player).setFallDistance(23.435f);
+        assertEquals(81,f.data.noFallMaxY,0);assertEquals(0,f.data.noFallFallDistance,0);
+        assertTrue(f.data.noFallSkipAirCheck);
+    }
     @Test public void existingWindChargeFallOriginSurvivesMigration() {
         Fixture f = new Fixture(); f.data.noFallCurrentLocOnWindChargeHit = new Location(f.world,16,90,16);
         f.save(); f.data.noFallCurrentLocOnWindChargeHit = null;
