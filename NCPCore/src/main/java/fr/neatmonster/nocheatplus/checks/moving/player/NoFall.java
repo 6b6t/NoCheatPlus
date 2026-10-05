@@ -16,8 +16,7 @@ package fr.neatmonster.nocheatplus.checks.moving.player;
 
 import java.util.concurrent.ThreadLocalRandom;
 
-import fr.neatmonster.nocheatplus.components.registry.feature.TickListener;
-import fr.neatmonster.nocheatplus.utilities.TickTask;
+import fr.neatmonster.nocheatplus.compat.Folia;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -72,6 +71,21 @@ public class NoFall extends Check {
      * if a packet has already been related to a Bukkit event.
      */
 
+
+    private final PendingFallDamage pendingDamage = new PendingFallDamage(
+            new PendingFallDamage.Scheduler() {
+                public Object start(Player player, Runnable tick, Runnable retired) {
+                    return Folia.runSyncRepeatingTaskForEntity(player,
+                            Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> tick.run(), retired, 1L, 1L);
+                }
+                public void cancel(Object task) { Folia.cancelTask(task); }
+            }, System::nanoTime, Folia::isOwnedByCurrentRegion, (player, event) -> {
+                player.setLastDamageCause(event);
+                mcAccess.getHandle().dealFallDamage(player, BridgeHealth.getRawDamage(event));
+            });
+
+    public void cancelPendingDamage(Player player) { pendingDamage.cancel(player); }
+    public void clearPendingDamage() { pendingDamage.clear(); }
 
     private final static boolean ServerIsAtLeast1_12 = ServerVersion.compareMinecraftVersion("1.12") >= 0;
 
@@ -380,22 +394,13 @@ public class NoFall extends Check {
             mcAccess.getHandle().dealFallDamage(player, damage);
         }
         else {
+            final Object identity = pendingDamage.identity(player);
             final EntityDamageEvent event = BridgeHealth.getEntityDamageEvent(player, DamageCause.FALL, damage);
             Bukkit.getPluginManager().callEvent(event);
             if (!event.isCancelled()) {
-                // For some odd reason, player#setNoDamageTicks does not actually
-                // set the no damage ticks. As a workaround, wait for it to be zero and then damage the player.
+                // Wait only on the owning entity scheduler, with bounded lifetime and cleanup.
                 if (player.getNoDamageTicks() > 0) {
-                    TickListener damagePlayer = new TickListener() {
-                        @Override
-                        public void onTick(int tick, long timeLast) {
-                            if (player.getNoDamageTicks() > 0) return;
-                            player.setLastDamageCause(event);
-                            mcAccess.getHandle().dealFallDamage(player, BridgeHealth.getRawDamage(event));
-                            TickTask.removeTickListener(this);
-                        }
-                    };
-                    TickTask.addTickListener(damagePlayer);
+                    pendingDamage.queue(player, event, identity);
                 } 
                 else {
                     player.setLastDamageCause(event);

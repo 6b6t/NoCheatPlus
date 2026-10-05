@@ -86,6 +86,38 @@ public class TestTeleportCompletion {
     }
 
     @Test
+    public void pendingFallChargeDistinguishesTrackedCorrectionFromIntentionalTeleport() throws Exception {
+        final Location target = new Location(world, 10, 90, 0);
+        when(player.getLocation()).thenReturn(new Location(world, 0, 70, 0));
+        data.prepareSetBack(target);
+        final MovingListener listener = mock(MovingListener.class, CALLS_REAL_METHODS);
+        final var noFall = mock(fr.neatmonster.nocheatplus.checks.moving.player.NoFall.class);
+        final Field field = MovingListener.class.getField("noFall");
+        field.setAccessible(true);
+        field.set(listener, noFall);
+        try (MockedStatic<Folia> folia = mockStatic(Folia.class);
+             MockedStatic<DataManager> manager = mockStatic(DataManager.class)) {
+            manager.when(() -> DataManager.getPlayerData(player)).thenReturn(pData);
+            folia.when(() -> Folia.isOwnedByCurrentRegion(player)).thenReturn(true);
+            folia.when(() -> Folia.teleportEntityAsync(any(), any(), any()))
+                    .thenReturn(new CompletableFuture<Boolean>());
+            assertTrue(MovingUtil.processStoredSetBack(player, "", pData));
+            // Cancellation must still work after movement checks become inactive.
+            when(pData.isCheckActive(CheckType.MOVING, player)).thenReturn(false);
+            final var event = new PlayerTeleportEvent(player, player.getLocation(), target, TeleportCause.PLUGIN);
+            event.setCancelled(true);
+            listener.onPlayerTeleportMonitor(event);
+            event.setCancelled(false);
+            listener.onPlayerTeleportMonitor(event);
+            verify(noFall, never()).cancelPendingDamage(player);
+            // Same cause, different authoritative destination: intentional teleport.
+            event.setTo(target.clone().add(10, 0, 0));
+            listener.onPlayerTeleportMonitor(event);
+            verify(noFall).cancelPendingDamage(player);
+        }
+    }
+
+    @Test
     public void distantArrivalThenSmallMoveDoesNotRollBackButUncheckedDriftDoes() throws Exception {
         final Location to = new Location(world, 8000000, 90, -8000000);
         when(player.getLocation()).thenReturn(to.clone());

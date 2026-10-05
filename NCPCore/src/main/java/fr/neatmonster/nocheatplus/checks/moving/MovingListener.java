@@ -1995,6 +1995,7 @@ catch (java.lang.Throwable thr) {}
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerDeath(final PlayerDeathEvent event) {
+        noFall.cancelPendingDamage(event.getEntity());
 
         final Player player = event.getEntity();
         final IPlayerData pData = DataManager.getPlayerData(player);
@@ -2158,6 +2159,13 @@ catch (java.lang.Throwable thr) {}
         // Evaluate result and adjust data.
         final Player player = event.getPlayer();
         final IPlayerData pData = DataManager.getPlayerData(player);
+        final MovingData pendingData = pData.getGenericInstance(MovingData.class);
+        final var pendingAttempt = pendingData.getSetBackTeleport();
+        if (!event.isCancelled() && event.getTo() != null
+                && (pendingAttempt == null || !pendingAttempt.isFor(player)
+                    || !pendingAttempt.isDestination(event.getTo()))) {
+            noFall.cancelPendingDamage(player);
+        }
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         final MovingData data = pData.getGenericInstance(MovingData.class);
         // Invalidate first-move thing.
@@ -2599,6 +2607,7 @@ catch (java.lang.Throwable thr) {}
      */
     @EventHandler(priority = EventPriority.MONITOR)
     public void onPlayerRespawn(final PlayerRespawnEvent event) {
+        noFall.cancelPendingDamage(event.getPlayer());
 
         final Player player = event.getPlayer();
         final IPlayerData pData = DataManager.getPlayerData(player);
@@ -2756,6 +2765,7 @@ catch (java.lang.Throwable thr) {}
 
     @Override
     public void playerLeaves(final Player player) {
+        noFall.cancelPendingDamage(player);
 
         removeData(player.getName());
         final IPlayerData pData = DataManager.getPlayerData(player);
@@ -3177,6 +3187,7 @@ catch (java.lang.Throwable thr) {}
 
     @Override
     public void onDisable() {
+        noFall.clearPendingDamage();
         removeAllData();
     }
 
