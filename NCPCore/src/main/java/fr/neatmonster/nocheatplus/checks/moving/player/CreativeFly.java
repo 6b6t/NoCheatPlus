@@ -144,8 +144,8 @@ public class CreativeFly extends Check {
             }
         }
 
-        // Slow falling is a real vanilla cancel. A gentle elytra tick is not:
-        // MovingListener.onGlidingMove keeps a short deploy from erasing the fall.
+        // Slow falling resets descent. Elytra accounting is rebased to native
+        // distance by NoFall, including short legitimate deploys.
         if (Bridge1_13.hasSlowfalling() && model.getScaleSlowfallingEffect()) {
             data.clearNoFallData();
             data.clearGlideDebt();

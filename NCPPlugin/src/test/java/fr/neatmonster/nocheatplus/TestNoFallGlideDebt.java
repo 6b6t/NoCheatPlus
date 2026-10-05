@@ -22,31 +22,53 @@ public class TestNoFallGlideDebt {
         }
     }
 
-    @Test public void aShortDeployKeepsTheFallThatHappenedBeforeIt() {
+    @Test public void aShortDeployAndCloseUseNativeDistance() {
         Air air = new Air(88, 8f);
         NoFall.onGlidingMove(air.player, air.data, -0.2);
-        assertEquals(1, air.data.noFallGlideTicks);
-        assertEquals(8f, air.data.noFallGlideCarry, 0);
-        assertEquals(8f, air.data.noFallFallDistance, 0);
-        for (int tick = 0; tick < 4; tick++) NoFall.onGlidingMove(air.player, air.data, -0.2);
-        assertFalse(air.data.noFallGlideEstablished);
-        assertEquals(8f, air.data.noFallFallDistance, 0);
-        // Vanilla zeroes fallDistance when the elytra opens. Closing it must put the debt back.
-        when(air.player.getFallDistance()).thenReturn(0f);
+        assertEquals(0f, air.data.noFallGlideCarry, 0);
+        assertTrue(air.data.noFallGlideEstablished);
+        when(air.player.getFallDistance()).thenReturn(1f);
         NoFall.stopGlide(air.player, air.data);
-        verify(air.player).setFallDistance(8f);
-        assertEquals(0, air.data.noFallGlideTicks);
-        assertEquals(8f, air.data.noFallGlideCarry, 0);
+        assertEquals(1f, air.data.noFallFallDistance, 0);
+        assertEquals(88, air.data.noFallMaxY, 0);
+        verify(air.player, never()).setFallDistance(anyFloat());
     }
 
-    @Test public void aRealGlideHandsTheLandingBackToVanilla() {
-        Air air = new Air(93, 0f);
-        for (int tick = 0; tick < NoFall.GLIDE_ESTABLISH_TICKS; tick++) NoFall.onGlidingMove(air.player, air.data, -0.2);
-        assertTrue(air.data.noFallGlideEstablished);
+    @Test public void repeatedGlideMovesDoNotCreateDebtOrChangeNativeDistance() {
+        Air air = new Air(93, 2f);
+        for (int move = 0; move < 100; move++) NoFall.onGlidingMove(air.player, air.data, -0.2);
+        assertEquals(0, air.data.noFallGlideTicks);
         assertEquals(0f, air.data.noFallGlideCarry, 0);
-        assertEquals(0f, air.data.noFallFallDistance, 0);
+        assertEquals(2f, air.data.noFallFallDistance, 0);
         NoFall.stopGlide(air.player, air.data);
         verify(air.player, never()).setFallDistance(anyFloat());
+    }
+
+    @Test public void oldCheckpointDebtIsDiscardedOnClose() {
+        Air air = new Air(88, 1f);
+        air.data.noFallGlideTicks = 4;
+        air.data.noFallGlideCarry = 8f;
+        air.data.noFallFallDistance = 8f;
+        NoFall.stopGlide(air.player, air.data);
+        assertEquals(1f, air.data.noFallFallDistance, 0);
+        assertEquals(0f, air.data.noFallGlideCarry, 0);
+        verify(air.player, never()).setFallDistance(anyFloat());
+    }
+
+    @Test public void completedFallsInvalidateDelayedRestores() {
+        Air air = new Air(90, 6f);
+        long generation = air.data.noFallGeneration;
+        assertTrue(NoFall.mayRestoreCancelledFall(air.data, generation));
+        // Teleports invalidate before their outcome is processed.
+        air.data.noFallGeneration++;
+        assertFalse(NoFall.mayRestoreCancelledFall(air.data, generation));
+        generation = air.data.noFallGeneration;
+        // Reset media, pearl, contact and respawn all clear NoFall data.
+        air.data.clearNoFallData();
+        assertFalse(NoFall.mayRestoreCancelledFall(air.data, generation));
+        generation = air.data.noFallGeneration;
+        NoFall.onVehicleLanded(air.data);
+        assertFalse(NoFall.mayRestoreCancelledFall(air.data, generation));
     }
 
     @Test public void anAirborneVehicleKeepsTheFallAndAGroundedOneEndsIt() {
@@ -72,7 +94,7 @@ public class TestNoFallGlideDebt {
         assertFalse(NoFall.boxSupportsFeet(16.5, 90.0, 16.5, 15.8125, 81.0, 15.8125, 17.1875, 81.5625, 17.1875));
     }
 
-    @Test public void aSteepDiveDoesNotUseTheGentleClear() {
+    @Test public void aSteepDiveAlsoUsesNativeDistance() {
         Air air = new Air(90, 4f);
         NoFall.onGlidingMove(air.player, air.data, -0.8);
         assertEquals(4f, air.data.noFallFallDistance, 0);

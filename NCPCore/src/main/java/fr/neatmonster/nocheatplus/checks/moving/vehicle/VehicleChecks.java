@@ -526,11 +526,12 @@ public class VehicleChecks extends CheckListener {
         SetBackEntry newTo = null;
         data.sfNoLowJump = true;
 
-        if (cc.noFallVehicleReset) {
+        if (cc.noFallVehicleReset && pData.isCheckActive(CheckType.MOVING_NOFALL, player)
+                && !(cc.noFallSkipAllowFlight && player.getAllowFlight())) {
             // A boat that is still in the air has not landed. Clearing here let
             // a one-tick mount erase the fall. A grounded vehicle did land.
             data.sfLowJump = false;
-            if (player.isOnGround()) NoFall.onVehicleLanded(data);
+            if (vehicle.isOnGround()) NoFall.onVehicleLanded(data);
             else NoFall.onVehicleAir(player, data, false);
         }
 
@@ -910,8 +911,10 @@ public class VehicleChecks extends CheckListener {
             final Location vLoc = vehicle.getLocation();
             // (Don't override vehicle set back and last position here.)
             // Workaround for some entities/animals that don't fire VehicleMoveEventS.
-            if (!normalVehicles.contains(vehicle.getType()) || cc.noFallVehicleReset) {
-                if (player.isOnGround()) NoFall.onVehicleLanded(data);
+            if ((!normalVehicles.contains(vehicle.getType()) || cc.noFallVehicleReset)
+                    && pData.isCheckActive(CheckType.MOVING_NOFALL, player)
+                    && !(cc.noFallSkipAllowFlight && player.getAllowFlight())) {
+                if (vehicle.isOnGround()) NoFall.onVehicleLanded(data);
                 else NoFall.onVehicleAir(player, data, true);
             }
             // Check consistency with vehicle location.

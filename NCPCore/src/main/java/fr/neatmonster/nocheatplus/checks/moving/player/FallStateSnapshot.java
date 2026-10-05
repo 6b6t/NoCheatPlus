@@ -33,7 +33,7 @@ public final class FallStateSnapshot {
     }
 
     public static void save(Player player, MovingData data, Location accepted) {
-        // A short glide keeps the debt in the carry even when the per-tick distance was parked.
+        // Legacy glide fields remain readable, but no pre-deploy debt is created.
         final boolean owed = data.noFallFallDistance > 0f || data.noFallGlideCarry > 0f
                 || data.noFallCurrentLocOnWindChargeHit != null;
         if (!owed || !Double.isFinite(data.noFallMaxY) || !Float.isFinite(data.noFallFallDistance)
@@ -83,6 +83,14 @@ public final class FallStateSnapshot {
             clear(player);
             return;
         }
+        if (player.isGliding() || glide && (state[4] > 0 || state[5] > 0 || state[6] == 1.0)) {
+            // Native entity data carries the glide distance across workers. Old
+            // seven-value snapshots must not revive the removed pre-glide debt.
+            NoFall.onGlidingMove(player, data, 0.0);
+            if (!player.isGliding()) NoFall.stopGlide(player, data);
+            clear(player);
+            return;
+        }
         if (Math.abs(current.getY() - state[0]) > 1.0e-5) {
             // Fox ordinary teleports arrive through join. Carry only the descent
             // before placement, never the spatial gap or its wind context.
@@ -97,10 +105,6 @@ public final class FallStateSnapshot {
         data.noFallMaxY = Math.max(data.noFallMaxY, state[1]);
         data.noFallCurrentLocOnWindChargeHit = Double.isNaN(state[3]) ? null :
                 new Location(current.getWorld(), current.getX(), state[3], current.getZ());
-        if (glide) {
-            data.noFallGlideTicks = (int) state[4];
-            data.noFallGlideCarry = Math.max(data.noFallGlideCarry, (float) state[5]);
-            data.noFallGlideEstablished = state[6] == 1.0;
-        }
+        data.clearGlideDebt();
     }
 }

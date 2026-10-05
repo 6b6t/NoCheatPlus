@@ -428,50 +428,31 @@ public class NoFall extends Check {
         return true;
     }
 
-    /** Ticks of continuous gliding before vanilla, not the pre-glide fall, owns the landing. */
-    public static final int GLIDE_ESTABLISH_TICKS = 10;
-
     /**
-     * A one-tick elytra deploy zeroes the vanilla fall distance. Keep the
-     * distance from before that deploy until the glide has actually lasted.
-     * Gentle glide ticks otherwise wipe the check (y delta above -0.5).
+     * A server-confirmed glide uses vanilla fall-distance accounting immediately.
+     * Deploy duration is not a vanilla fall-damage rule. In particular, never
+     * resurrect the pre-deploy descent when a legitimate short glide closes.
+     * These handlers only rebase check state; they never write native distance.
      */
     public static void onGlidingMove(final Player player, final MovingData data, final double yDistance) {
-        if (data.noFallGlideTicks == 0) {
-            final float geometric = (float) Math.max(0.0, data.noFallMaxY - player.getLocation().getY());
-            final float owed = Math.max(data.noFallFallDistance, Math.max(geometric, Math.max(0f, player.getFallDistance())));
-            data.noFallGlideCarry = Math.max(data.noFallGlideCarry, owed);
-            data.noFallGlideEstablished = false;
-        }
-        if (data.noFallGlideTicks < Integer.MAX_VALUE) data.noFallGlideTicks++;
-        if (data.noFallGlideTicks >= GLIDE_ESTABLISH_TICKS) {
-            data.noFallGlideEstablished = true;
-            data.noFallGlideCarry = 0f;
-        }
-        // Steep dives keep ordinary accounting. Only the gentle clear was a cancel.
-        if (yDistance <= -0.5) return;
-        if (data.noFallGlideEstablished) {
-            data.clearNoFallData();
-            return;
-        }
-        final float carry = data.noFallGlideCarry;
-        final int ticks = data.noFallGlideTicks;
         data.clearNoFallData();
-        data.noFallFallDistance = carry;
+        data.clearGlideDebt();
+        data.noFallFallDistance = Math.max(0f, player.getFallDistance());
         data.noFallMaxY = player.getLocation().getY();
-        data.noFallGlideTicks = ticks;
-        data.noFallGlideCarry = carry;
+        data.noFallGlideEstablished = true;
     }
 
-    /** The elytra closed before the deploy counted. Put the owed fall back. */
     public static void stopGlide(final Player player, final MovingData data) {
-        if (data.noFallGlideTicks <= 0) return;
-        if (!data.noFallGlideEstablished && data.noFallGlideCarry > 0f) {
-            data.noFallFallDistance = Math.max(data.noFallFallDistance, data.noFallGlideCarry);
-            if (player.getFallDistance() < data.noFallFallDistance) player.setFallDistance(data.noFallFallDistance);
-        }
-        data.noFallGlideTicks = 0;
-        data.noFallGlideEstablished = false;
+        if (!data.noFallGlideEstablished && data.noFallGlideTicks == 0 && data.noFallGlideCarry == 0f) return;
+        data.clearNoFallData();
+        data.clearGlideDebt();
+        data.noFallFallDistance = Math.max(0f, player.getFallDistance());
+        data.noFallMaxY = player.getLocation().getY();
+    }
+
+    /** A reset/contact/teleport invalidates callbacks captured for an earlier fall. */
+    public static boolean mayRestoreCancelledFall(final MovingData data, final long generation) {
+        return data.noFallGeneration == generation;
     }
 
     /** The vehicle is on the ground, so this landing is the vehicle's, not a later foot landing. */
@@ -555,6 +536,10 @@ public class NoFall extends Check {
                       final double previousSetBackY,
                       final MovingData data, final MovingConfig cc, final IPlayerData pData) {
 
+        if (Bridge1_9.isGlidingWithElytra(player)) {
+            onGlidingMove(player, data, 0.0);
+            return;
+        }
         final boolean debug = pData.isDebugActive(type);
         final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
         final LocationData from = thisMove.from;
@@ -737,6 +722,7 @@ public class NoFall extends Check {
     public void checkDamage(final Player player,  final double y, 
             final MovingData data, final IPlayerData pData) {
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+        if (Bridge1_9.isGlidingWithElytra(player)) return;
         if (!cc.noFallDealDamage && ServerVersion.compareMinecraftVersion("26.1") >= 0) {
             // A rejected move/correction is not a landing. Keep its descent for
             // native contact instead of consuming it through immediate damage.

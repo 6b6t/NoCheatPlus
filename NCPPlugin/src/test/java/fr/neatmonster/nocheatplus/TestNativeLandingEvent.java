@@ -31,10 +31,14 @@ public class TestNativeLandingEvent {
         Field f = owner.getDeclaredField(name); f.setAccessible(true); f.set(target, value);
     }
     private void event(boolean ground, boolean reset, boolean skipAir, double nativeDamage) throws Exception {
+        event(ground, reset, skipAir, nativeDamage, null);
+    }
+    private void event(boolean ground, boolean reset, boolean skipAir, double nativeDamage, String callbackCase) throws Exception {
         String previous = ServerVersion.getMinecraftVersion();
         try (var manager = mockStatic(DataManager.class);
              var movement = mockStatic(MovingUtil.class);
-             var folia = mockStatic(Folia.class)) {
+             var folia = mockStatic(Folia.class);
+             var bukkit = mockStatic(org.bukkit.Bukkit.class)) {
             ServerVersion.setMinecraftVersion("26.2");
             Player player = mock(Player.class);
             World world = mock(World.class); Block block = mock(Block.class);
@@ -73,6 +77,18 @@ public class TestNativeLandingEvent {
             IGenericInstanceHandle handle = mock(IGenericInstanceHandle.class);
             when(handle.getHandle()).thenReturn(access);
             field(listener, fr.neatmonster.nocheatplus.checks.CheckListener.class, "mcAccess", handle);
+            java.util.concurrent.atomic.AtomicReference<java.util.function.Consumer<Object>> delayed = new java.util.concurrent.atomic.AtomicReference<>();
+            if (callbackCase != null) {
+                var server = mock(org.bukkit.Server.class);
+                var plugins = mock(org.bukkit.plugin.PluginManager.class);
+                var plugin = mock(org.bukkit.plugin.Plugin.class);
+                bukkit.when(org.bukkit.Bukkit::getServer).thenReturn(server);
+                bukkit.when(org.bukkit.Bukkit::getPluginManager).thenReturn(plugins);
+                when(plugins.getPlugin("NoCheatPlus")).thenReturn(plugin);
+                when(player.isOnline()).thenReturn(true);
+                folia.when(() -> Folia.runSyncDelayedTaskForEntity(eq(player), eq(plugin), any(), isNull(), eq(1L)))
+                        .thenAnswer(call -> { delayed.set(call.getArgument(2)); return null; });
+            }
             EntityDamageEvent damage = new EntityDamageEvent(player, DamageCause.FALL, nativeDamage);
             Method check = MovingListener.class.getDeclaredMethod("checkFallDamageEvent", Player.class, EntityDamageEvent.class);
             check.setAccessible(true); check.invoke(listener, player, damage);
@@ -81,6 +97,25 @@ public class TestNativeLandingEvent {
             assertEquals(ground || reset ? 0 : 26.56f, data.noFallFallDistance, 0);
             verify(player, never()).setFallDistance(anyFloat());
             verify(aux).returnPlayerMoveInfo(info);
+            if (callbackCase != null) {
+                assertNotNull("The actual event scheduled its restore", delayed.get());
+                when(player.getFallDistance()).thenReturn(0f);
+                if (callbackCase.equals("teleport")) data.noFallGeneration++;
+                else if (callbackCase.equals("pearl")) data.clearNoFallData();
+                else if (callbackCase.equals("water")) when(support.isResetCond()).thenReturn(true);
+                else if (callbackCase.equals("contact")) when(support.isOnGround(anyDouble())).thenReturn(true);
+                else if (callbackCase.equals("disabled")) when(noFall.isEnabled(player, pData)).thenReturn(false);
+                else if (callbackCase.equals("survival-policy")) {
+                    movement.when(() -> MovingUtil.shouldCheckSurvivalFly(player, support, null, data, config, pData)).thenReturn(false);
+                }
+                else if (callbackCase.equals("allowflight")) {
+                    field(config, MovingConfig.class, "noFallSkipAllowFlight", true);
+                    when(player.getAllowFlight()).thenReturn(true);
+                }
+                delayed.get().accept(null);
+                if (callbackCase.equals("same-fall")) verify(player).setFallDistance(26.56f);
+                else verify(player, never()).setFallDistance(anyFloat());
+            }
         } finally { ServerVersion.setMinecraftVersion(previous); }
     }
     @Test public void windLimitedDamageSurvivesContactWithSkipAirCheck() throws Exception { event(true, false, true, 8); }
@@ -88,4 +123,12 @@ public class TestNativeLandingEvent {
     @Test public void nativeShortFallAndImmunityBoundaryKeepOnePoint() throws Exception { event(true, false, false, 1); }
     @Test public void acceptedResetMediumPreservesNativeMitigation() throws Exception { event(false, true, false, 1); }
     @Test public void phantomSupportCannotConsumeDistanceEvenAfterCorrection() throws Exception { event(false, false, true, 8); }
+    @Test public void delayedRestoreRunsForTheSameUnfinishedFall() throws Exception { event(false, false, true, 8, "same-fall"); }
+    @Test public void delayedRestoreCannotFollowTeleport() throws Exception { event(false, false, true, 8, "teleport"); }
+    @Test public void delayedRestoreCannotFollowPearlReset() throws Exception { event(false, false, true, 8, "pearl"); }
+    @Test public void delayedRestoreCannotOverwriteWaterContact() throws Exception { event(false, false, true, 8, "water"); }
+    @Test public void delayedRestoreCannotOverwriteGroundContact() throws Exception { event(false, false, true, 8, "contact"); }
+    @Test public void delayedRestoreRechecksDisablement() throws Exception { event(false, false, true, 8, "disabled"); }
+    @Test public void delayedRestoreRechecksSurvivalPolicy() throws Exception { event(false, false, true, 8, "survival-policy"); }
+    @Test public void delayedRestoreRechecksAllowFlightPolicy() throws Exception { event(false, false, true, 8, "allowflight"); }
 }

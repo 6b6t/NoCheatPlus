@@ -248,6 +248,95 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                 .context() //
                 );
         teleportCompletionSupported = registerTeleportCompletionEvent(api);
+        registerWindChargeKnockback(api);
+    }
+
+    /** Optional native impulse observer; legacy handling remains the fallback. */
+    private void registerWindChargeKnockback(final NoCheatPlusAPI api) {
+        try {
+            final Class<? extends Event> type = Class.forName(
+                    "io.papermc.paper.event.entity.EntityKnockbackEvent").asSubclass(Event.class);
+            registerWindChargeSource(api);
+            registerWindChargeKnockback(api, type, type.getMethod("getEntity"),
+                    type.getMethod("getCause"), type.getMethod("getKnockback"));
+        } catch (ClassNotFoundException unavailable) {
+            // Older APIs keep estimated wind-charge velocity handling.
+        } catch (ReflectiveOperationException | ClassCastException invalid) {
+            StaticLog.logWarning("Failed to register native wind-charge impulse support: " + invalid.getMessage());
+        }
+    }
+
+    private void registerWindChargeSource(final NoCheatPlusAPI api) throws ReflectiveOperationException {
+        final Class<? extends Event> type = Class.forName("org.bukkit.event.entity.EntityKnockbackEvent").asSubclass(Event.class);
+        final Class<?> attributed = Class.forName("org.bukkit.event.entity.EntityKnockbackByEntityEvent");
+        final Method entity = type.getMethod("getEntity");
+        final Method source = attributed.getMethod("getSourceEntity");
+        registerWindChargeSource(api, type, attributed, entity, source);
+    }
+
+    private <E extends Event> void registerWindChargeSource(final NoCheatPlusAPI api, final Class<E> type,
+            final Class<?> attributed, final Method entity, final Method source) {
+        api.getEventRegistry().register(type, new MiniListener<E>() {
+            @Override public void onEvent(final E event) {
+                try {
+                    final Object target = entity.invoke(event);
+                    if (!(target instanceof Player)) return;
+                    final Player player = (Player) target;
+                    if (!Folia.isOwnedByCurrentRegion(player)) return;
+                    final MovingData data = DataManager.getPlayerData(player).getGenericInstance(MovingData.class);
+                    data.windChargeImpulseEntityTick = Integer.MIN_VALUE;
+                    data.windChargeImpulseSource = null;
+                    if (((org.bukkit.event.Cancellable) event).isCancelled() || !attributed.isInstance(event)) return;
+                    final Entity projectile = (Entity) source.invoke(event);
+                    if (projectile.getType() != BridgeEntityType.WIND_CHARGE) return;
+                    data.windChargeImpulseEntityTick = player.getTicksLived();
+                    data.windChargeImpulseSource = projectile.getUniqueId();
+                } catch (ReflectiveOperationException invalid) {
+                    StaticLog.logWarning("Failed to read wind-charge source: " + invalid.getMessage());
+                }
+            }
+        }, EventPriority.MONITOR, null, true);
+    }
+
+    private <E extends Event> void registerWindChargeKnockback(final NoCheatPlusAPI api, final Class<E> type,
+            final Method entity, final Method cause, final Method knockback) {
+        api.getEventRegistry().register(type, new MiniListener<E>() {
+            @Override public void onEvent(final E event) {
+                if (((org.bukkit.event.Cancellable) event).isCancelled()) return;
+                try {
+                    if (!"EXPLOSION".equals(((Enum<?>) cause.invoke(event)).name())) return;
+                    final Object target = entity.invoke(event);
+                    if (!(target instanceof Player)) return;
+                    final Player player = (Player) target;
+                    if (!Folia.isOwnedByCurrentRegion(player)) return;
+                    final IPlayerData pData = DataManager.getPlayerData(player);
+                    if (!pData.isCheckActive(CheckType.MOVING, player)) return;
+                    final MovingData data = pData.getGenericInstance(MovingData.class);
+                    acceptNativeWindChargeVelocity(player, data, pData.getGenericInstance(MovingConfig.class),
+                            (Vector) knockback.invoke(event));
+                } catch (ReflectiveOperationException invalid) {
+                    StaticLog.logWarning("Failed to read native wind-charge impulse: " + invalid.getMessage());
+                }
+            }
+        }, EventPriority.MONITOR, null, true);
+    }
+
+    /** Consume only the synchronous impulse following an attributed wind-charge hit. */
+    public static void acceptNativeWindChargeVelocity(final Player player, final MovingData data,
+            final MovingConfig cc, final Vector impulse) {
+        if (data.windChargeImpulseSource == null || data.windChargeImpulseEntityTick != player.getTicksLived()) return;
+        data.windChargeImpulseEntityTick = Integer.MIN_VALUE;
+        final Vector result = player.getVelocity().clone().add(impulse);
+        if (!Double.isFinite(result.getX()) || !Double.isFinite(result.getY()) || !Double.isFinite(result.getZ())) return;
+        // The native result includes momentum and earlier impulses. Consume the
+        // old estimate now, never after a later authoritative velocity arrives.
+        data.nativeWindChargeSource = data.windChargeImpulseSource;
+        data.windChargeImpulseSource = null;
+        data.shouldApplyExplosionVelocity = false;
+        data.explosionVelAxisX = data.explosionVelAxisY = data.explosionVelAxisZ = 0.0;
+        // Insert at the event's tick, with ordinary expiry, without deleting any
+        // newer/independent velocity entries or storing renewable pending credit.
+        data.addVelocity(player, cc, result.getX(), result.getY(), result.getZ());
     }
 
     private boolean registerTeleportCompletionEvent(final NoCheatPlusAPI api) {
@@ -490,7 +579,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
         useChangeWorldLoc.setWorld(null);
     }
     
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onWindChargeExplode(final EntityExplodeEvent event) {
         if (event.getEntity() == null || event.getEntity().getType() != BridgeEntityType.WIND_CHARGE) {
             return;
@@ -500,6 +589,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                 explosionLocation, WIND_CHARGE_IMPULSE_RADIUS, WIND_CHARGE_IMPULSE_RADIUS,
                 WIND_CHARGE_IMPULSE_RADIUS, nearby -> nearby.getType() == EntityType.PLAYER)) {
             final Player player = (Player) entity;
+            if (!Folia.isOwnedByCurrentRegion(player)) continue;
             final IPlayerData pData = DataManager.getPlayerData(player);
             if (!pData.isCheckActive(CheckType.MOVING, player)) {
                 continue;
@@ -507,6 +597,10 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
             final MovingData data = pData.getGenericInstance(MovingData.class);
             final Location playerLocation = player.getLocation();
             data.noFallCurrentLocOnWindChargeHit = playerLocation.clone();
+            if (event.getEntity().getUniqueId().equals(data.nativeWindChargeSource)) {
+                data.nativeWindChargeSource = null;
+                continue; // Already credited the final, source-attributed native impulse.
+            }
             addWindChargeVelocity(player, explosionLocation, playerLocation, data,
                     pData.isDebugActive(CheckType.MOVING));
         }
@@ -931,9 +1025,12 @@ catch (java.lang.Throwable thr) {}
         if (multiMoveCount > 0) {
             thisMove.multiMoveCount = multiMoveCount;
         }
-        // Record a glide before creative-fly can treat a one-tick deploy as a landing.
-        // Stopping the glide restores the pre-deploy distance on this same move.
-        if (Bridge1_9.isGlidingWithElytra(player)) {
+        // Rebase only when NoFall is effective. Disabling/exempting the check
+        // must not alter native glide accounting or retain an old deploy.
+        if (!noFall.isEnabled(player, pData) || cc.noFallSkipAllowFlight && player.getAllowFlight()) {
+            data.clearNoFallData();
+            data.clearGlideDebt();
+        } else if (Bridge1_9.isGlidingWithElytra(player)) {
             noFall.onGlidingMove(player, data, thisMove.yDistance);
         } else {
             noFall.stopGlide(player, data);
@@ -2039,6 +2136,7 @@ catch (java.lang.Throwable thr) {}
      */
     @EventHandler(ignoreCancelled = false, priority = EventPriority.LOWEST)
     public void onPlayerTeleportLowest(final PlayerTeleportEvent event) {
+        DataManager.getPlayerData(event.getPlayer()).getGenericInstance(MovingData.class).noFallGeneration++;
 
         final Player player = event.getPlayer();
         // Prevent further moving processing for nested events.
@@ -2516,7 +2614,7 @@ catch (java.lang.Throwable thr) {}
         pLoc.collectBlockFlags(yOnGround);
 
         if (event.isCancelled() || !MovingUtil.shouldCheckSurvivalFly(player, pLoc, moveInfo.to, data, cc, pData) 
-            || !noFall.isEnabled(player, pData)) {
+            || !noFall.isEnabled(player, pData) || cc.noFallSkipAllowFlight && player.getAllowFlight()) {
             data.clearNoFallData();
             data.clearGlideDebt();
             aux.returnPlayerMoveInfo(moveInfo);
@@ -2535,7 +2633,7 @@ catch (java.lang.Throwable thr) {}
             // and attributes there. Recomputing damage from geometric distance here
             // would undo legitimate wind-charge mitigation (and other native rules).
             // Client-only support still cannot consume the descent or cause damage.
-            if (!pLoc.isOnGround(yOnGround) && !pLoc.isResetCond() && !entitySupportsFeet(player)) {
+            if (!Bridge1_9.isGlidingWithElytra(player) && !pLoc.isOnGround(yOnGround) && !pLoc.isResetCond() && !entitySupportsFeet(player)) {
                 // Still airborne. Cancelling is required so a ground spoof cannot
                 // consume the fall, but the server zeroes fallDistance anyway.
                 // Put that distance back on the next tick.
@@ -2544,8 +2642,29 @@ catch (java.lang.Throwable thr) {}
                 event.setCancelled(true);
                 // Unit tests have no server. A live server zeroes the distance after this event returns.
                 if (owed > 0f && Bukkit.getServer() != null) {
+                    final long generation = data.noFallGeneration;
                     Folia.runSyncDelayedTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> {
-                        if (player.isOnline() && player.getFallDistance() + 0.05f < owed) player.setFallDistance(owed);
+                        if (!player.isOnline() || player.isDead() || player.isInsideVehicle()
+                                || Bridge1_9.isGlidingWithElytra(player)
+                                || pData.getGenericInstance(MovingData.class) != data
+                                || !noFall.isEnabled(player, pData)
+                                || pData.getGenericInstance(MovingConfig.class).noFallSkipAllowFlight && player.getAllowFlight()
+                                || !NoFall.mayRestoreCancelledFall(data, generation)) return;
+                        final PlayerMoveInfo restoreInfo = aux.usePlayerMoveInfo();
+                        try {
+                            restoreInfo.set(player, player.getLocation(), null, yOnGround);
+                            restoreInfo.from.collectBlockFlags(yOnGround);
+                            if (!MovingUtil.shouldCheckSurvivalFly(player, restoreInfo.from, restoreInfo.to, data,
+                                    pData.getGenericInstance(MovingConfig.class), pData)) return;
+                            if (restoreInfo.from.isOnGround(yOnGround) || restoreInfo.from.isResetCond()
+                                    || entitySupportsFeet(player)) {
+                                data.clearNoFallData();
+                                return;
+                            }
+                            if (player.getFallDistance() + 0.05f < owed) player.setFallDistance(owed);
+                        } finally {
+                            aux.returnPlayerMoveInfo(restoreInfo);
+                        }
                     }, null, 1L);
                 }
             }

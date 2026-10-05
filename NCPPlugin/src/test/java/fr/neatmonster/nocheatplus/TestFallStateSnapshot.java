@@ -108,4 +108,29 @@ public class TestFallStateSnapshot {
         assertNull(next.data.noFallCurrentLocOnWindChargeHit);
     }
 
+    @Test public void legacyGlideDebtCannotReviveAcrossWorkers() {
+        Fixture f = new Fixture(); f.save();
+        f.serialized.put(new NamespacedKey("nocheatplus", "fall_state_v2"),
+                java.util.Arrays.stream(new double[]{81.565,105,23.435,Double.NaN,4,23.435,0})
+                        .mapToLong(Double::doubleToRawLongBits).toArray());
+        when(f.player.getFallDistance()).thenReturn(1f);
+        FallStateSnapshot.restore(f.player, f.data);
+        assertEquals(1f, f.data.noFallFallDistance, 0);
+        assertEquals(81.565, f.data.noFallMaxY, 0);
+        assertEquals(0f, f.data.noFallGlideCarry, 0);
+        verify(f.player, never()).setFallDistance(anyFloat());
+    }
+    @Test public void legacyGlideDebtCannotReviveDuringAnOrdinaryWorkerTeleport() {
+        Fixture f = new Fixture(); f.save();
+        f.serialized.put(new NamespacedKey("nocheatplus", "fall_state_v2"),
+                java.util.Arrays.stream(new double[]{81.565,105,23.435,Double.NaN,4,23.435,0})
+                        .mapToLong(Double::doubleToRawLongBits).toArray());
+        f.location.setY(90);
+        when(f.player.getFallDistance()).thenReturn(1f);
+        FallStateSnapshot.restore(f.player, f.data, true);
+        assertEquals(1f, f.data.noFallFallDistance, 0);
+        assertEquals(90, f.data.noFallMaxY, 0);
+        verify(f.player, never()).setFallDistance(anyFloat());
+    }
+
 }

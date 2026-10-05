@@ -232,14 +232,14 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public boolean noFallSkipAirCheck = false;
     /** Last coordinate from when the player was affected wind charge explosion */
     public Location noFallCurrentLocOnWindChargeHit = null;
-    /** Continuous glide ticks for the open deploy. Zero while not gliding. */
+    /** Legacy snapshot field. New glides have no duration threshold. */
     public int noFallGlideTicks = 0;
-    /** Fall distance owed if this deploy ends before it is a real glide. */
+    /** Legacy snapshot debt, discarded when rebasing to native glide accounting. */
     public float noFallGlideCarry = 0f;
-    /** The open deploy has lasted long enough that vanilla owns the landing. */
+    /** Native glide accounting is active until the next move after closing. */
     public boolean noFallGlideEstablished = false;
 
-    /** Drop a finished glide. A landing, a real deploy, or a grounded vehicle calls this. */
+    /** Drop native-glide transition state and any legacy snapshot debt. */
     public void clearGlideDebt() {
         noFallGlideTicks = 0;
         noFallGlideCarry = 0f;
@@ -721,16 +721,26 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     }
 
 
-    /**
-     * Clear the data of the new fall check.
-     */
+    /** Entity-owned token for pending native-distance restores; never transferred. */
+    public long noFallGeneration;
+
+    /** Clear the fall check and invalidate callbacks for the previous descent. */
     public void clearNoFallData() {
+        noFallGeneration++;
         noFallFallDistance = 0;
         noFallMaxY = BlockProperties.getMinWorldY();
         noFallSkipAirCheck = false;
     }
     
+    /** Synchronous wind explosion context; never a transferable velocity allowance. */
+    public int windChargeImpulseEntityTick = Integer.MIN_VALUE;
+    public java.util.UUID windChargeImpulseSource;
+    public java.util.UUID nativeWindChargeSource;
+
     public void clearWindChargeImpulse() {
+        windChargeImpulseEntityTick = Integer.MIN_VALUE;
+        windChargeImpulseSource = null;
+        nativeWindChargeSource = null;
         noFallCurrentLocOnWindChargeHit = null;
     }
 
@@ -1545,6 +1555,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
 
 
     public void useVerticalBounce(final Player player) {
+        noFallGeneration++;
         // CHEATING: Ensure fall distance is reset.
         player.setFallDistance(0f);
         noFallMaxY = BlockProperties.getMinWorldY();
