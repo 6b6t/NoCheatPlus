@@ -62,35 +62,31 @@ public class TestNativeWindChargeVelocity {
         MovingListener.acceptNativeWindChargeVelocity(player, data, mock(MovingConfig.class), new Vector(Double.NaN, 1, 0));
         verify(data, never()).addVelocity(any(), any(), anyDouble(), anyDouble(), anyDouble());
     }
-    @Test public void hitAndExplosionBothKeepTheirSentAllowancesWithoutBanking() {
+
+    @Test public void ownerlessWindHitCreditsTheDirectProjectileWithoutPendingCredit() {
         Player player = mock(Player.class);
         MovingData data = mock(MovingData.class);
         MovingConfig config = mock(MovingConfig.class);
-        when(player.getTicksLived()).thenReturn(23);
+        org.bukkit.entity.Entity projectile = mock(org.bukkit.entity.Entity.class);
+        when(projectile.getType()).thenReturn(fr.neatmonster.nocheatplus.compat.BridgeEntityType.WIND_CHARGE);
         when(player.getVelocity()).thenReturn(new Vector(0, -1, 0));
-        data.windChargeImpulseEntityTick = 23;
-        data.windChargeImpulseSource = java.util.UUID.randomUUID();
-        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, new Vector(0, 0, .4));
-        // The server has restored its old momentum after sending hit velocity.
-        MovingListener.acceptNativeWindChargeVelocity(player, data, config, new Vector(0, -.305, 0));
+        // No shooter/Bukkit source context exists for an ownerless real projectile.
+        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, projectile, new Vector(0, 0, .4));
         verify(data).addVelocity(player, config, 0, -1, .4);
-        verify(data).addVelocity(player, config, 0, -1.305, 0);
         verify(data, never()).removeAllVelocity();
-        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, new Vector(0, 0, .4));
-        verify(data, times(2)).addVelocity(any(), any(), anyDouble(), anyDouble(), anyDouble());
+        assertNull(data.windChargeImpulseSource);
+        assertNull(data.nativeWindChargeSource);
     }
 
-    @Test public void unrelatedOrExpiredProjectileHitGetsNoAllowance() {
+    @Test public void unrelatedProjectileHitGetsNoWindAllowance() {
         Player player = mock(Player.class);
         MovingData data = mock(MovingData.class);
         MovingConfig config = mock(MovingConfig.class);
-        when(player.getTicksLived()).thenReturn(24);
-        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, new Vector(0, 0, .4));
-        data.windChargeImpulseSource = java.util.UUID.randomUUID();
-        data.windChargeImpulseEntityTick = 23;
-        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, new Vector(0, 0, .4));
+        org.bukkit.entity.Entity projectile = mock(org.bukkit.entity.Entity.class);
+        when(projectile.getType()).thenReturn(org.bukkit.entity.EntityType.ARROW);
+        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, null, new Vector(0, 0, .4));
+        MovingListener.acceptNativeWindChargeHitVelocity(player, data, config, projectile, new Vector(0, 0, .4));
         verifyNoInteractions(data);
         verify(player, never()).getVelocity();
     }
-
 }

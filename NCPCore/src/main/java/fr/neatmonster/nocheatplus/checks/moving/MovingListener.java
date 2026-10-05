@@ -257,8 +257,9 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
             final Class<? extends Event> type = Class.forName(
                     "io.papermc.paper.event.entity.EntityKnockbackEvent").asSubclass(Event.class);
             registerWindChargeSource(api);
+            final Class<?> hitType = Class.forName("io.papermc.paper.event.entity.EntityPushedByEntityAttackEvent");
             registerWindChargeKnockback(api, type, type.getMethod("getEntity"),
-                    type.getMethod("getCause"), type.getMethod("getKnockback"));
+                    type.getMethod("getCause"), type.getMethod("getKnockback"), hitType, hitType.getMethod("getPushedBy"));
         } catch (ClassNotFoundException unavailable) {
             // Older APIs keep estimated wind-charge velocity handling.
         } catch (ReflectiveOperationException | ClassCastException invalid) {
@@ -299,7 +300,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     }
 
     private <E extends Event> void registerWindChargeKnockback(final NoCheatPlusAPI api, final Class<E> type,
-            final Method entity, final Method cause, final Method knockback) {
+            final Method entity, final Method cause, final Method knockback, final Class<?> hitType, final Method hitSource) {
         api.getEventRegistry().register(type, new MiniListener<E>() {
             @Override public void onEvent(final E event) {
                 if (((org.bukkit.event.Cancellable) event).isCancelled()) return;
@@ -314,8 +315,9 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                     if (!pData.isCheckActive(CheckType.MOVING, player)) return;
                     final MovingData data = pData.getGenericInstance(MovingData.class);
                     if ("ENTITY_ATTACK".equals(impulseCause)) {
+                        if (!hitType.isInstance(event)) return;
                         acceptNativeWindChargeHitVelocity(player, data, pData.getGenericInstance(MovingConfig.class),
-                                (Vector) knockback.invoke(event));
+                                (Entity) hitSource.invoke(event), (Vector) knockback.invoke(event));
                     } else {
                         acceptNativeWindChargeVelocity(player, data, pData.getGenericInstance(MovingConfig.class),
                                 (Vector) knockback.invoke(event));
@@ -329,8 +331,10 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
 
     /** Credit the projectile hit before its separate explosion, at the event's tick. */
     public static void acceptNativeWindChargeHitVelocity(final Player player, final MovingData data,
-            final MovingConfig cc, final Vector impulse) {
-        if (data.windChargeImpulseSource == null || data.windChargeImpulseEntityTick != player.getTicksLived()) return;
+            final MovingConfig cc, final Entity source, final Vector impulse) {
+        // The Bukkit damage source can be the shooter (null for an ownerless
+        // projectile). Paper exposes the actual direct projectile for this hit.
+        if (source == null || source.getType() != BridgeEntityType.WIND_CHARGE) return;
         final Vector result = player.getVelocity().clone().add(impulse);
         if (!Double.isFinite(result.getX()) || !Double.isFinite(result.getY()) || !Double.isFinite(result.getZ())) return;
         // ServerPlayer sends the hit knockback and can restore its old momentum
