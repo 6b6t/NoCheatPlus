@@ -1340,6 +1340,11 @@ catch (java.lang.Throwable thr) {}
             // 2: Process the bounce effect if the move is allowed.
             if (verticalBounce != BounceType.NO_BOUNCE) {
                 BounceUtil.processBounce(player, pFrom.getY(), pTo.getY(), verticalBounce, tick, this, data, cc, pData);
+                if (verticalBounce == BounceType.STATIC) {
+                    // A native bounce has no FALL event. Retained descent must
+                    // not be carried into a later fall or ordinary teleport.
+                    NoFall.consumeSlimeContact(pTo, data, Math.max(cc.noFallyOnGround, cc.yOnGround));
+                }
             }
 
             // 3: Finish processing the current move, move it to past ones

@@ -409,6 +409,16 @@ public class NoFall extends Check {
     }
 
 
+    /** Consume a server-confirmed slime contact even though bounce handling skips NoFall. */
+    public static void consumeSlimeContact(PlayerLocation to, MovingData data, double yOnGround) {
+        if (to.getTypeIdBelow() == Material.SLIME_BLOCK && to.isOnGround(yOnGround)) {
+            data.clearNoFallData();
+            data.noFallMaxY = to.getY();
+            data.noFallSkipAirCheck = true;
+            data.clearWindChargeImpulse();
+        }
+    }
+
     /** Transfer an accepted ordinary teleport's fall distance to its native landing. */
     public static void afterTeleport(Player player, MovingData data, Location to, float sourceDistance, boolean preserve) {
         final float nativeDistance = player.getFallDistance();

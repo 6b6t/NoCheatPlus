@@ -106,6 +106,24 @@ public class TestNoFallLandingConsumption {
         NoFall.afterTeleport(f.player, f.data, f.player.getLocation(), 9, false);
         verify(f.player, never()).setFallDistance(9);
     }
+    @Test public void acceptedSlimeContactCannotCarryItsDescentIntoTheNextFall() throws Exception {
+        Fixture f = new Fixture();
+        var to = mock(fr.neatmonster.nocheatplus.utilities.location.PlayerLocation.class);
+        when(to.getTypeIdBelow()).thenReturn(Material.SLIME_BLOCK);
+        when(to.getY()).thenReturn(82.0);
+        f.data.noFallFallDistance = 11; f.data.noFallMaxY = 93;
+        NoFall.consumeSlimeContact(to, f.data, 0.0625);
+        assertEquals(11, f.data.noFallFallDistance, 0); // Approaching is not contact.
+        when(to.isOnGround(0.0625)).thenReturn(true);
+        NoFall.consumeSlimeContact(to, f.data, 0.0625);
+        assertEquals(0, f.data.noFallFallDistance, 0);
+        assertEquals(82, f.data.noFallMaxY, 0);
+        assertTrue(f.data.noFallSkipAirCheck);
+        f.data.noFallFallDistance = 4;
+        when(to.getTypeIdBelow()).thenReturn(Material.STONE);
+        NoFall.consumeSlimeContact(to, f.data, 0.0625);
+        assertEquals(4, f.data.noFallFallDistance, 0); // No exemption for other support.
+    }
     @Test public void immunityWithoutDamageEventStillConsumesEachLanding() throws Exception {
         Fixture f = new Fixture();
         f.fall(12); assertEquals(0, f.data.noFallFallDistance, 0);
