@@ -528,8 +528,8 @@ public class VehicleChecks extends CheckListener {
 
         if (cc.noFallVehicleReset && pData.isCheckActive(CheckType.MOVING_NOFALL, player)
                 && !(cc.noFallSkipAllowFlight && player.getAllowFlight())) {
-            // A boat that is still in the air has not landed. Clearing here let
-            // a one-tick mount erase the fall. A grounded vehicle did land.
+            // Collision support and a confirmed ride are different native rules.
+            // Riding resets the passenger's descent even before the vehicle lands.
             data.sfLowJump = false;
             if (vehicle.isOnGround()) NoFall.onVehicleLanded(data);
             else NoFall.onVehicleAir(player, data, false);

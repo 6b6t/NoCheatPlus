@@ -462,11 +462,13 @@ public class NoFall extends Check {
         data.noFallSkipAirCheck = true;
     }
 
-    /** Mounting or leaving a vehicle in the air must not erase the fall. */
+    /** A confirmed ride/dismount uses native resets, even while the vehicle is airborne. */
     public static void onVehicleAir(final Player player, final MovingData data, final boolean leaving) {
-        final float owed = Math.max(data.noFallFallDistance, Math.max(data.noFallGlideCarry, Math.max(0f, player.getFallDistance())));
-        data.noFallFallDistance = Math.max(data.noFallFallDistance, owed);
-        if (leaving && owed > player.getFallDistance()) player.setFallDistance(owed);
+        data.clearNoFallData();
+        data.clearGlideDebt();
+        data.clearWindChargeImpulse();
+        data.noFallFallDistance = Math.max(0f, player.getFallDistance());
+        data.noFallMaxY = player.getLocation().getY();
     }
 
     /** Consume a server-confirmed slime contact even though bounce handling skips NoFall. */

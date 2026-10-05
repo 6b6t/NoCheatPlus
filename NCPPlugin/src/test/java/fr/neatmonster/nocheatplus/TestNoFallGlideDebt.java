@@ -71,13 +71,18 @@ public class TestNoFallGlideDebt {
         assertFalse(NoFall.mayRestoreCancelledFall(air.data, generation));
     }
 
-    @Test public void anAirborneVehicleKeepsTheFallAndAGroundedOneEndsIt() {
+    @Test public void aConfirmedAirborneRideRespectsNativeResetAndGroundContactEndsIt() {
         Air air = new Air(90, 6f);
-        // Mounting a vehicle zeroes the Bukkit fall distance. Leaving in the air must restore it.
+        // A real ride reset must not resurrect pre-mount distance on air dismount.
         when(air.player.getFallDistance()).thenReturn(0f);
         NoFall.onVehicleAir(air.player, air.data, true);
-        verify(air.player).setFallDistance(6f);
-        assertEquals(6f, air.data.noFallFallDistance, 0);
+        verify(air.player, never()).setFallDistance(anyFloat());
+        assertEquals(0f, air.data.noFallFallDistance, 0);
+        assertEquals(90, air.data.noFallMaxY, 0);
+        when(air.player.getFallDistance()).thenReturn(2f);
+        NoFall.onVehicleAir(air.player, air.data, true);
+        assertEquals(2f, air.data.noFallFallDistance, 0);
+        verify(air.player, never()).setFallDistance(anyFloat());
         NoFall.onVehicleLanded(air.data);
         assertEquals(0f, air.data.noFallFallDistance, 0);
         assertEquals(0f, air.data.noFallGlideCarry, 0);
