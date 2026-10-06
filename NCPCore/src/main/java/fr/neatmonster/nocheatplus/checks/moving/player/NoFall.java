@@ -588,6 +588,49 @@ public class NoFall extends Check {
         return feet;
     }
 
+    /** A descending true-ground step can follow a falling boat without a
+     * damaging event. Validate its final native point before consuming the
+     * sub-threshold geometric step; neither a received flag nor FD zero alone
+     * proves that it was processed or physically supported. */
+    private Location consumeProcessedBoatStep(final Player player, final MovingData data) {
+        final DataPacketFlying step = data.noFallBoatGroundStep;
+        if (step == null || mcAccess == null
+                || retainedNativeResetDebt(data) > 0f || getDamage(player, data.noFallFallDistance) >= Magic.FALL_DAMAGE_MINIMUM
+                || !Folia.isOwnedByCurrentRegion(player)) return null;
+        final Location feet = player.getLocation();
+        if (feet == null || Math.abs(feet.getX() - step.getX()) > 1.0e-7
+                || feet.getY() > step.getY() + 1.0e-7
+                || Math.abs(feet.getZ() - step.getZ()) > 1.0e-7
+                || getDamage(player, (float) Math.max(data.noFallFallDistance, data.noFallMaxY - step.getY())) >= Magic.FALL_DAMAGE_MINIMUM) return null;
+        final float nativeDistance = player.getFallDistance();
+        // A later no-event packet may already have begun the new fall. Its
+        // native distance must equal only descent since the processed receipt.
+        if (Math.abs(nativeDistance - Math.max(0.0, step.getY() - feet.getY())) > 1.0e-5) return null;
+        final double halfWidth = player.getBoundingBox().getWidthX() / 2.0;
+        if (!(halfWidth > 0.0) || !Double.isFinite(halfWidth)) return null;
+        boolean supported = false;
+        try {
+            for (final Entity boat : player.getNearbyEntities(1.5, 8.0, 1.5)) {
+                if (!Folia.isOwnedByCurrentRegion(boat) || !boat.isValid() || !MaterialUtil.isBoat(boat.getType())
+                        || !mcAccess.getHandle().canCollideWith(player, boat)) continue;
+                final org.bukkit.util.BoundingBox box = boat.getBoundingBox();
+                if (boxSupportsFeet(feet.getX(), step.getY(), feet.getZ(), halfWidth,
+                        box.getMinX(), box.getMinY(), box.getMinZ(), box.getMaxX(), box.getMaxY(), box.getMaxZ())
+                        || mcAccess.getHandle().hasSweptBoatSupport(boat, feet.getX() - halfWidth,
+                            step.getY(), feet.getZ() - halfWidth, feet.getX() + halfWidth, feet.getZ() + halfWidth)) {
+                    supported = true;
+                    break;
+                }
+            }
+        } catch (RuntimeException foreignEntity) { return null; }
+        if (!supported) return null;
+        data.clearNoFallData();
+        data.clearGlideDebt();
+        data.noFallFallDistance = nativeDistance;
+        data.noFallMaxY = feet.getY() + nativeDistance;
+        return feet;
+    }
+
     /** A reset/contact/teleport invalidates callbacks captured for an earlier fall. */
     public static boolean mayRestoreCancelledFall(final MovingData data, final long generation) {
         return data.noFallGeneration == generation;
@@ -688,8 +731,10 @@ public class NoFall extends Check {
         final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
         final LocationData from = thisMove.from;
         final LocationData to = thisMove.to;
+        final Location processedBoatStep = consumeProcessedBoatStep(player, data);
         final Location missedContact = rebaseMissedNativeBoatContact(player, thisMove, data, cc, pData);
-        final double fromY = missedContact == null ? from.getY() : missedContact.getY();
+        final double fromY = missedContact != null ? missedContact.getY()
+                : processedBoatStep != null ? processedBoatStep.getY() : from.getY();
         final double toY = to.getY();
         final double yDiff = toY - fromY;
         final double oldNFDist = data.noFallFallDistance;
@@ -820,6 +865,15 @@ public class NoFall extends Check {
             }
         }
 
+        // Preserve one immutable receipt until the owner can confirm that the
+        // native true-ground step actually reset distance on the falling boat.
+        // Explicit suppressed contacts and damaging geometric debt cannot be
+        // forgiven by this sub-threshold confirmation.
+        data.noFallBoatGroundStep = nativeLanding && fromOnGround && !toOnGround && !fromReset && !toReset
+                && !Bridge1_9.isGlidingWithElytra(player) && acceptedPacket != null && acceptedPacket.onGround
+                && getDamage(player, data.noFallFallDistance) < Magic.FALL_DAMAGE_MINIMUM && retainedNativeResetDebt(data) == 0f
+                ? acceptedPacket : null;
+
         if (ServerVersion.compareMinecraftVersion("26.1") >= 0 && (toOnGround || toReset)) {
             data.clearWindChargeImpulse();
         }
@@ -872,6 +926,12 @@ public class NoFall extends Check {
      */
     public void onLeave(final Player player, final MovingData data, 
             final IPlayerData pData) {
+        // A worker departure can be the first owner callback after this native
+        // contact. Refresh only an existing checkpoint; ordinary teleports must
+        // never recreate an explicitly invalidated one.
+        if (consumeProcessedBoatStep(player, data) != null && FallStateSnapshot.exists(player)) {
+            FallStateSnapshot.save(player, data, player.getLocation());
+        }
         final float fallDistance = player.getFallDistance();
         // TODO: Might also detect too high mc fall dist.
         if (data.noFallFallDistance > fallDistance) {

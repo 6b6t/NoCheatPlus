@@ -1914,6 +1914,16 @@ catch (java.lang.Throwable thr) {}
      * Monitor level PlayerMoveEvent. Each invocation owns its Location values.
      * @param event
      */
+    private static void invalidateChangedBoatStep(final MovingData mData, final PlayerMoveEvent event) {
+        // A changed/cancelled final Bukkit endpoint cannot prove native boat
+        // contact, even when NoFall accepted the earlier proposal.
+        final var boatStep = mData.noFallBoatGroundStep;
+        if (boatStep != null && (event.isCancelled() || event.getTo() == null
+                || Math.abs(event.getTo().getX() - boatStep.getX()) > 1.0e-7
+                || Math.abs(event.getTo().getY() - boatStep.getY()) > 1.0e-7
+                || Math.abs(event.getTo().getZ() - boatStep.getZ()) > 1.0e-7)) mData.noFallBoatGroundStep = null;
+    }
+
     @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled = false)
     public void onPlayerMoveMonitor(final PlayerMoveEvent event) {
 
@@ -1939,6 +1949,7 @@ catch (java.lang.Throwable thr) {}
         final Location from = event.getFrom();
         // Feed yawrate and reset moving data positions if necessary.
         final MovingData mData = pData.getGenericInstance(MovingData.class);
+        invalidateChangedBoatStep(mData, event);
         final int tick = TickTask.getTick();
         final MovingConfig mCc = pData.getGenericInstance(MovingConfig.class);
 

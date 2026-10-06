@@ -26,6 +26,10 @@ public final class FallStateSnapshot {
     private static final NamespacedKey WORLD = new NamespacedKey("nocheatplus", "fall_world_v2");
     private FallStateSnapshot() { }
 
+    public static boolean exists(Player player) {
+        return player.getPersistentDataContainer().has(STATE, PersistentDataType.LONG_ARRAY);
+    }
+
     public static void clear(Player player) {
         var container = player.getPersistentDataContainer();
         container.remove(STATE);

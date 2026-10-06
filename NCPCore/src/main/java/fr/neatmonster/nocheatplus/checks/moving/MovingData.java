@@ -751,6 +751,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public float noFallContactFallDebt;
     /** Last received movement sequence matched to an accepted position. */
     public long noFallMatchedPacketSequence;
+    /** Final received true-ground step from confirmed support, awaiting native processing. */
+    public fr.neatmonster.nocheatplus.checks.net.model.DataPacketFlying noFallBoatGroundStep;
 
 
     /** Clear the fall check and invalidate callbacks for the previous descent. */
@@ -759,6 +761,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         noFallCancelledAirFallDebt = 0f;
         noFallSetBackFallDebt = 0f;
         noFallContactFallDebt = 0f;
+        noFallBoatGroundStep = null;
         noFallFallDistance = 0;
         noFallMaxY = BlockProperties.getMinWorldY();
         noFallSkipAirCheck = false;
