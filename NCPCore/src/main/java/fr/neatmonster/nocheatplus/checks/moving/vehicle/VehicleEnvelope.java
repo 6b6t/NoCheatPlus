@@ -94,14 +94,13 @@ public class VehicleEnvelope extends Check {
 
     }
 
-    /** Tags for checks. */
-    private final List<String> tags = new LinkedList<String>();
-
-    /** Extra details to log on debug. */
-    private final List<String> debugDetails = new LinkedList<String>();
-
-    /** Details for re-use. */
-    private final CheckDetails checkDetails = new CheckDetails();
+    /** One context per invocation, including nested checks on the same thread. */
+    private static final ScopedValue<CheckContext> CONTEXT = ScopedValue.newInstance();
+    private final class CheckContext {
+        final List<String> tags = new LinkedList<>();
+        final List<String> debugDetails = new LinkedList<>();
+        final CheckDetails details = new CheckDetails();
+    }
 
     private final Class<?> bestHorse;
     
@@ -140,29 +139,37 @@ public class VehicleEnvelope extends Check {
                               final MovingData data, final MovingConfig cc, 
                               final IPlayerData pData, final VehicleMoveInfo moveInfo) {
 
+        return ScopedValue.where(CONTEXT, new CheckContext()).call(() ->
+                checkMove(player, vehicle, thisMove, isFake, data, cc, pData, moveInfo));
+    }
+
+    private SetBackEntry checkMove(final Player player, final Entity vehicle,
+                              final VehicleMoveData thisMove, final boolean isFake,
+                              final MovingData data, final MovingConfig cc,
+                              final IPlayerData pData, final VehicleMoveInfo moveInfo) {
         final boolean debug = pData.isDebugActive(type);
 
         // Delegate to a sub-check.
-        tags.clear();
-        tags.add("entity." + vehicle.getType());
+        CONTEXT.get().tags.clear();
+        CONTEXT.get().tags.add("entity." + vehicle.getType());
 
         if (debug) {
-            debugDetails.clear();
-            data.ws.setJustUsedIds(debugDetails); // Add just used workaround ids to this list directly, for now.
+            CONTEXT.get().debugDetails.clear();
+            data.ws.setJustUsedIds(CONTEXT.get().debugDetails); // Add just used workaround ids to this list directly, for now.
         }
         // TODO: Need confine more!
-        LostGroundVehicle.lostGround(vehicle, moveInfo.from, moveInfo.to, thisMove.hDistance, thisMove.yDistance, false, data.vehicleMoves.getFirstPastMove(), data, cc, null, tags);
+        LostGroundVehicle.lostGround(vehicle, moveInfo.from, moveInfo.to, thisMove.hDistance, thisMove.yDistance, false, data.vehicleMoves.getFirstPastMove(), data, cc, null, CONTEXT.get().tags);
         final boolean violation = checkEntity(player, vehicle, thisMove, isFake, data, cc, debug, moveInfo);
 
-        if (debug && !debugDetails.isEmpty()) {
+        if (debug && !CONTEXT.get().debugDetails.isEmpty()) {
             debugDetails(player);
-            debugDetails.clear();
+            CONTEXT.get().debugDetails.clear();
         }
 
         if (violation) {
             data.vehicleEnvelopeVL += 1.0; // Add up one for now.
             final ViolationData vd = new ViolationData(this, player, data.vehicleEnvelopeVL, 1, cc.vehicleEnvelopeActions);
-            vd.setParameter(ParameterName.TAGS, StringUtil.join(tags, "+"));
+            vd.setParameter(ParameterName.TAGS, StringUtil.join(CONTEXT.get().tags, "+"));
             if (executeActions(vd).willCancel()) {
                 return data.vehicleSetBacks.getValidSafeMediumEntry();
             }
@@ -181,21 +188,21 @@ public class VehicleEnvelope extends Check {
     */
     private void debugDetails(final Player player) {
 
-        if (!tags.isEmpty()) {
-            debugDetails.add("tags:");
-            debugDetails.add(StringUtil.join(tags, "+"));
+        if (!CONTEXT.get().tags.isEmpty()) {
+            CONTEXT.get().debugDetails.add("tags:");
+            CONTEXT.get().debugDetails.add(StringUtil.join(CONTEXT.get().tags, "+"));
         }
 
         final StringBuilder builder = new StringBuilder(500);
         builder.append("Details:\n");
 
-        for (final String detail : debugDetails) {
+        for (final String detail : CONTEXT.get().debugDetails) {
             builder.append(" , ");
             builder.append(detail);
         }
 
         debug(player, builder.toString());
-        debugDetails.clear();
+        CONTEXT.get().debugDetails.clear();
     }
 
 
@@ -273,7 +280,7 @@ public class VehicleEnvelope extends Check {
         long now = System.currentTimeMillis();
 
         if (debug) {
-            debugDetails.add("inair: " + data.sfJumpPhase);
+            CONTEXT.get().debugDetails.add("inair: " + data.sfJumpPhase);
         }
 
         if ((moveInfo.from.getBlockFlags() & BlockFlags.F_BUBBLECOLUMN) != 0
@@ -292,7 +299,7 @@ public class VehicleEnvelope extends Check {
             // The most terrible code I ever written due to poor infrastructure. Should be thinking of recode the vehicle check after the hspeed refactor
             if (camel != null && camel.isAssignableFrom(vehicle.getClass())) {
                 final VehicleMoveData firstPastMove = data.vehicleMoves.getFirstPastMove();
-                double cap = getHDistCap(checkDetails.simplifiedType, cc, thisMove, data);
+                double cap = getHDistCap(CONTEXT.get().details.simplifiedType, cc, thisMove, data);
                 if (!Double.isInfinite(speed)) cap *= (1 + 0.2 * (speed + 1));
                 if (thisMove.hDistance > cap) {
                     final long current = System.currentTimeMillis();
@@ -306,15 +313,15 @@ public class VehicleEnvelope extends Check {
                 }
             }
             if (!Double.isInfinite(speed)) {
-                if (maxDistHorizontal(thisMove, getHDistCap(checkDetails.simplifiedType, cc, thisMove, data) * (1 + 0.2 * (speed + 1)))) {
+                if (maxDistHorizontal(thisMove, getHDistCap(CONTEXT.get().details.simplifiedType, cc, thisMove, data) * (1 + 0.2 * (speed + 1)))) {
                     return true;
                 }
             } 
-            else if (maxDistHorizontal(thisMove, getHDistCap(checkDetails.simplifiedType, cc, thisMove,data) + (checkDetails.canJump ? 0.18 : 0.0))) {
+            else if (maxDistHorizontal(thisMove, getHDistCap(CONTEXT.get().details.simplifiedType, cc, thisMove,data) + (CONTEXT.get().details.canJump ? 0.18 : 0.0))) {
                 return true;
             }
         } 
-        else if (maxDistHorizontal(thisMove, getHDistCap(checkDetails.simplifiedType, cc, thisMove,data))) { // Override type for now.
+        else if (maxDistHorizontal(thisMove, getHDistCap(CONTEXT.get().details.simplifiedType, cc, thisMove,data))) { // Override type for now.
             return true;
         }
 
@@ -324,74 +331,74 @@ public class VehicleEnvelope extends Check {
         if (thisMove.from.inWeb) {
             // TODO: Check anything?
             if (debug) {
-                debugDetails.add("");
+                CONTEXT.get().debugDetails.add("");
             }
             //            if (thisMove.yDistance > 0.0) {
-            //                tags.add("ascend_web");
+            //                CONTEXT.get().tags.add("ascend_web");
             //                return true;
             //            }
             // TODO: Enforce not ascending ?
             // TODO: max speed.
         }
-        else if (checkDetails.canClimb && thisMove.from.onClimbable) {
+        else if (CONTEXT.get().details.canClimb && thisMove.from.onClimbable) {
             // TODO: Order.
-            checkDetails.checkAscendMuch = checkDetails.checkDescendMuch = false;
+            CONTEXT.get().details.checkAscendMuch = CONTEXT.get().details.checkDescendMuch = false;
             if (Math.abs(thisMove.yDistance) > MagicVehicle.climbSpeed) {
                 violation = true;
-                tags.add("climbspeed");
+                CONTEXT.get().tags.add("climbspeed");
             }
         }
-        else if (checkDetails.canRails && thisMove.fromOnRails) {
+        else if (CONTEXT.get().details.canRails && thisMove.fromOnRails) {
             // TODO: Might invert to trigger violation if exceeds distance (always disable a/d_much).
             if (Math.abs(thisMove.yDistance) < MagicVehicle.maxRailsVertical) {
-                checkDetails.checkAscendMuch = checkDetails.checkDescendMuch = false;
+                CONTEXT.get().details.checkAscendMuch = CONTEXT.get().details.checkDescendMuch = false;
             }
         }
         else if (thisMove.from.inWater && thisMove.to.inWater) {
             // Default in-medium move.
             if (debug) {
-                debugDetails.add("water-water");
+                CONTEXT.get().debugDetails.add("water-water");
             }
             // TODO: Should still cover extreme moves here.
 
             // Special case moving up after falling.
             // TODO: Check past moves for falling (not yet available).
             // TODO: Check if the target location somehow is the surface.
-            if (MagicVehicle.oddInWater(thisMove, checkDetails, data)) {
+            if (MagicVehicle.oddInWater(thisMove, CONTEXT.get().details, data)) {
                 // (Assume players can't control sinking boats for now.)
-                checkDetails.checkDescendMuch = checkDetails.checkAscendMuch = false;
+                CONTEXT.get().details.checkDescendMuch = CONTEXT.get().details.checkAscendMuch = false;
                 violation = false;
             }
         }
         else if (thisMove.from.onGround && thisMove.to.onGround) {
             // Default on-ground move.
             // TODO: Should still cover extreme moves here.
-            if (checkDetails.canStepUpBlock && thisMove.yDistance > 0.0 && thisMove.yDistance <= 1.0) {
-                checkDetails.checkAscendMuch = false;
-                tags.add("step_up");
+            if (CONTEXT.get().details.canStepUpBlock && thisMove.yDistance > 0.0 && thisMove.yDistance <= 1.0) {
+                CONTEXT.get().details.checkAscendMuch = false;
+                CONTEXT.get().tags.add("step_up");
             }
             if (thisMove.from.onBlueIce && thisMove.to.onBlueIce) {
                 // Default on-blueIce move.
                 if (debug) {
-                    debugDetails.add("blueIce-blueIce");
+                    CONTEXT.get().debugDetails.add("blueIce-blueIce");
                 }
                 // TODO: Should still cover extreme moves here.
             }
             else if (thisMove.from.onIce && thisMove.to.onIce) {
                 // Default on-ice move.
                 if (debug) {
-                    debugDetails.add("ice-ice");
+                    CONTEXT.get().debugDetails.add("ice-ice");
                 }
                 // TODO: Should still cover extreme moves here.
             }
             else {
                 // (TODO: actually a default on-ground move.)
                 if (debug) {
-                    debugDetails.add("ground-ground");
+                    CONTEXT.get().debugDetails.add("ground-ground");
                 }
             }
         }
-        else if (checkDetails.inAir) {
+        else if (CONTEXT.get().details.inAir) {
             // In-air move.
             if (checkInAir(thisMove, data, debug, vehicle, moveInfo)) {
                 violation = true;
@@ -400,12 +407,12 @@ public class VehicleEnvelope extends Check {
         else {
             // Some transition to probably handle.
             if (debug) {
-                debugDetails.add("?-?");
+                CONTEXT.get().debugDetails.add("?-?");
             }
             // TODO: Lift off speed etc.
             // TODO: Clearly overlaps other cases.
             // TODO: Skipped vehicle move events happen here as well (...).
-            if (!checkDetails.toIsSafeMedium) {
+            if (!CONTEXT.get().details.toIsSafeMedium) {
                 // TODO: At least do something here?
             }
         }
@@ -413,14 +420,14 @@ public class VehicleEnvelope extends Check {
         if (vehicle instanceof LivingEntity) {
             Double levitation = Bridge1_9.getLevitationAmplifier((LivingEntity)vehicle);
             if (!Double.isInfinite(levitation)) {
-                checkDetails.maxAscend += 0.046 * (levitation + 1);
+                CONTEXT.get().details.maxAscend += 0.046 * (levitation + 1);
                 violation = false;
             }
         }
 
         // Maximum ascend speed.
-        if (checkDetails.checkAscendMuch && thisMove.yDistance > checkDetails.maxAscend) {
-            tags.add("ascend_much");
+        if (CONTEXT.get().details.checkAscendMuch && thisMove.yDistance > CONTEXT.get().details.maxAscend) {
+            CONTEXT.get().tags.add("ascend_much");
             violation = true;
         }
         
@@ -430,10 +437,10 @@ public class VehicleEnvelope extends Check {
         }
         
         // Maximum descend speed.
-        if (checkDetails.checkDescendMuch && thisMove.yDistance < -MagicVehicle.maxDescend) {
+        if (CONTEXT.get().details.checkDescendMuch && thisMove.yDistance < -MagicVehicle.maxDescend) {
             // TODO: At times it looks like one move is skipped, resulting in double distance ~ -5 and at the same time 'vehicle moved too quickly'. 
             // TODO: Test with log this to console to see the order of things.
-            tags.add("descend_much");
+            CONTEXT.get().tags.add("descend_much");
             violation = true;
         }
 
@@ -447,7 +454,7 @@ public class VehicleEnvelope extends Check {
                 && !((strider != null && strider.isAssignableFrom(vehicle.getClass())) && thisMove.to.inLava && thisMove.from.inLava) // The strider can walk on lava
                 ) {
                 violation = true;
-                tags.add("liquidwalk");
+                CONTEXT.get().tags.add("liquidwalk");
             }
 
             Material blockUnder = vehicle.getLocation().subtract(0, 0.3, 0).getBlock().getType();
@@ -463,7 +470,7 @@ public class VehicleEnvelope extends Check {
                     // Prevent being flagged if a vehicle transitions from a block to water and the player falls into the water.
                     if (!(thisMove.yDistance < 0 && thisMove.yDistance != 0 && firstPastMove.yDistance < 0 && firstPastMove.yDistance != 0)) {
                         violation = true;
-                        tags.add("liquidmove");
+                        CONTEXT.get().tags.add("liquidmove");
                     }
                 }
             }
@@ -472,16 +479,16 @@ public class VehicleEnvelope extends Check {
         if (!violation) {
             // No violation.
             // TODO: sfJumpPhase is abused for in-air move counting here.
-            if (checkDetails.inAir) {
+            if (CONTEXT.get().details.inAir) {
                 data.sfJumpPhase ++;
             }
             else {
                 // Adjust set back.
-                if (checkDetails.toIsSafeMedium) {
+                if (CONTEXT.get().details.toIsSafeMedium) {
                     data.vehicleSetBacks.setSafeMediumEntry(thisMove.to);
                     data.sfJumpPhase = 0;
                 }
-                else if (checkDetails.fromIsSafeMedium) {
+                else if (CONTEXT.get().details.fromIsSafeMedium) {
                     data.vehicleSetBacks.setSafeMediumEntry(thisMove.from);
                     data.sfJumpPhase = 0;
                 }
@@ -505,7 +512,7 @@ public class VehicleEnvelope extends Check {
 
 
    /**
-     * Prepare checkDetails according to vehicle-specific interpretation of side
+     * Prepare CONTEXT.get().details according to vehicle-specific interpretation of side
      * conditions.
      * 
      * @param vehicle
@@ -514,82 +521,82 @@ public class VehicleEnvelope extends Check {
      */
     protected void prepareCheckDetails(final Entity vehicle, final VehicleMoveInfo moveInfo, final VehicleMoveData thisMove) {
 
-        checkDetails.reset();
+        CONTEXT.get().details.reset();
         // TODO: These properties are for boats, might need to distinguish further.
-        checkDetails.fromIsSafeMedium = thisMove.from.inWater || thisMove.from.onGround || thisMove.from.inWeb;
-        checkDetails.toIsSafeMedium = thisMove.to.inWater || thisMove.to.onGround || thisMove.to.inWeb;
-        checkDetails.inAir = !checkDetails.fromIsSafeMedium && !checkDetails.toIsSafeMedium;
+        CONTEXT.get().details.fromIsSafeMedium = thisMove.from.inWater || thisMove.from.onGround || thisMove.from.inWeb;
+        CONTEXT.get().details.toIsSafeMedium = thisMove.to.inWater || thisMove.to.onGround || thisMove.to.inWeb;
+        CONTEXT.get().details.inAir = !CONTEXT.get().details.fromIsSafeMedium && !CONTEXT.get().details.toIsSafeMedium;
         // Distinguish by entity class (needs future proofing at all?).
         if (vehicle != null && MaterialUtil.isBoat(vehicle.getType())) {
-            checkDetails.simplifiedType = EntityType.BOAT;
-            checkDetails.maxAscend = MagicVehicle.maxAscend;
+            CONTEXT.get().details.simplifiedType = EntityType.BOAT;
+            CONTEXT.get().details.maxAscend = MagicVehicle.maxAscend;
         }
         else if (vehicle instanceof Minecart) {
-            checkDetails.simplifiedType = EntityType.MINECART;
+            CONTEXT.get().details.simplifiedType = EntityType.MINECART;
             // Bind to rails.
-            checkDetails.canRails = true;
+            CONTEXT.get().details.canRails = true;
             thisMove.setExtraMinecartProperties(moveInfo); // Cheating.
             if (thisMove.fromOnRails) {
-                checkDetails.fromIsSafeMedium = true;
-                checkDetails.inAir = false;
+                CONTEXT.get().details.fromIsSafeMedium = true;
+                CONTEXT.get().details.inAir = false;
             }
 
             if (thisMove.toOnRails) {
-                checkDetails.toIsSafeMedium = true;
-                checkDetails.inAir = false;
+                CONTEXT.get().details.toIsSafeMedium = true;
+                CONTEXT.get().details.inAir = false;
             }
-            checkDetails.gravityTargetSpeed = 0.79;
+            CONTEXT.get().details.gravityTargetSpeed = 0.79;
         }
         else if (bestHorse != null && bestHorse.isAssignableFrom(vehicle.getClass())) {
             // TODO: Climbable? -> seems not.
-            checkDetails.simplifiedType = EntityType.HORSE; // TODO: 1.11 - Use AbstractHorse?
-            checkDetails.canJump = checkDetails.canStepUpBlock = true;
+            CONTEXT.get().details.simplifiedType = EntityType.HORSE; // TODO: 1.11 - Use AbstractHorse?
+            CONTEXT.get().details.canJump = CONTEXT.get().details.canStepUpBlock = true;
         }
         else if (strider != null && strider.isAssignableFrom(vehicle.getClass())) {
-            //checkDetails.simplifiedType = EntityType.PIG;
-            checkDetails.canJump = false;
-            checkDetails.canStepUpBlock = true;
-            checkDetails.canClimb = true;
+            //CONTEXT.get().details.simplifiedType = EntityType.PIG;
+            CONTEXT.get().details.canJump = false;
+            CONTEXT.get().details.canStepUpBlock = true;
+            CONTEXT.get().details.canClimb = true;
             // Step problem
-            checkDetails.maxAscend = 1.1;
+            CONTEXT.get().details.maxAscend = 1.1;
             // Fall in lava
-            if (thisMove.from.inLava || thisMove.to.inLava) checkDetails.inAir = false;
+            if (thisMove.from.inLava || thisMove.to.inLava) CONTEXT.get().details.inAir = false;
             // ....
-            if (!thisMove.from.onGround && thisMove.to.onGround) checkDetails.gravityTargetSpeed = 0.07;
+            if (!thisMove.from.onGround && thisMove.to.onGround) CONTEXT.get().details.gravityTargetSpeed = 0.07;
             // Updated by PlayerMoveEvent, hdist fps when a player want to ride on strider
         }
         else if (camel != null && camel.isAssignableFrom(vehicle.getClass())) {
-            checkDetails.canStepUpBlock = true;
-            checkDetails.canClimb = false;
-            checkDetails.canJump = false;
+            CONTEXT.get().details.canStepUpBlock = true;
+            CONTEXT.get().details.canClimb = false;
+            CONTEXT.get().details.canJump = false;
         }
         else if (vehicle instanceof Pig) {
             // TODO: Climbable!
-            checkDetails.simplifiedType = EntityType.PIG;
-            checkDetails.canJump = false;
-            checkDetails.canStepUpBlock = true;
-            checkDetails.canClimb = true;
+            CONTEXT.get().details.simplifiedType = EntityType.PIG;
+            CONTEXT.get().details.canJump = false;
+            CONTEXT.get().details.canStepUpBlock = true;
+            CONTEXT.get().details.canClimb = true;
         }
         else {
-            checkDetails.simplifiedType = thisMove.vehicleType;
+            CONTEXT.get().details.simplifiedType = thisMove.vehicleType;
         }
 
         // Generic settings.
         // (maxAscend is not checked for stepping up blocks)
-        if (checkDetails.canJump) {
-            checkDetails.maxAscend = 1.2; // Coarse envelope. Actual lift off gain should be checked on demand.
+        if (CONTEXT.get().details.canJump) {
+            CONTEXT.get().details.maxAscend = 1.2; // Coarse envelope. Actual lift off gain should be checked on demand.
         }
 
         // Climbable
-        if (checkDetails.canClimb) {
+        if (CONTEXT.get().details.canClimb) {
             if (thisMove.from.onClimbable) {
-                checkDetails.fromIsSafeMedium = true;
-                checkDetails.inAir = false;
+                CONTEXT.get().details.fromIsSafeMedium = true;
+                CONTEXT.get().details.inAir = false;
             }
 
             if (thisMove.to.onClimbable) {
-                checkDetails.toIsSafeMedium = true;
-                checkDetails.inAir = false;
+                CONTEXT.get().details.toIsSafeMedium = true;
+                CONTEXT.get().details.inAir = false;
             }
         }
     }
@@ -610,16 +617,16 @@ public class VehicleEnvelope extends Check {
         // TODO: Distinguish sfJumpPhase and inAirDescendCount (after reaching the highest point).
 
         if (debug) {
-            debugDetails.add("air-air");
+            CONTEXT.get().debugDetails.add("air-air");
         }
 
-        if (checkDetails.canJump) {
+        if (CONTEXT.get().details.canJump) {
             // TODO: Max. y-distance to set back.
             // TODO: Friction.
         }
         else {
             if (thisMove.yDistance > 0.0) {
-                tags.add("ascend_at_all");
+                CONTEXT.get().tags.add("ascend_at_all");
                 return true;
             }
         }
@@ -631,7 +638,7 @@ public class VehicleEnvelope extends Check {
         //            if (data.sfJumpPhase > 4) {
         //                double estimate = Math.min(2.0, MagicVehicle.boatGravityMin * ((double) data.sfJumpPhase / 4.0) * ((double) data.sfJumpPhase / 4.0 + 1.0) / 2.0);
         //                if (setBackYdistance > -estimate) {
-        //                    tags.add("slow_fall_vdistsb");
+        //                    CONTEXT.get().tags.add("slow_fall_vdistsb");
         //                    return true;
         //                }
         //            }
@@ -639,11 +646,11 @@ public class VehicleEnvelope extends Check {
         // Slow falling (vdist), do not bind to descending in general.
         final double minDescend = -(thisMove.yDistance < -MagicVehicle.boatLowGravitySpeed ? 
                                     MagicVehicle.boatGravityMinAtSpeed : MagicVehicle.boatGravityMin) * 
-                                    (checkDetails.canJump ? Math.max(data.sfJumpPhase - MagicVehicle.maxJumpPhaseAscend, 0) : data.sfJumpPhase);                     
+                                    (CONTEXT.get().details.canJump ? Math.max(data.sfJumpPhase - MagicVehicle.maxJumpPhaseAscend, 0) : data.sfJumpPhase);                     
         final double maxDescend = getInAirMaxDescend(thisMove, data);
 
-        if (data.sfJumpPhase > (checkDetails.canJump ? MagicVehicle.maxJumpPhaseAscend : 1)
-            && thisMove.yDistance > Math.max(minDescend, -checkDetails.gravityTargetSpeed)) {
+        if (data.sfJumpPhase > (CONTEXT.get().details.canJump ? MagicVehicle.maxJumpPhaseAscend : 1)
+            && thisMove.yDistance > Math.max(minDescend, -CONTEXT.get().details.gravityTargetSpeed)) {
             
             boolean noViolation = ColliesHoneyBlock(from) 
                     || (vehicle instanceof LivingEntity && !Double.isInfinite(Bridge1_13.getSlowfallingAmplifier((LivingEntity)vehicle)))
@@ -652,25 +659,25 @@ public class VehicleEnvelope extends Check {
             if (ColliesHoneyBlock(from)) data.sfJumpPhase = 5;
 
             if (!noViolation) {
-                tags.add("slow_fall_vdist");
+                CONTEXT.get().tags.add("slow_fall_vdist");
                 violation = true;
             }
         }
         // Fast falling (vdist).
         else if (data.sfJumpPhase > 1 && thisMove.yDistance < maxDescend) {
             // TODO: Allow one skipped move per jump phase (1, 2, 3).
-            tags.add("fast_fall_vdist");
+            CONTEXT.get().tags.add("fast_fall_vdist");
             violation = true;
         }
         if (violation) {
             // Post violation detection workarounds.
-            if (MagicVehicle.oddInAir(thisMove, minDescend, maxDescend, checkDetails, data)) {
+            if (MagicVehicle.oddInAir(thisMove, minDescend, maxDescend, CONTEXT.get().details, data)) {
                 violation = false;
-                checkDetails.checkDescendMuch = checkDetails.checkAscendMuch = false; // (Full envelope has been checked.)
+                CONTEXT.get().details.checkDescendMuch = CONTEXT.get().details.checkAscendMuch = false; // (Full envelope has been checked.)
             }
 
             if (debug) {
-                debugDetails.add("maxDescend: " + maxDescend);
+                CONTEXT.get().debugDetails.add("maxDescend: " + maxDescend);
             }
         }
         return violation;
@@ -691,12 +698,12 @@ public class VehicleEnvelope extends Check {
             if (firstPastMove.yDistance < maxDescend && firstPastMove.yDistance > maxDescend * 2.5) {
                 // Simply continue with friction.
                 maxDescend = Math.min(maxDescend, firstPastMove.yDistance - (MagicVehicle.boatGravityMax + MagicVehicle.boatGravityMin) / 2.0);
-                debugDetails.add("desc_frict");
+                CONTEXT.get().debugDetails.add("desc_frict");
             }
             else if (firstPastMove.specialCondition && thisMove.yDistance > -1.5) {
                 // After special set-back confirm move, observed ca. -1.1.
                 maxDescend = Math.min(maxDescend, -1.5);
-                debugDetails.add("desc_special");
+                CONTEXT.get().debugDetails.add("desc_special");
             }
         }
         return maxDescend;
@@ -710,7 +717,7 @@ public class VehicleEnvelope extends Check {
     */
     private boolean maxDistHorizontal(final VehicleMoveData thisMove, final double maxDistanceHorizontal) {
         if (thisMove.hDistance > maxDistanceHorizontal) {
-            tags.add("hdist");
+            CONTEXT.get().tags.add("hdist");
             return true;
         }
         else {
