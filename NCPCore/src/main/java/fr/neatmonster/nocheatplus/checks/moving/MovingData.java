@@ -635,6 +635,9 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Invalidate all past moves data (player).
      */
     private void resetPlayerPositions() {
+        // Every reset of the player's move history (teleport, set back, vehicle, join)
+        // also ends residual glide credit; its last move no longer applies.
+        ElytraResidual.end(elytraResidual);
         playerMoves.invalidate();
         sfZeroVdistRepeat = 0;
         sfDirty = false;

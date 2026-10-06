@@ -39,6 +39,7 @@ import org.bukkit.plugin.Plugin;
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.CheckListener;
 import fr.neatmonster.nocheatplus.checks.CheckType;
+import fr.neatmonster.nocheatplus.checks.moving.ElytraResidual;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.location.setback.SetBackEntry;
@@ -797,6 +798,8 @@ public class VehicleChecks extends CheckListener {
             final MovingData data, final IPlayerData pData) {
         // Adjust data.
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+        // No residual glide credit across a ride.
+        ElytraResidual.end(data.elytraResidual);
         data.joinOrRespawn = false;
         data.vehicleLeave = false;
         data.removeAllVelocity();
@@ -900,6 +903,8 @@ public class VehicleChecks extends CheckListener {
         final IPlayerData pData = DataManager.getPlayerData(player);
         final MovingData data = pData.getGenericInstance(MovingData.class);
         final boolean debug = pData.isDebugActive(checkType);
+        // No residual glide credit across a ride (also for a missed exit event).
+        ElytraResidual.end(data.elytraResidual);
         data.wasInVehicle = false;
         data.joinOrRespawn = false;
 

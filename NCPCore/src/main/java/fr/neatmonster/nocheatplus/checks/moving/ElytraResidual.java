@@ -26,19 +26,23 @@ package fr.neatmonster.nocheatplus.checks.moving;
  * above the CreativeFly elytra limit. Vertical speed may rise only as far as
  * vanilla glide physics allows ({@link #maxGlideY}): the lift a descent gives,
  * plus a pitch-up climb that the horizontal speed lost in the same move pays
- * for. A move may also stay at or below the starting vertical speed plus
- * {@link #Y_SLACK} (a rocket holds the glide there). For
- * {@link #LATE_GLIDE_MOVES} more moves (never past {@link #MAX_LAG_MOVES}), a
- * move the coast rejects is still accepted if it is a strict vanilla glide tick
- * (the server can be a few ticks behind the client).</li>
+ * for, and horizontal speed gained from lift must come out of the downward
+ * speed. While a firework rocket boosts the glide, a move may also stay at or
+ * below the starting vertical speed plus {@link #Y_SLACK}. For
+ * {@link #LATE_GLIDE_MOVES} more moves, a move the coast rejects is still
+ * accepted if it fits the glide envelope without the rocket allowance (the
+ * server can be a few ticks behind the client). Lag phase, late glide and the
+ * first air tick together never pass move {@link #MAX_LAG_MOVES}.</li>
  * <li><b>Coast</b>: horizontal speed must fall with air drag
  * ({@link #COAST_DRAG}) and the player must fall with gravity, never above the
  * highest vertical speed the window accepted. The window closes once the move
  * is a normal air move ({@link #NORMAL_AIR_H}).</li>
  * </ul>
  * In both phases the player may not drop more than {@link #Y_DESCEND_SLACK} below
- * the last accepted vertical speed. Any move outside the limits, ground, liquid,
- * climbable or an elytra back in the chest slot ends the window. A new window can
+ * the last accepted vertical speed, and no move is faster than the elytra cap.
+ * Glide moves never rise more than {@link #MAX_RISE} above max(start vertical
+ * speed, 0). Any move outside the limits, ground, liquid, climbable or an elytra
+ * back in the chest slot ends the window. A new window can
  * open at most once per {@link #REARM_MOVES} moves. State lives only in
  * {@link MovingData}.
  */
@@ -88,8 +92,17 @@ public final class ElytraResidual {
      */
     public static final int MAX_COAST_MOVES = 40;
 
-    /** How far above the vertical speed at the start a move may be, whatever the physics. */
+    /** How far above the vertical speed at the start a move may be, whatever the physics (rocket only). */
     public static final double Y_SLACK = 0.15;
+
+    /**
+     * Glide moves may not rise more than this above max(start vertical speed, 0).
+     * Vanilla can zoom higher (pitch up trades speed for height), but no measured
+     * legit unequip came close: the lab's pull-up and zoom unequips rose at most
+     * 0.35 above that, dive pull-outs stay below 0. This bounds what one window
+     * can turn into height.
+     */
+    public static final double MAX_RISE = 0.5;
 
     // Vanilla glide, LivingEntity#updateFallFlyingMovement, per tick (c = cos^2(pitch), s = sin(-pitch)):
     //   vy += 0.08 * (-1 + 0.75 c)                      gravity, least at pitch 0
@@ -164,6 +177,10 @@ public final class ElytraResidual {
         public boolean repeated;
         /** Last move accepted as a glide (lag phase or late glide); the coast is counted from here. */
         public int glideEnd;
+        /** A firework rocket boosted the glide when the window opened: the start ceiling applies. */
+        public boolean rocket;
+        /** Glide moves never rise above this: max(start vertical speed, 0) + {@link #MAX_RISE}. */
+        public double riseCap;
     }
 
     private ElytraResidual() {}
@@ -209,13 +226,22 @@ public final class ElytraResidual {
         return Math.min(modelCap, modelCap * factor);
     }
 
+    /** {@link #begin(State, double, double, int, double, boolean)} without a rocket boost. */
+    public static boolean begin(final State state, final double lastH, final double lastY,
+                                final int pingMs, final double elytraCap) {
+        return begin(state, lastH, lastY, pingMs, elytraCap, false);
+    }
+
     /**
      * Open a window from the last accepted glide move. Returns false when a window
      * is already open, fewer than {@link #REARM_MOVES} moves passed since the last
      * one opened, or the input is unusable.
+     *
+     * @param rocket a firework rocket boost is still active (it holds the glide's
+     *            vertical speed, which glide physics alone does not)
      */
     public static boolean begin(final State state, final double lastH, final double lastY,
-                                final int pingMs, final double elytraCap) {
+                                final int pingMs, final double elytraCap, final boolean rocket) {
         if (state.open || state.sinceBegin < REARM_MOVES) {
             return false;
         }
@@ -235,6 +261,8 @@ public final class ElytraResidual {
         state.hDebt = 0.0;
         state.repeated = false;
         state.glideEnd = 0;
+        state.rocket = rocket;
+        state.riseCap = Math.max(lastY, 0.0) + MAX_RISE;
         return true;
     }
 
@@ -255,6 +283,13 @@ public final class ElytraResidual {
             end(state);
             return false;
         }
+        // Every move: never faster than wearing the elytra allows. CreativeFly's own
+        // limit is max(cap, last h x 0.98 friction); lastH never exceeds the cap
+        // (begin clamps it, every accepted move stays under it), so that is the cap.
+        if (hDistance > state.elytraCap) {
+            end(state);
+            return false;
+        }
         final int index = state.moves + 1;
         final boolean lag = index <= state.lagMoves;
         // Vertical, both phases: no sudden dive.
@@ -262,45 +297,46 @@ public final class ElytraResidual {
             end(state);
             return false;
         }
-        double hDebt = state.hDebt;
-        boolean glide = lag;
+        // Lag phase, late glide and the first air tick never pass move MAX_LAG_MOVES.
+        final int lateEnd = Math.min(MAX_LAG_MOVES, state.lagMoves + LATE_GLIDE_MOVES);
+        boolean glide = false;
         boolean repeat = false;
         if (lag) {
-            // The client may still be gliding. Never more than wearing the elytra allows.
-            if (hDistance > Math.min(state.elytraCap, state.lastH + LAG_H_GROWTH)) {
+            // The client may still be gliding.
+            if (hDistance > state.lastH + LAG_H_GROWTH) {
                 end(state);
                 return false;
             }
-            final double paid = pay(state, hDistance);
-            hDebt = debtAfter(state, hDistance);
-            // Glide physics, or no higher than the start (rocket, level glide).
-            if (yDistance > Math.max(state.yCap, maxGlideY(state.lastY, state.lastH, paid))) {
-                if (!isRepeat(state, hDistance, yDistance)) {
-                    end(state);
-                    return false;
-                }
+            if (glideTick(state, hDistance, yDistance, state.rocket)) {
+                glide = true;
+            }
+            else if (isRepeat(state, hDistance, yDistance)) {
+                glide = true;
                 repeat = true;
+            }
+            else {
+                end(state);
+                return false;
             }
         }
         else {
-            // Vanilla coast: air drag horizontally, gravity vertically. Rising above the
-            // old ceiling (only after a paid climb) must follow vanilla gravity exactly.
-            final double yMargin = state.lastY > Math.max(state.yCap, 0.0) ? GLIDE_Y_MARGIN : COAST_Y_MARGIN;
+            // Vanilla coast: air drag horizontally, gravity vertically. Rising must
+            // follow vanilla gravity exactly; the 0.05 margin is for falling only.
+            final double yMargin = state.lastY > 0.0 ? GLIDE_Y_MARGIN : COAST_Y_MARGIN;
             final boolean coast = yDistance <= state.yHigh
                     && index - Math.max(state.lagMoves, state.glideEnd) <= MAX_COAST_MOVES
                     && hDistance <= state.lastH * COAST_DRAG + COAST_H_MARGIN
                     && yDistance <= (state.lastY - GRAVITY) * VERTICAL_DRAG + yMargin;
             if (!coast) {
                 // Late glide: the server can be a few moves behind the client, so a client can
-                // still glide after the lag phase. Only a strict vanilla glide tick, for
-                // LATE_GLIDE_MOVES more moves, and the first air tick right after it.
-                final int lateEnd = Math.min(MAX_LAG_MOVES, state.lagMoves + LATE_GLIDE_MOVES);
+                // still glide after the lag phase. Only within the glide envelope without the
+                // rocket allowance, and no faster than drag and lift allow.
                 if (index <= lateEnd
                         && hDistance <= (state.lastH + GLIDE_STEER_KEEP * maxLift(state.lastY)) * GLIDE_H_DRAG + GLIDE_H_MARGIN
-                        && yDistance <= maxGlideY(state.lastY, state.lastH, pay(state, hDistance))) {
+                        && glideTick(state, hDistance, yDistance, false)) {
                     glide = true;
                 }
-                else if (index <= lateEnd + 1 && isRepeat(state, hDistance, yDistance)) {
+                else if (index <= Math.min(lateEnd + 1, MAX_LAG_MOVES) && isRepeat(state, hDistance, yDistance)) {
                     glide = true;
                     repeat = true;
                 }
@@ -308,9 +344,9 @@ public final class ElytraResidual {
                     end(state);
                     return false;
                 }
-                hDebt = debtAfter(state, hDistance);
             }
         }
+        final double hDebt = glide ? debtAfter(state, hDistance) : state.hDebt;
         state.moves = index;
         state.lastH = hDistance;
         state.lastY = yDistance;
@@ -349,6 +385,42 @@ public final class ElytraResidual {
     /** Speed this move spent that may pay for a climb: what is left after repaying the debt. */
     static double pay(final State state, final double hDistance) {
         return Math.max(0.0, spent(state, hDistance)) - repaid(state, hDistance);
+    }
+
+    /**
+     * One glide tick inside the envelope: no higher than {@link #maxGlideY} or the
+     * start ceiling, and no lower than {@link #minGlideY} (lift that went into
+     * horizontal speed must come out of the downward speed). With a rocket boost
+     * the start ceiling is start + {@link #Y_SLACK} and there is no lower bound
+     * (the rocket adds speed along the look). Without one the start ceiling is
+     * never above 0: it absorbs non-glide wiggles while falling (a worker handoff
+     * pause, a client stopping), but never pays for height.
+     */
+    private static boolean glideTick(final State state, final double hDistance, final double yDistance,
+                                     final boolean rocket) {
+        if (yDistance > state.riseCap) {
+            return false;
+        }
+        final double upper = maxGlideY(state.lastY, state.lastH, pay(state, hDistance));
+        if (rocket) {
+            return yDistance <= Math.max(state.yCap, upper);
+        }
+        return yDistance <= Math.max(Math.min(state.yCap, 0.0), upper)
+                && yDistance >= minGlideY(state.lastY, state.lastH, hDistance);
+    }
+
+    /**
+     * Lowest vertical distance a glide tick can have when it turned descent into
+     * this much horizontal speed. Vanilla adds the same lift to h (90 % kept after
+     * steering) and to vy, and gravity is at most 0.08; a pitch-up climb only
+     * raises vy. So: (lastY - 0.08 + lift) * 0.98, with lift at least the
+     * horizontal gain over drag / 0.9, minus {@link #GLIDE_Y_MARGIN}. The first
+     * {@link #COAST_H_MARGIN} of gain is air input (an air tick after the glide
+     * stops), not lift.
+     */
+    public static double minGlideY(final double lastY, final double lastH, final double hDistance) {
+        final double lift = Math.max(0.0, hDistance / GLIDE_H_DRAG - lastH - COAST_H_MARGIN) / GLIDE_STEER_KEEP;
+        return (lastY - GRAVITY + lift) * VERTICAL_DRAG - GLIDE_Y_MARGIN;
     }
 
     /**

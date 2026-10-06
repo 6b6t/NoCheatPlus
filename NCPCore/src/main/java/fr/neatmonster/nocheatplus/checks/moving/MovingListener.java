@@ -1713,9 +1713,12 @@ catch (java.lang.Throwable thr) {}
                     modifiers ? mcAccess.getHandle().getFasterMovementAmplifier(player) : Double.NEGATIVE_INFINITY,
                     modifiers ? attributeAccess.getHandle().getSpeedAttributeMultiplier(player) : Double.MAX_VALUE,
                     data.walkSpeed);
-            if (ElytraResidual.begin(data.elytraResidual, lastMove.hDistance, lastMove.yDistance, getPingMs(player), elytraCap)
-                    && debug) {
-                debug(player, "Elytra unequip window: lag moves " + data.elytraResidual.lagMoves + ", cap " + elytraCap);
+            // A firework boost that has not expired still holds the glide's vertical speed.
+            final boolean rocket = data.fireworksBoostTickExpire >= tick;
+            if (ElytraResidual.begin(data.elytraResidual, lastMove.hDistance, lastMove.yDistance, getPingMs(player),
+                    elytraCap, rocket) && debug) {
+                debug(player, "Elytra unequip window: lag moves " + data.elytraResidual.lagMoves + ", cap " + elytraCap
+                        + (rocket ? ", rocket" : ""));
             }
         }
         if (debug) debug(player, "*** Transition from CreativeFly to SurvivalFly: Add velocity.");
@@ -1952,6 +1955,8 @@ catch (java.lang.Throwable thr) {}
         Combined.feedYawRate(player, to.getYaw(), now, toWorldName, data, pData);
         // TODO: maybe even not count vehicles at all ?
         if (player.isInsideVehicle()) {
+            // In a vehicle: no residual glide credit (the reset below may be skipped off-region).
+            ElytraResidual.end(mData.elytraResidual);
             // TODO: refine (!).
             final Location ref = player.getVehicle().getLocation(useLoc);
             aux.resetPositionsAndMediumProperties(player, ref, mData, mCc); // TODO: Consider using to and intercept cheat attempts in another way.
@@ -1960,6 +1965,7 @@ catch (java.lang.Throwable thr) {}
         }
         else if (!from.getWorld().getName().equals(toWorldName)) {
             // A teleport event should follow.
+            ElytraResidual.end(mData.elytraResidual);
             aux.resetPositionsAndMediumProperties(player, to, mData, mCc);
             mData.resetTrace(player, to, tick, mcAccess.getHandle(), mCc);
         }
