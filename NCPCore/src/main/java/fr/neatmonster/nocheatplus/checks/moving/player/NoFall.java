@@ -480,6 +480,13 @@ public class NoFall extends Check {
      * Packet ground alone is never support or accepted movement. */
     private static DataPacketFlying matchAcceptedPacket(final LocationData to,
             final MovingData data, final IPlayerData pData) {
+        final DataPacketFlying match = findReceivedPosition(to.getX(), to.getY(), to.getZ(), data, pData);
+        if (match != null) data.noFallMatchedPacketSequence = match.getSequence();
+        return match;
+    }
+
+    private static DataPacketFlying findReceivedPosition(final double x, final double y, final double z,
+            final MovingData data, final IPlayerData pData) {
         final NetData net = pData.getGenericInstance(NetData.class);
         if (net == null) return null;
         DataPacketFlying match = null;
@@ -487,13 +494,72 @@ public class NoFall extends Check {
             if (packet.isCancelled() || !packet.hasPos
                     || !Double.isFinite(packet.getX()) || !Double.isFinite(packet.getY()) || !Double.isFinite(packet.getZ())
                     || packet.getSequence() <= data.noFallMatchedPacketSequence
-                    || Math.abs(packet.getX() - to.getX()) > 1.0e-7
-                    || Math.abs(packet.getY() - to.getY()) > 1.0e-7
-                    || Math.abs(packet.getZ() - to.getZ()) > 1.0e-7) continue;
+                    || Math.abs(packet.getX() - x) > 1.0e-7
+                    || Math.abs(packet.getY() - y) > 1.0e-7
+                    || Math.abs(packet.getZ() - z) > 1.0e-7) continue;
             if (match == null || packet.getSequence() < match.getSequence()) match = packet;
         }
-        if (match != null) data.noFallMatchedPacketSequence = match.getSequence();
         return match;
+    }
+
+    /** A tiny honest boat contact may reset native distance without a Bukkit
+     * movement event. Require exact received true-ground XYZ and owned boat
+     * boxes. The first internal split can end at that same received native point;
+     * a native zero or ground claim by itself is never reset proof. */
+    private Location rebaseMissedNativeBoatContact(final Player player, final PlayerMoveData move,
+            final MovingData data, final MovingConfig cc, final IPlayerData pData) {
+        if (cc.noFallDealDamage || ServerVersion.compareMinecraftVersion("26.1") < 0
+                || mcAccess == null || player.getFallDistance() != 0f
+                || player.isInsideVehicle() || player.isFlying()
+                || cc.noFallSkipAllowFlight && player.getAllowFlight()
+                || move.from.resetCond || move.to.resetCond
+                || mcAccess.getHandle().isIgnoringFallDamageFromCurrentImpulse(player)
+                || !Folia.isOwnedByCurrentRegion(player)) return null;
+        final Location feet = player.getLocation();
+        if (feet == null || !Double.isFinite(feet.getX()) || !Double.isFinite(feet.getY())
+                || !Double.isFinite(feet.getZ()) || feet.getY() >= move.from.getY() - 1.0e-7) return null;
+        final DataPacketFlying contact = findReceivedPosition(feet.getX(), feet.getY(), feet.getZ(), data, pData);
+        final DataPacketFlying current = findReceivedPosition(move.to.getX(), move.to.getY(), move.to.getZ(), data, pData);
+        if (contact == null || !contact.onGround || current == null
+                || contact.getSequence() > current.getSequence()) return null;
+        final double halfWidth = player.getBoundingBox().getWidthX() / 2.0;
+        if (!(halfWidth > 0.0) || !Double.isFinite(halfWidth)) return null;
+        boolean supported = false;
+        try {
+            for (final Entity boat : player.getNearbyEntities(1.5, 8.0, 1.5)) {
+                if (!Folia.isOwnedByCurrentRegion(boat) || !boat.isValid() || !MaterialUtil.isBoat(boat.getType())
+                        || !mcAccess.getHandle().canCollideWith(player, boat)) continue;
+                final org.bukkit.util.BoundingBox box = boat.getBoundingBox();
+                if (boxSupportsFeet(feet.getX(), feet.getY(), feet.getZ(), halfWidth,
+                        box.getMinX(), box.getMinY(), box.getMinZ(), box.getMaxX(), box.getMaxY(), box.getMaxZ())
+                        || mcAccess.getHandle().hasSweptBoatSupport(boat, feet.getX() - halfWidth,
+                            feet.getY(), feet.getZ() - halfWidth, feet.getX() + halfWidth, feet.getZ() + halfWidth)) {
+                    supported = true;
+                    break;
+                }
+            }
+        } catch (RuntimeException foreignEntity) {
+            return null;
+        }
+        if (!supported) return null;
+        final float owed = Math.max(0f, Math.max(retainedNativeResetDebt(data),
+                (float) getApplicableFallHeight(player, feet.getY(), data)));
+        if (pData.isDebugActive(type)) {
+            debug(player, "Missed native boat contact: y=" + feet.getY()
+                    + " seq=" + contact.getSequence() + " current=" + current.getSequence() + " owed=" + owed);
+        }
+        data.noFallMatchedPacketSequence = contact.getSequence();
+        data.clearNoFallData();
+        data.clearGlideDebt();
+        // Below ordinary damage distance the honest native landing is already
+        // consumed. Do not replay block effects. Larger retained check debt can
+        // still require one missing native landing after earlier air spoofs.
+        if (owed >= Magic.FALL_DAMAGE_DIST) {
+            player.setFallDistance(owed);
+            mcAccess.getHandle().dispatchNativeLanding(player);
+        }
+        data.noFallMaxY = feet.getY();
+        return feet;
     }
 
     /** A reset/contact/teleport invalidates callbacks captured for an earlier fall. */
@@ -600,7 +666,8 @@ public class NoFall extends Check {
         final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
         final LocationData from = thisMove.from;
         final LocationData to = thisMove.to;
-        final double fromY = from.getY();
+        final Location missedContact = rebaseMissedNativeBoatContact(player, thisMove, data, cc, pData);
+        final double fromY = missedContact == null ? from.getY() : missedContact.getY();
         final double toY = to.getY();
         final double yDiff = toY - fromY;
         final double oldNFDist = data.noFallFallDistance;
@@ -629,7 +696,7 @@ public class NoFall extends Check {
         }
         if (nativeLanding) {
             // The movement checks' step tolerance is not a completed contact.
-            fromOnGround = pFrom.isOnGround(0.00001) || pFrom.standsOnEntityContact(0.00001, 0, 0);
+            fromOnGround = missedContact != null || pFrom.isOnGround(0.00001) || pFrom.standsOnEntityContact(0.00001, 0, 0);
             toOnGround = pTo.isOnGround(0.00001) || pTo.standsOnEntityContact(0.00001, 0, 0);
         }
         else if (yDiff < 0 && cc.yOnGround < cc.noFallyOnGround) {
