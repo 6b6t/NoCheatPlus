@@ -26,14 +26,14 @@ import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 @RunWith(Parameterized.class)
 public class TestNoFallGroundedBoatStep {
  @Parameterized.Parameters(name="{0}") public static Collection<Object[]> cases(){
-  return Arrays.asList(new Object[][]{{"native-reset"},{"native-under-four"},{"native-positive-after-step"},{"damaging-step"},{"false-ground"},{"cancelled"},{"final-cancelled"},{"final-changed"},{"foreign-player"},{"foreign-boat"},
+  return Arrays.asList(new Object[][]{{"native-reset"},{"native-under-four"},{"native-positive-after-step"},{"native-glide-after-step"},{"damaging-step"},{"false-ground"},{"cancelled"},{"final-cancelled"},{"final-changed"},{"foreign-player"},{"foreign-boat"},
    {"non-collidable"},{"unsupported"},{"native-positive"},{"different-native-point"},{"explicit-contact"},
    {"lifecycle"},{"leave-existing-checkpoint"},{"leave-invalidated-checkpoint"}});
  }
  final String mode;public TestNoFallGroundedBoatStep(String mode){this.mode=mode;}
  @Test public void aProcessedPhysicalSmallStepMustNotInflateTheNextFall()throws Exception{
   String old=ServerVersion.getMinecraftVersion();ServerVersion.setMinecraftVersion("26.2");
-  try(var folia=mockStatic(Folia.class)){
+  try(var folia=mockStatic(Folia.class);var glide=mockStatic(Bridge1_9.class)){
    Player p=mock(Player.class);Entity boat=mock(Entity.class);World world=mock(World.class);
    IPlayerData pd=mock(IPlayerData.class);MovingConfig cc=mock(MovingConfig.class);
    MovingData d=mock(MovingData.class,CALLS_REAL_METHODS);MoveTrace trace=mock(MoveTrace.class);
@@ -69,8 +69,9 @@ public class TestNoFallGroundedBoatStep {
    var monitor=MovingListener.class.getDeclaredMethod("invalidateChangedBoatStep",MovingData.class,org.bukkit.event.player.PlayerMoveEvent.class);
    monitor.setAccessible(true);monitor.invoke(null,d,finalEvent);
    y[0]=mode.equals("different-native-point")?contact+.05:contact;
-   fd[0]=mode.equals("native-positive")?.1f:mode.equals("native-positive-after-step")?.0784f:0;
-   if(mode.equals("native-positive-after-step"))y[0]=next;
+   fd[0]=mode.equals("native-positive")?.1f:(mode.equals("native-positive-after-step")||mode.equals("native-glide-after-step"))?.0784f:0;
+   if(mode.equals("native-positive-after-step")||mode.equals("native-glide-after-step"))y[0]=next;
+   if(mode.equals("native-glide-after-step")){glide.when(()->Bridge1_9.isGlidingWithElytra(p)).thenReturn(true);when(p.getVelocity()).thenReturn(new org.bukkit.util.Vector(0,-.0784,0));}
    if(mode.equals("explicit-contact"))d.noFallContactFallDebt=12;
    if(mode.equals("lifecycle")){d.clearNoFallData();assertNull(d.noFallBoatGroundStep);return;}
    if(mode.startsWith("leave-")){
@@ -84,7 +85,7 @@ public class TestNoFallGroundedBoatStep {
    DataPacketFlying current=new DataPacketFlying(false,16,next,16,124);current.setSequence(2);
    when(net.copyNoFallPackets()).thenReturn(new DataPacketFlying[]{current});
    TestClientNoFallSequences.move(nf,p,pd,cc,d,trace,contact,next,false,false);
-   if(mode.equals("native-reset")||mode.equals("native-under-four")||mode.equals("native-positive-after-step")){
+   if(mode.equals("native-reset")||mode.equals("native-under-four")||mode.equals("native-positive-after-step")||mode.equals("native-glide-after-step")){
     assertEquals(.0784f,d.noFallFallDistance,1e-6);assertEquals(contact,d.noFallMaxY,1e-7);
     fd[0]=.0784f;y[0]=next;
     DataPacketFlying landing=new DataPacketFlying(true,16,80.5625,16,125);landing.setSequence(3);

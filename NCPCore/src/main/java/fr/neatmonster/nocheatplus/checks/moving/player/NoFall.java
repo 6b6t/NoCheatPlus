@@ -780,7 +780,7 @@ public class NoFall extends Check {
         }
 
         if (Bridge1_9.isGlidingWithElytra(player) && !toOnGround && !fromReset && !toReset) {
-            onGlidingMove(player, data, thisMove.yDistance);
+            onGlidingMove(player, data, yDiff);
         }
 
         // Keep an explicit receipt only when both accepted geometry and its
