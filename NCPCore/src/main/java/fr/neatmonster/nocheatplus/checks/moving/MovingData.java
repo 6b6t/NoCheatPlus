@@ -214,7 +214,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public int fireworksBoostTickNeedCheck = 0;
     /**
      * Short window after an elytra is unequipped mid-glide (see {@link ElytraResidual}).
-     * In memory only. clearFlyData and onSetBack close it but keep the re-arm count.
+     * In memory only. clearFlyData, onSetBack, prepareSetBack and onPlayerLeave
+     * close it but keep the re-arm count.
      */
     public final ElytraResidual.State elytraResidual = new ElytraResidual.State();
     /** Expire at this tick. */
@@ -484,6 +485,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Move event: Mildly reset some data, prepare setting a new to-Location.
      */
     public void prepareSetBack(final Location loc) {
+        // A correction must not keep residual glide credit.
+        ElytraResidual.end(elytraResidual);
         playerMoves.invalidate();
         vehicleMoves.invalidate();
         clearAccounting();
@@ -603,6 +606,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Called when a player leaves the server.
      */
     public void onPlayerLeave() {
+        // Player data outlives a logout: no residual glide credit into the next session.
+        ElytraResidual.end(elytraResidual);
         resetSetBackTeleport();
         removeAllPlayerSpeedModifiers();
         trace.reset();

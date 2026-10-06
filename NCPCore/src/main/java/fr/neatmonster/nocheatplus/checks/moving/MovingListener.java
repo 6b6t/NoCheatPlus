@@ -1705,8 +1705,14 @@ catch (java.lang.Throwable thr) {}
         if (lastMove.modelFlying != null
                 && MovingConfig.ID_JETPACK_ELYTRA.equals(lastMove.modelFlying.getId())
                 && !Bridge1_9.isWearingElytra(player)) {
-            // The CreativeFly elytra limit from the configured model (speed modifiers not applied).
-            final double elytraCap = lastMove.modelFlying.getHorizontalModSpeed() / 100.0 * ModelFlying.HORIZONTAL_SPEED;
+            // The CreativeFly elytra limit, with CreativeFly's modifiers but never above the model limit.
+            final ModelFlying model = lastMove.modelFlying;
+            final boolean modifiers = model.getApplyModifiers();
+            final double elytraCap = ElytraResidual.elytraCap(
+                    model.getHorizontalModSpeed() / 100.0 * ModelFlying.HORIZONTAL_SPEED, modifiers,
+                    modifiers ? mcAccess.getHandle().getFasterMovementAmplifier(player) : Double.NEGATIVE_INFINITY,
+                    modifiers ? attributeAccess.getHandle().getSpeedAttributeMultiplier(player) : Double.MAX_VALUE,
+                    data.walkSpeed);
             if (ElytraResidual.begin(data.elytraResidual, lastMove.hDistance, lastMove.yDistance, getPingMs(player), elytraCap)
                     && debug) {
                 debug(player, "Elytra unequip window: lag moves " + data.elytraResidual.lagMoves + ", cap " + elytraCap);
@@ -1862,6 +1868,8 @@ catch (java.lang.Throwable thr) {}
                                  final MovingData mData, final MovingConfig mCc, final CombinedData data,
                                  final IPlayerData pData) {
 
+        // The move is undone: no residual glide credit from its endpoint.
+        ElytraResidual.end(mData.elytraResidual);
         final boolean debug = pData.isDebugActive(checkType);
         // Detect our own set back, choice of reference location.
         if (mData.hasTeleported()) {
@@ -1960,6 +1968,7 @@ catch (java.lang.Throwable thr) {}
             final PlayerMoveData lastMove = mData.playerMoves.getFirstPastMove();
             if (!lastMove.toIsValid || !TrigUtil.isSamePos(to, lastMove.to.getX(), lastMove.to.getY(), lastMove.to.getZ())) {
                 // Something odd happened, e.g. a set back.
+                ElytraResidual.end(mData.elytraResidual);
                 aux.resetPositionsAndMediumProperties(player, to, mData, mCc);
             }
             else {
@@ -1976,6 +1985,8 @@ catch (java.lang.Throwable thr) {}
                                                               final boolean debug) {
 
         if (mData.isTeleportedPosition(to)) {
+            // Legacy setTo correction: the move ends at our set back, so no residual glide credit.
+            ElytraResidual.end(mData.elytraResidual);
             // Skip resetting, especially if legacy setTo is enabled.
             // TODO: Might skip this condition, if legacy setTo is not enabled.
             if (debug) debug(player, "Event not cancelled, with teleported (set back) set, assume legacy behavior.");
@@ -2771,6 +2782,8 @@ catch (java.lang.Throwable thr) {}
     private void dataOnJoin(Player player, Location loc, boolean isRespawn, MovingData data, 
                             MovingConfig cc, final boolean debug) {
 
+        // Always, also for a same-world relog that keeps the old fly data.
+        ElytraResidual.end(data.elytraResidual);
         final int tick = TickTask.getTick();
         final String tag = isRespawn ? "Respawn" : "Join";
         // Check loaded chunks.

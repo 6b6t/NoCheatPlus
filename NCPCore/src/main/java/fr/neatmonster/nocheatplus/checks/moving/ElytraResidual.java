@@ -23,16 +23,21 @@ package fr.neatmonster.nocheatplus.checks.moving;
  * <ul>
  * <li><b>Lag</b>: {@link #lagMoves(int)} moves while the client may still be
  * gliding. Horizontal speed may grow by {@link #LAG_H_GROWTH} per move, never
- * above the CreativeFly elytra limit.</li>
+ * above the CreativeFly elytra limit. Vertical speed may rise only as far as
+ * vanilla glide physics allows ({@link #maxGlideY}): the lift a descent gives,
+ * plus a pitch-up climb that the horizontal speed lost in the same move pays
+ * for. A move may also stay at or below the starting vertical speed plus
+ * {@link #Y_SLACK} (a rocket holds the glide there).</li>
  * <li><b>Coast</b>: horizontal speed must fall with air drag
- * ({@link #COAST_DRAG}) and the player must fall with gravity. The window closes
- * once the move is a normal air move ({@link #NORMAL_AIR_H}).</li>
+ * ({@link #COAST_DRAG}) and the player must fall with gravity, never above the
+ * highest vertical speed the window accepted. The window closes once the move
+ * is a normal air move ({@link #NORMAL_AIR_H}).</li>
  * </ul>
- * In both phases the player may not climb above the starting vertical speed plus
- * {@link #Y_SLACK} or drop more than {@link #Y_DESCEND_SLACK} below the last
- * accepted vertical speed. Any move outside the limits, ground, liquid or
- * climbable ends the window. A new window can open at most once per
- * {@link #REARM_MOVES} moves. State lives only in {@link MovingData}.
+ * In both phases the player may not drop more than {@link #Y_DESCEND_SLACK} below
+ * the last accepted vertical speed. Any move outside the limits, ground, liquid,
+ * climbable or an elytra back in the chest slot ends the window. A new window can
+ * open at most once per {@link #REARM_MOVES} moves. State lives only in
+ * {@link MovingData}.
  */
 public final class ElytraResidual {
 
@@ -60,7 +65,7 @@ public final class ElytraResidual {
     /** Coast phase: vanilla vertical drag. */
     public static final double VERTICAL_DRAG = 0.98;
 
-    /** Coast phase: margin above the vanilla fall. */
+    /** Coast phase: margin above the vanilla fall (at or below the start ceiling or level). */
     public static final double COAST_Y_MARGIN = 0.05;
 
     /** At or below this, the coast move is a normal air move and the window closes. */
@@ -73,8 +78,41 @@ public final class ElytraResidual {
      */
     public static final int MAX_COAST_MOVES = 40;
 
-    /** How far above the vertical speed at the start a move may be. */
+    /** How far above the vertical speed at the start a move may be, whatever the physics. */
     public static final double Y_SLACK = 0.15;
+
+    // Vanilla glide, LivingEntity#updateFallFlyingMovement, per tick (c = cos^2(pitch), s = sin(-pitch)):
+    //   vy += 0.08 * (-1 + 0.75 c)                      gravity, least at pitch 0
+    //   lift = 0.1 c * -vy, if vy < 0: vy += lift, h += lift   (descent turned into speed)
+    //   climb = 0.04 * h0 * s, if pitch < 0: h -= climb, vy += 3.2 climb
+    //   h is steered 10 % back to h0 along the look, then h *= 0.99, vy *= 0.98.
+
+    /** Glide gravity at pitch 0: 0.08 * (1 - 0.75). Any other pitch pulls down harder. */
+    public static final double GLIDE_GRAVITY = 0.02;
+
+    /** Glide gravity added per sin^2(-pitch) when pitching up: 0.08 * 0.75. */
+    public static final double GLIDE_GRAVITY_PITCH = 0.06;
+
+    /** Lift: share of the downward speed turned into horizontal speed, per tick. */
+    public static final double GLIDE_LIFT = 0.1;
+
+    /** Pitch-up climb: share of the horizontal speed spent, per tick at sin(-pitch) = 1. */
+    public static final double GLIDE_CLIMB = 0.04;
+
+    /** Pitch-up climb: vertical speed gained per unit of horizontal speed spent. */
+    public static final double GLIDE_CLIMB_LIFT = 3.2;
+
+    /** Steering keeps this share of a change in horizontal speed (it pulls 10 % back). */
+    public static final double GLIDE_STEER_KEEP = 0.9;
+
+    /** Glide drag on horizontal speed. */
+    public static final double GLIDE_H_DRAG = 0.99;
+
+    /** Lag phase: margin above the vanilla glide bound (rounding). Real glides stay within 0.0003. */
+    public static final double GLIDE_Y_MARGIN = 0.005;
+
+    /** CreativeFly: default walk speed, the base of the walk speed ratio (Magic.DEFAULT_WALKSPEED). */
+    public static final double DEFAULT_WALK_SPEED = 0.2;
 
     /** How far below the last accepted vertical speed one move may go. */
     public static final double Y_DESCEND_SLACK = 0.30;
@@ -102,6 +140,15 @@ public final class ElytraResidual {
         public double lastY;
         /** Vertical upper bound, fixed from the glide that opened the window. */
         public double yCap;
+        /** Coast phase vertical upper bound: yCap or the highest accepted lag move. */
+        public double yHigh;
+        /**
+         * Horizontal speed gained in the lag phase beyond what vanilla lift explains.
+         * Must be spent again before any climb is paid for.
+         */
+        public double hDebt;
+        /** The one move that repeats the last vertical distance (first air tick) was used. */
+        public boolean repeated;
     }
 
     private ElytraResidual() {}
@@ -111,6 +158,40 @@ public final class ElytraResidual {
         final long ping = Math.max(0L, (long) pingMs);
         final long moves = MIN_LAG_MOVES + (ping + PING_MS_PER_MOVE - 1L) / PING_MS_PER_MOVE;
         return (int) Math.min(MAX_LAG_MOVES, moves);
+    }
+
+    /**
+     * Lag phase speed cap: the CreativeFly elytra limit with the same modifiers
+     * CreativeFly applies to a gliding player (speed effect, movement speed
+     * attribute, walk speed ratio), but never more than the configured model
+     * limit. Returns 0 (no window) for unusable input.
+     *
+     * @param modelCap the model's limit, horizontal mod speed / 100 * 0.6
+     * @param applyModifiers the model applies modifiers (live elytra model: yes)
+     * @param speedAmplifier speed effect amplifier, infinite for none
+     * @param attributeMultiplier movement speed attribute multiplier, Double.MAX_VALUE if unknown
+     * @param walkSpeed the player's walk speed (default 0.2)
+     */
+    public static double elytraCap(final double modelCap, final boolean applyModifiers,
+                                   final double speedAmplifier, final double attributeMultiplier,
+                                   final double walkSpeed) {
+        if (!Double.isFinite(modelCap) || modelCap <= 0.0) {
+            return 0.0;
+        }
+        if (!applyModifiers) {
+            return modelCap;
+        }
+        // Same as CreativeFly.hDist for a player that is not flying.
+        double factor = Double.isInfinite(speedAmplifier) ? 1.0 : 1.0 + 0.2 * (speedAmplifier + 1.0);
+        if (attributeMultiplier != Double.MAX_VALUE) {
+            factor *= attributeMultiplier;
+        }
+        factor *= walkSpeed / DEFAULT_WALK_SPEED;
+        if (!Double.isFinite(factor) || factor <= 0.0) {
+            return 0.0;
+        }
+        // The smaller of the two: a slower player never gets the full model limit.
+        return Math.min(modelCap, modelCap * factor);
     }
 
     /**
@@ -135,44 +216,76 @@ public final class ElytraResidual {
         state.lastH = Math.min(lastH, elytraCap);
         state.lastY = lastY;
         state.yCap = lastY + Y_SLACK;
+        state.yHigh = state.yCap;
+        state.hDebt = 0.0;
+        state.repeated = false;
         return true;
     }
 
     /**
      * Count one move and judge it against the open window. Returns true when the
      * move is inside the window. Ground, reset conditions (liquid, climbable and
-     * similar) and any move outside the limits end the window.
+     * similar), an elytra in the chest slot again and any move outside the limits
+     * end the window.
      */
     public static boolean allow(final State state, final double hDistance, final double yDistance,
-                                final boolean onGround, final boolean resetCond) {
+                                final boolean onGround, final boolean resetCond, final boolean wearingElytra) {
         countMove(state);
         if (!state.open) {
             return false;
         }
-        if (onGround || resetCond || !Double.isFinite(hDistance) || !Double.isFinite(yDistance)
+        if (wearingElytra || onGround || resetCond || !Double.isFinite(hDistance) || !Double.isFinite(yDistance)
                 || hDistance < 0.0) {
             end(state);
             return false;
         }
         final int index = state.moves + 1;
         final boolean lag = index <= state.lagMoves;
-        // Vertical, both phases: no climb above the start, no sudden dive.
-        if (yDistance > state.yCap || yDistance < Math.max(DIVE_MIN, state.lastY - Y_DESCEND_SLACK)) {
+        // Vertical, both phases: no sudden dive.
+        if (yDistance < Math.max(DIVE_MIN, state.lastY - Y_DESCEND_SLACK)) {
             end(state);
             return false;
         }
+        double hDebt = state.hDebt;
+        boolean repeat = false;
         if (lag) {
             // The client may still be gliding. Never more than wearing the elytra allows.
             if (hDistance > Math.min(state.elytraCap, state.lastH + LAG_H_GROWTH)) {
                 end(state);
                 return false;
             }
+            // Horizontal speed this move spent beyond drag (positive) or gained beyond lift (negative).
+            final double spent = state.lastH + GLIDE_STEER_KEEP * maxLift(state.lastY) - hDistance / GLIDE_H_DRAG;
+            final double paid;
+            if (spent < 0.0) {
+                hDebt -= spent;
+                paid = 0.0;
+            }
+            else {
+                final double repaid = Math.min(hDebt, spent);
+                hDebt -= repaid;
+                paid = spent - repaid;
+            }
+            // Glide physics, or no higher than the start (rocket, level glide).
+            if (yDistance > Math.max(state.yCap, maxGlideY(state.lastY, state.lastH, paid))) {
+                // The first tick after the glide stops moves by the last glide velocity
+                // (vanilla applies air drag and gravity after the move). Once per window.
+                if (state.repeated || yDistance > state.lastY + GLIDE_Y_MARGIN
+                        || hDistance > state.lastH + COAST_H_MARGIN) {
+                    end(state);
+                    return false;
+                }
+                repeat = true;
+            }
         }
         else {
-            // Vanilla coast: air drag horizontally, gravity vertically.
-            if (index - state.lagMoves > MAX_COAST_MOVES
+            // Vanilla coast: air drag horizontally, gravity vertically. Rising above the
+            // old ceiling (only after a paid climb) must follow vanilla gravity exactly.
+            final double yMargin = state.lastY > Math.max(state.yCap, 0.0) ? GLIDE_Y_MARGIN : COAST_Y_MARGIN;
+            if (yDistance > state.yHigh
+                    || index - state.lagMoves > MAX_COAST_MOVES
                     || hDistance > state.lastH * COAST_DRAG + COAST_H_MARGIN
-                    || yDistance > (state.lastY - GRAVITY) * VERTICAL_DRAG + COAST_Y_MARGIN) {
+                    || yDistance > (state.lastY - GRAVITY) * VERTICAL_DRAG + yMargin) {
                 end(state);
                 return false;
             }
@@ -180,11 +293,52 @@ public final class ElytraResidual {
         state.moves = index;
         state.lastH = hDistance;
         state.lastY = yDistance;
-        if (!lag && hDistance <= NORMAL_AIR_H) {
+        state.hDebt = hDebt;
+        state.repeated |= repeat;
+        if (lag) {
+            state.yHigh = Math.max(state.yHigh, yDistance);
+        }
+        else if (hDistance <= NORMAL_AIR_H) {
             // Normal air move from here on; SurvivalFly judges the rest.
             end(state);
         }
         return true;
+    }
+
+    /** Most horizontal speed one glide tick can gain from lift, at any pitch: 0.1 * (0.08 - vy). */
+    static double maxLift(final double lastY) {
+        return GLIDE_LIFT * Math.max(0.0, GRAVITY - lastY);
+    }
+
+    /**
+     * Highest vertical distance one vanilla glide tick can reach from the last
+     * move, at any pitch, plus {@link #GLIDE_Y_MARGIN}.
+     * <p>
+     * Without paid speed (pitch 0 or down) the best is pitch 0: gravity -0.02 and
+     * lift 0.1 * (0.02 - vy). Pitching up by s = sin(-pitch) adds 3.2 * 0.04 * h * s,
+     * costs extra gravity 0.06 * s^2 and lift, and spends 0.9 * 0.04 * h * s of
+     * horizontal speed. So s is limited to what {@code paid} covers.
+     *
+     * @param lastY last accepted vertical distance
+     * @param lastH last accepted horizontal distance
+     * @param paid horizontal speed this move lost beyond glide drag and lift, after any debt
+     */
+    public static double maxGlideY(final double lastY, final double lastH, final double paid) {
+        final double sMax = paid > 0.0 && lastH > 0.0
+                ? Math.min(1.0, paid / (GLIDE_STEER_KEEP * GLIDE_CLIMB * lastH)) : 0.0;
+        final double change;
+        if (sMax > 0.0) {
+            // Upper bound for any pitch-up s: gravity -0.02 - 0.06 s^2, lift <= (1 - s^2) * maxLift.
+            final double lift = maxLift(lastY);
+            final double climb = GLIDE_CLIMB * GLIDE_CLIMB_LIFT * lastH;
+            final double curve = GLIDE_GRAVITY_PITCH + lift;
+            final double s = Math.min(sMax, climb / (2.0 * curve));
+            change = -GLIDE_GRAVITY + lift + climb * s - curve * s * s;
+        }
+        else {
+            change = -GLIDE_GRAVITY + GLIDE_LIFT * Math.max(0.0, GLIDE_GRAVITY - lastY);
+        }
+        return (lastY + change) * VERTICAL_DRAG + GLIDE_Y_MARGIN;
     }
 
     /** Close the window. Does not re-arm early. */
