@@ -212,6 +212,11 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public int fireworksBoostDuration = 0;
     /** This firework boost tick needs to be checked. Aimed at solving vanilla bugs when boosting with elytra. */
     public int fireworksBoostTickNeedCheck = 0;
+    /**
+     * Short window after an elytra is unequipped mid-glide (see {@link ElytraResidual}).
+     * In memory only. clearFlyData and onSetBack close it but keep the re-arm count.
+     */
+    public final ElytraResidual.State elytraResidual = new ElytraResidual.State();
     /** Expire at this tick. */
     public int fireworksBoostTickExpire = 0;
 
@@ -424,6 +429,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         momentumTick = 0;
         liqtick = 0;
         insideBubbleStreamCount = 0;
+        ElytraResidual.end(elytraResidual);
     }
 
 
@@ -436,6 +442,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * @param setBack
      */
     public void onSetBack(final PlayerLocation setBack) {
+        // A correction must not keep residual glide credit.
+        ElytraResidual.end(elytraResidual);
         // Reset positions (a teleport should follow, though).
         this.morePacketsSetback = null;
         clearAccounting(); // Might be more safe to do this.
