@@ -385,7 +385,10 @@ public class NoFall extends Check {
     private void adjustFallDistance(final Player player, final double minY, final boolean reallyOnGround, 
                                     final MovingData data, final MovingConfig cc) {
 
-        final float landingDistance = Math.max(Math.max(data.noFallContactFallDebt, data.noFallHandoffDistance),
+        // Debt kept for a native reset this check caused (cancelled airborne
+        // FALL event, own set-back, denied contact) is owed at the first
+        // contact, also when the move that reaches it starts on that support.
+        final float landingDistance = Math.max(Math.max(retainedNativeResetDebt(data), data.noFallHandoffDistance),
                 Math.max(data.noFallFallDistance, (float) (data.noFallMaxY - minY)));
         float noFallFallDistance = landingDistance;
         if (ServerVersion.compareMinecraftVersion("26.1") >= 0) {
@@ -457,12 +460,18 @@ public class NoFall extends Check {
     public static void onGlidingMove(final Player player, final MovingData data, final double yDistance) {
         final float nativeDistance = Math.max(0f, player.getFallDistance());
         final float contactDebt = data.noFallContactFallDebt;
+        final float cancelledDebt = data.noFallCancelledAirFallDebt;
+        // Our own set-back removed the downward speed, so the glide limit it
+        // then triggers cannot forgive the accepted descent before it.
+        final float setBackDebt = data.noFallSetBackFallDebt;
         if (!data.noFallGlideEstablished) {
             // A real deployment starts with native distance. Never resurrect
-            // descent from before deployment.
+            // descent from before deployment. Distance native lost to our own
+            // cancellation is not resurrected descent; the limit still applies.
             data.clearNoFallData();
             data.clearGlideDebt();
             data.noFallFallDistance = nativeDistance;
+            data.noFallCancelledAirFallDebt = cancelledDebt;
         }
         // updateFallFlying applies its limit once per native tick, before
         // the next packet descent. Ground spoofing can erase native distance,
@@ -479,6 +488,7 @@ public class NoFall extends Check {
         data.noFallMaxY = player.getLocation().getY() + yDistance + data.noFallFallDistance;
         data.noFallGlideEstablished = true;
         data.noFallContactFallDebt = contactDebt;
+        data.noFallSetBackFallDebt = setBackDebt;
     }
 
     /** The server starts a jump only from its own ground state. A gliding
@@ -499,8 +509,10 @@ public class NoFall extends Check {
         if (!data.noFallGlideEstablished && data.noFallGlideTicks == 0 && data.noFallGlideCarry == 0f) return;
         final boolean tracked = data.noFallGlideEstablished;
         final float contactDebt = data.noFallContactFallDebt;
-        final float retained = tracked && data.noFallGlideLimitPending && player.getTicksLived() != data.noFallGlideAccountingTick
-                ? Math.min(1f, data.noFallFallDistance) : data.noFallFallDistance;
+        final float setBackDebt = data.noFallSetBackFallDebt;
+        final boolean limited = tracked && data.noFallGlideLimitPending && player.getTicksLived() != data.noFallGlideAccountingTick;
+        final float cancelledDebt = limited ? 0f : data.noFallCancelledAirFallDebt;
+        final float retained = limited ? Math.min(1f, data.noFallFallDistance) : data.noFallFallDistance;
         final float distance = tracked ? Math.max(retained, player.getFallDistance())
                 : Math.max(0f, player.getFallDistance());
         data.clearNoFallData();
@@ -508,6 +520,8 @@ public class NoFall extends Check {
         data.noFallFallDistance = distance;
         data.noFallMaxY = player.getLocation().getY() + distance;
         data.noFallContactFallDebt = contactDebt;
+        data.noFallSetBackFallDebt = setBackDebt;
+        data.noFallCancelledAirFallDebt = cancelledDebt;
     }
 
     /** Re-anchor only accepted descent after our own corrective placement. */
