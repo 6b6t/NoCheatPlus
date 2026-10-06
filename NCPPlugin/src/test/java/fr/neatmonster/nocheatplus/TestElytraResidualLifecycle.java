@@ -20,6 +20,8 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
@@ -33,7 +35,10 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.Block;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.junit.Before;
 import org.junit.Test;
@@ -48,6 +53,11 @@ import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.MovingListener;
 import fr.neatmonster.nocheatplus.checks.moving.location.tracking.LocationTrace.TraceEntryPool;
 import fr.neatmonster.nocheatplus.checks.moving.util.AuxMoving;
+import fr.neatmonster.nocheatplus.checks.moving.vehicle.VehicleChecks;
+import fr.neatmonster.nocheatplus.compat.Folia;
+import fr.neatmonster.nocheatplus.players.DataManager;
+import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
+import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
 import fr.neatmonster.nocheatplus.checks.workaround.WRPT;
 import fr.neatmonster.nocheatplus.logging.LogManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
@@ -122,6 +132,7 @@ public class TestElytraResidualLifecycle {
         set(listener, MovingListener.class, "aux", aux);
         set(listener, MovingListener.class, "hoverTicks", ConcurrentHashMap.newKeySet());
         set(listener, MovingListener.class, "playersEnforce", ConcurrentHashMap.newKeySet());
+        set(listener, MovingListener.class, "useLoc", new Location(null, 0, 0, 0));
         set(listener, fr.neatmonster.nocheatplus.checks.CheckListener.class, "mcAccess",
                 NCPAPIProvider.getNoCheatPlusAPI().getGenericInstanceHandle(fr.neatmonster.nocheatplus.compat.MCAccess.class));
         return listener;
@@ -215,6 +226,99 @@ public class TestElytraResidualLifecycle {
         assertClosedAndCooldownKept("changed endpoint");
     }
 
+    /** Fill a scratch location the way Bukkit's getLocation(Location) does. */
+    private org.mockito.stubbing.Answer<Location> at(final World in, final double x, final double y, final double z) {
+        return call -> {
+            final Location target = call.getArgument(0);
+            target.setWorld(in);
+            target.setX(x);
+            target.setY(y);
+            target.setZ(z);
+            return target;
+        };
+    }
+
+    private VehicleChecks vehicleChecks() throws Exception {
+        final VehicleChecks checks = mock(VehicleChecks.class, CALLS_REAL_METHODS);
+        set(checks, VehicleChecks.class, "aux", aux);
+        set(checks, VehicleChecks.class, "useLocEnter", new Location(null, 0, 0, 0));
+        set(checks, VehicleChecks.class, "useLocVehicleEnter", new Location(null, 0, 0, 0));
+        return checks;
+    }
+
+    /** REVIEW-CODE-2 finding 2: mounting during a window. */
+    @Test
+    public void vehicleEnterEndsTheWindow() throws Exception {
+        openWindow();
+        final Entity vehicle = mock(Entity.class);
+        when(vehicle.getLocation(any(Location.class))).thenAnswer(at(world, 10.5, 100.0, 10.5));
+        when(player.getLocation(any(Location.class))).thenAnswer(at(world, 10.5, 100.5, 10.5));
+        final Method enter = VehicleChecks.class.getDeclaredMethod("dataOnVehicleEnter",
+                Player.class, Entity.class, MovingData.class, IPlayerData.class);
+        enter.setAccessible(true);
+        enter.invoke(vehicleChecks(), player, vehicle, data, pData);
+        assertClosedAndCooldownKept("vehicle enter");
+    }
+
+    /** REVIEW-CODE-2 finding 2: dismount, here through the missed-exit path (no VehicleExitEvent). */
+    @Test
+    public void vehicleExitEndsTheWindow() throws Exception {
+        openWindow();
+        final Block air = mock(Block.class);
+        when(air.getType()).thenReturn(Material.AIR);
+        when(world.getBlockAt(anyInt(), anyInt(), anyInt())).thenReturn(air);
+        when(world.getBlockAt(any(Location.class))).thenReturn(air);
+        when(player.getLocation()).thenReturn(new Location(world, 10.5, 120.0, 10.5));
+        try (MockedStatic<Folia> folia = mockStatic(Folia.class);
+             MockedStatic<DataManager> manager = mockStatic(DataManager.class);
+             MockedStatic<BlockProperties> blocks = mockStatic(BlockProperties.class)) {
+            folia.when(() -> Folia.isOwnedByCurrentRegion(any(Entity.class))).thenReturn(true);
+            folia.when(() -> Folia.isOwnedByCurrentRegion(any(Location.class))).thenReturn(true);
+            manager.when(() -> DataManager.getPlayerData(player)).thenReturn(pData);
+            vehicleChecks().onVehicleLeaveMiss(player, data, config, pData);
+        }
+        assertClosedAndCooldownKept("vehicle exit (missed event)");
+    }
+
+    /** REVIEW-CODE-2 finding 2: the move monitor resets a riding player's positions. */
+    @Test
+    public void monitorVehicleAndWorldChangeBranchesEndTheWindow() throws Exception {
+        openWindow();
+        final Entity vehicle = mock(Entity.class);
+        when(vehicle.getLocation(any(Location.class))).thenAnswer(at(world, 10.5, 100.0, 10.5));
+        when(player.isInsideVehicle()).thenReturn(true);
+        when(player.getVehicle()).thenReturn(vehicle);
+        final Location from = new Location(world, 10.5, 100.0, 10.5);
+        final Location to = new Location(world, 10.6, 100.0, 10.5);
+        when(player.getLocation()).thenReturn(to.clone());
+        final Class<?>[] types = {Player.class, Location.class, Location.class, long.class, long.class,
+                CombinedData.class, MovingData.class, MovingConfig.class, IPlayerData.class};
+        try (MockedStatic<Combined> combined = mockStatic(Combined.class)) {
+            call(listener(), "onMoveMonitorNotCancelled", types, player, from, to, 1000L, 1L, new CombinedData(), data, config, pData);
+        }
+        assertClosedAndCooldownKept("monitor, in a vehicle");
+
+        // Different world: a teleport event should follow, but the window ends here already.
+        openWindow();
+        when(player.isInsideVehicle()).thenReturn(false);
+        final World other = mock(World.class);
+        when(other.getName()).thenReturn("other");
+        final Location away = new Location(other, 10.5, 100.0, 10.5);
+        when(player.getLocation()).thenReturn(from.clone());
+        try (MockedStatic<Combined> combined = mockStatic(Combined.class)) {
+            call(listener(), "onMoveMonitorNotCancelled", types, player, from, away, 1000L, 1L, new CombinedData(), data, config, pData);
+        }
+        assertClosedAndCooldownKept("monitor, world change");
+    }
+
+    /** REVIEW-CODE-2 finding 2: the shared player-position reset is the invariant behind every caller. */
+    @Test
+    public void everyPlayerPositionResetEndsTheWindow() {
+        openWindow();
+        data.resetPlayerPositions((PlayerLocation) null);
+        assertClosedAndCooldownKept("resetPlayerPositions");
+    }
+
     @Test
     public void clearFlyDataStillEndsTheWindow() {
         openWindow();
@@ -241,6 +345,9 @@ public class TestElytraResidualLifecycle {
         assertTrue(capCall.contains("getFasterMovementAmplifier(player)"));
         assertTrue(capCall.contains("getSpeedAttributeMultiplier(player)"));
         assertTrue(capCall.contains("data.walkSpeed"));
+        // The start ceiling only with an unexpired firework boost.
+        assertTrue(listener.contains("final boolean rocket = data.fireworksBoostTickExpire >= tick;"));
+        assertTrue(listener.contains("elytraCap, rocket)"));
         // CreativeFly's own cap uses the same three modifiers.
         final String cf = new String(Files.readAllBytes(new File(dir, moving + "player/CreativeFly.java").toPath()), StandardCharsets.UTF_8);
         assertTrue(cf.contains("fSpeed = 1.0 + 0.2 * (speedModifier + 1.0)"));

@@ -14,6 +14,12 @@ import fr.neatmonster.nocheatplus.compat.*;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 
 public class TestNoFallLandingConsumption {
+    /**
+     * Bukkit's Location holds its World weakly. Keep every fixture World strongly
+     * reachable, or a collection mid-test makes getWorld() throw "World unloaded".
+     */
+    private static final java.util.List<World> WORLDS = new java.util.concurrent.CopyOnWriteArrayList<World>();
+
     private static class Fixture {
         final MCAccess access = mock(MCAccess.class);
         final Player player = mock(Player.class);
@@ -29,7 +35,7 @@ public class TestNoFallLandingConsumption {
             var moves = mock(fr.neatmonster.nocheatplus.checks.moving.model.MoveTrace.class);
             var traceField = MovingData.class.getField("playerMoves");
             traceField.setAccessible(true); traceField.set(data, moves);
-            World world = mock(World.class); Block block = mock(Block.class);
+            World world = mock(World.class); WORLDS.add(world); Block block = mock(Block.class);
             when(block.getType()).thenReturn(Material.AIR);
             when(world.getBlockAt(any(Location.class))).thenReturn(block);
             Location location = new Location(world, 16, 81, 16);
