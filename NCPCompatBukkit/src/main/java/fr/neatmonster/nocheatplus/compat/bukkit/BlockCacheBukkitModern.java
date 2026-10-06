@@ -83,6 +83,10 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
     
     @Override
     public boolean standsOnEntity(final Entity entity, final double minX, final double minY, final double minZ, final double maxX, final double maxY, final double maxZ){
+        if (fr.neatmonster.nocheatplus.compat.versions.ServerVersion.compareMinecraftVersion("26.1") >= 0
+                && entity instanceof org.bukkit.entity.Player) {
+            return standsOnNativeEntity((org.bukkit.entity.Player) entity, minX, minY, minZ, maxX, maxY, maxZ);
+        }
         try{
             // TODO: Probably check vehicle ids too before doing this ?
             for (final Entity vehicle : entity.getNearbyEntities(0.1, 2.0, 0.1)){
@@ -102,6 +106,31 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
         }
         catch (Throwable t){
             // Ignore exceptions (Context: DisguiseCraft).
+        }
+        return false;
+    }
+
+    private boolean standsOnNativeEntity(final org.bukkit.entity.Player player, final double minX, final double minY,
+            final double minZ, final double maxX, final double maxY, final double maxZ) {
+        if (!fr.neatmonster.nocheatplus.compat.Folia.isOwnedByCurrentRegion(player)) return false;
+        try {
+            for (final Entity other : player.getNearbyEntities(1.5, 2.0, 1.5)) {
+                if (!fr.neatmonster.nocheatplus.compat.Folia.isOwnedByCurrentRegion(other) || !other.isValid()
+                        || other.getUniqueId().equals(player.getUniqueId())
+                        || !NativeLandingAccess.canCollide(player, other)) continue;
+                final org.bukkit.util.BoundingBox box = other.getBoundingBox();
+                if (box.getMaxX() <= minX || box.getMinX() >= maxX
+                        || box.getMaxZ() <= minZ || box.getMinZ() >= maxZ) continue;
+                if (box.getMaxY() >= minY - 0.00001 && box.getMaxY() <= maxY + 0.00001) return true;
+                // Native swept contact with a descending boat can precede its
+                // next position. Only the actual current feet/collision pair
+                // can select this exception, never a proposed movement endpoint.
+                if (Math.abs(player.getLocation().getY() - maxY) <= 0.00001
+                        && NativeLandingAccess.hasCollisionBelow(player)
+                        && Math.abs(box.getMaxY() - maxY) <= 0.85) return true;
+            }
+        } catch (RuntimeException crossRegion) {
+            // Ownership/lookup failure cannot manufacture support.
         }
         return false;
     }

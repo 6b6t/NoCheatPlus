@@ -1377,7 +1377,9 @@ catch (java.lang.Throwable thr) {}
 
                 // Still check for NoFall.
                 if (checkNf) {
+                    finishNativeLandingBeforeDeparture(player, pFrom, data, cc, pData);
                     noFall.check(player, pFrom, pTo, previousSetBackY, data, cc, pData);
+                    queueNativeLanding(player, data, cc, pData);
                 }
             }
             else {
@@ -1407,7 +1409,9 @@ catch (java.lang.Throwable thr) {}
 
                 // Check for NoFall
                 if (checkNf && noFall.isEnabled(player, pData)) {
+                    finishNativeLandingBeforeDeparture(player, pFrom, data, cc, pData);
                     noFall.check(player, pFrom, pTo, previousSetBackY, data, cc, pData);
+                    queueNativeLanding(player, data, cc, pData);
                 }
             }
             data.sfHoverTicks = -1;
@@ -1469,7 +1473,8 @@ catch (java.lang.Throwable thr) {}
                 if (verticalBounce == BounceType.STATIC) {
                     // A native bounce has no FALL event. Retained descent must
                     // not be carried into a later fall or ordinary teleport.
-                    NoFall.consumeSlimeContact(pTo, data, Math.max(cc.noFallyOnGround, cc.yOnGround));
+                    NoFall.consumeSlimeContact(pTo, data, ServerVersion.compareMinecraftVersion("26.1") >= 0
+                            && !cc.noFallDealDamage ? 0.00001 : Math.max(cc.noFallyOnGround, cc.yOnGround));
                 }
             }
 
@@ -2655,7 +2660,8 @@ catch (java.lang.Throwable thr) {}
             // and attributes there. Recomputing damage from geometric distance here
             // would undo legitimate wind-charge mitigation (and other native rules).
             // Client-only support still cannot consume the descent or cause damage.
-            if (!Bridge1_9.isGlidingWithElytra(player) && !pLoc.isOnGround(yOnGround) && !pLoc.isResetCond() && !entitySupportsFeet(player)) {
+            if (!Bridge1_9.isGlidingWithElytra(player) && !pLoc.isOnGround(0.00001) && !pLoc.isResetCond()
+                    && !entitySupportsFeet(player)) {
                 // Still airborne. Cancelling is required so a ground spoof cannot
                 // consume the fall, but the server zeroes fallDistance anyway.
                 // Put that distance back on the next tick.
@@ -2678,8 +2684,8 @@ catch (java.lang.Throwable thr) {}
                             restoreInfo.from.collectBlockFlags(yOnGround);
                             if (!MovingUtil.shouldCheckSurvivalFly(player, restoreInfo.from, restoreInfo.to, data,
                                     pData.getGenericInstance(MovingConfig.class), pData)) return;
-                            if (restoreInfo.from.isOnGround(yOnGround) || restoreInfo.from.isResetCond()
-                                    || entitySupportsFeet(player)) {
+                            if (restoreInfo.from.isOnGround(0.00001) || restoreInfo.from.isResetCond()
+                                    || entitySupportsFeet(player, false)) {
                                 data.clearNoFallData();
                                 return;
                             }
@@ -2810,20 +2816,107 @@ catch (java.lang.Throwable thr) {}
 
     /** Collision support vanilla will damage, which a block-only ground test misses. */
     private boolean entitySupportsFeet(final Player player) {
+        return entitySupportsFeet(player, true);
+    }
+
+    private boolean entitySupportsFeet(final Player player, final boolean nativeCollision) {
         try {
             final Location feet = player.getLocation();
+            final double halfWidth = player.getBoundingBox().getWidthX() / 2.0;
             for (final Entity entity : player.getNearbyEntities(1.5, 1.5, 1.5)) {
-                if (!entity.isValid() || entity.getUniqueId().equals(player.getUniqueId())) continue;
+                if (!Folia.isOwnedByCurrentRegion(entity) || !entity.isValid()
+                        || entity.getUniqueId().equals(player.getUniqueId())
+                        || !mcAccess.getHandle().canCollideWith(player, entity)) continue;
                 final org.bukkit.util.BoundingBox box = entity.getBoundingBox();
-                if (NoFall.boxSupportsFeet(feet.getX(), feet.getY(), feet.getZ(),
+                if (NoFall.boxSupportsFeet(feet.getX(), feet.getY(), feet.getZ(), halfWidth,
                         box.getMinX(), box.getMinY(), box.getMinZ(),
                         box.getMaxX(), box.getMaxY(), box.getMaxZ())) return true;
+                // A moving solid entity may already have moved away from the
+                // native swept collision. Only that native collision can justify
+                // the old boat vertical margin; a nearby hit box alone cannot.
+                if (nativeCollision && mcAccess.getHandle().hasVerticalCollisionBelow(player)
+                        && Math.abs(feet.getY() - box.getMaxY()) <= 0.85
+                        && NoFall.boxSupportsFeet(feet.getX(), box.getMaxY(), feet.getZ(), halfWidth,
+                            box.getMinX(), box.getMinY(), box.getMinZ(),
+                            box.getMaxX(), box.getMaxY(), box.getMaxZ())) return true;
             }
         } catch (RuntimeException crossRegion) {
             // Folia refuses an entity lookup outside this region. Treat that as no support.
         }
         return false;
     }
+
+    /** Close a missing native contact before a queued jump can leave its support. */
+    private void finishNativeLandingBeforeDeparture(final Player player, final PlayerLocation from,
+            final MovingData data, final MovingConfig cc, final IPlayerData pData) {
+        if (!data.noFallNativeLandingTaskPending
+                || data.noFallNativeLandingGeneration != data.noFallGeneration
+                || cc.noFallDealDamage || player.getFallDistance() <= 0f
+                || player.isInsideVehicle() || Bridge1_9.isGlidingWithElytra(player)
+                || cc.noFallSkipAllowFlight && player.getAllowFlight()
+                || !noFall.isEnabled(player, pData) || from.isResetCond()
+                || !from.isOnGround(0.00001) && !entitySupportsFeet(player, false)) return;
+        final float distance = Math.max(player.getFallDistance(),
+                (float) NoFall.getApplicableFallHeight(player, from.getY(), data));
+        data.clearNoFallData();
+        data.clearGlideDebt();
+        if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+        if (distance > player.getFallDistance()) player.setFallDistance(distance);
+        mcAccess.getHandle().dispatchNativeLanding(player);
+    }
+
+
+    /**
+     * A false packet ground bit can suppress native fallOn entirely. Probe after
+     * native movement, on the entity owner, and supply only the missing landing.
+     * Native distance zero proves the server already consumed contact (including
+     * immunity or cancelled damage); never resurrect it for a second attempt.
+     */
+    private void queueNativeLanding(final Player player, final MovingData data,
+            final MovingConfig cc, final IPlayerData pData) {
+        if (cc.noFallDealDamage || ServerVersion.compareMinecraftVersion("26.1") < 0
+                || Math.max(player.getFallDistance(), data.noFallFallDistance) <= 0f
+                || Bukkit.getServer() == null) return;
+        data.noFallNativeLandingGeneration = data.noFallGeneration;
+        if (data.noFallNativeLandingTaskPending) return;
+        data.noFallNativeLandingTaskPending = true;
+        final Object task = Folia.runSyncDelayedTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> {
+            data.noFallNativeLandingTaskPending = false;
+            final long generation = data.noFallNativeLandingGeneration;
+            if (!player.isOnline() || player.isDead() || player.isInsideVehicle()
+                    || player.isFlying() || Bridge1_9.isGlidingWithElytra(player)
+                    || pData.getGenericInstance(MovingData.class) != data
+                    || !pData.isCheckActive(CheckType.MOVING, player)
+                    || !noFall.isEnabled(player, pData)
+                    || !NoFall.mayRestoreCancelledFall(data, generation)) return;
+            final MovingConfig current = pData.getGenericInstance(MovingConfig.class);
+            if (current.noFallDealDamage || current.noFallSkipAllowFlight && player.getAllowFlight()) return;
+            final PlayerMoveInfo info = aux.usePlayerMoveInfo();
+            try {
+                info.set(player, player.getLocation(), null, 0.00001);
+                info.from.collectBlockFlags(0.00001);
+                if (!MovingUtil.shouldCheckSurvivalFly(player, info.from, info.to, data, current, pData)
+                        || info.from.isResetCond()) return;
+                if (!info.from.isOnGround(0.00001) && !entitySupportsFeet(player, false)) return;
+                final float nativeDistance = player.getFallDistance();
+                final float distance = Math.max(nativeDistance, (float) NoFall.getApplicableFallHeight(
+                        player, player.getLocation().getY(), data));
+                // Consume before native callbacks, including cancellation/immunity.
+                data.clearNoFallData();
+                data.clearGlideDebt();
+                if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+                if (nativeDistance <= 0f) return;
+                if (distance > nativeDistance) player.setFallDistance(distance);
+                mcAccess.getHandle().dispatchNativeLanding(player);
+            } finally {
+                aux.returnPlayerMoveInfo(info);
+            }
+        }, null, 1L);
+        if (task == null || task instanceof Integer && ((Integer) task) == -1) {
+            data.noFallNativeLandingTaskPending = false;
+        }
+    }
+
 
     private final boolean noFallVL(final Player player, final String tag, final MovingData data, final MovingConfig cc) {
 

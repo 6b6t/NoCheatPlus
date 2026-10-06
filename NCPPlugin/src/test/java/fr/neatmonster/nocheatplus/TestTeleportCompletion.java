@@ -155,10 +155,11 @@ public class TestTeleportCompletion {
     public void matchingCoordinatesInAnotherWorldAreNotOurPendingSetBack() {
         final Location source = new Location(world, 10, 90, 0);
         data.prepareSetBack(source);
-        final Location to = new Location(world(), 10, 90, 0);
+        final World destinationWorld = world();
+        final Location to = new Location(destinationWorld, 10, 90, 0);
         when(player.getLocation()).thenReturn(to.clone());
         MovingUtil.onTeleportComplete(player, to, 1L, data, pData);
-        assertEquals(to.getWorld(), data.getSetBack(to).getWorld());
+        assertEquals(destinationWorld, data.getSetBack(to).getWorld());
         assertFalse(data.hasTeleported());
         verify(aux).resetPositionsAndMediumProperties(player, to, data, config);
     }

@@ -420,11 +420,17 @@ public class NoFall extends Check {
     public static boolean boxSupportsFeet(final double x, final double y, final double z,
             final double minX, final double minY, final double minZ,
             final double maxX, final double maxY, final double maxZ) {
-        if (maxX - minX < 0.2 || maxZ - minZ < 0.2 || maxY - minY < 0.1) return false;
-        // Feet sit on the top face, or a little inside a sinking boat.
-        if (y < maxY - 0.6 || y > maxY + 0.85) return false;
-        if (x < minX - 0.35 || x > maxX + 0.35) return false;
-        if (z < minZ - 0.35 || z > maxZ + 0.35) return false;
+        return boxSupportsFeet(x, y, z, 0.3, minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    public static boolean boxSupportsFeet(final double x, final double y, final double z, final double halfWidth,
+            final double minX, final double minY, final double minZ,
+            final double maxX, final double maxY, final double maxZ) {
+        if (halfWidth <= 0 || maxX <= minX || maxZ <= minZ || maxY <= minY) return false;
+        // Require top-face contact and a positive player-footprint overlap.
+        if (Math.abs(y - maxY) > 0.00001) return false;
+        if (x + halfWidth <= minX || x - halfWidth >= maxX) return false;
+        if (z + halfWidth <= minZ || z - halfWidth >= maxZ) return false;
         return true;
     }
 
@@ -570,7 +576,23 @@ public class NoFall extends Check {
         final boolean fromOnGround, toOnGround;
         
         // Adapt yOnGround if necessary (sf uses another setting).
-        if (yDiff < 0 && cc.yOnGround < cc.noFallyOnGround) {
+        final boolean nativeLanding = !cc.noFallDealDamage && ServerVersion.compareMinecraftVersion("26.1") >= 0;
+        if (nativeLanding && mcAccess != null
+                && mcAccess.getHandle().isIgnoringFallDamageFromCurrentImpulse(player)) {
+            // Native checkFallDistanceAccumulation can reduce distance to one
+            // during an upward wind impulse. Old geometric descent must not
+            // undo that reduction. Retain the current packet descent below;
+            // only an actual native impulse can select this accounting.
+            data.clearNoFallData();
+            data.noFallFallDistance = Math.max(0f, player.getFallDistance());
+            data.noFallMaxY = fromY + data.noFallFallDistance;
+        }
+        if (nativeLanding) {
+            // The movement checks' step tolerance is not a completed contact.
+            fromOnGround = pFrom.isOnGround(0.00001);
+            toOnGround = pTo.isOnGround(0.00001);
+        }
+        else if (yDiff < 0 && cc.yOnGround < cc.noFallyOnGround) {
             // In fact this is somewhat heuristic, but it seems to work well.
             // Missing on-ground seems to happen with running down pyramids rather.
             // TODO: Should be obsolete.
@@ -596,7 +618,7 @@ public class NoFall extends Check {
                 data.noFallSkipAirCheck = true;
             }
         }
-        else if (fromOnGround || !toOnGround && thisMove.touchedGround) {
+        else if (fromOnGround || !nativeLanding && !toOnGround && thisMove.touchedGround) {
             // Check if to deal damage (fall back damage check).
             touchDown(player, minY, previousSetBackY, data, cc, pData); // Includes the current y-distance on descend!
             // Ensure very big/strange moves don't yield violations.

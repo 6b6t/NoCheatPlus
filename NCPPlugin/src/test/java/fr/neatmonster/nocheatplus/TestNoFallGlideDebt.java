@@ -90,8 +90,8 @@ public class TestNoFallGlideDebt {
     }
 
     @Test public void aBoatUnderTheFeetIsSupportAndADistantBoxIsNot() {
-        // Oak boat summoned at y=88, feet measured at 88.4825 during the cancelled landing.
-        assertTrue(NoFall.boxSupportsFeet(16.5, 88.4825, 16.5, 15.8125, 88.0, 15.8125, 17.1875, 88.5625, 17.1875));
+        // An interaction box near a sinking boat is not itself proof of a collision.
+        assertFalse(NoFall.boxSupportsFeet(16.5, 88.4825, 16.5, 15.8125, 88.0, 15.8125, 17.1875, 88.5625, 17.1875));
         // Same boat after it settled on the stone pad. Feet were 81.5625.
         assertTrue(NoFall.boxSupportsFeet(16.5, 81.5625, 16.5, 15.8125, 81.0, 15.8125, 17.1875, 81.5625, 17.1875));
         // A stacked second boat. Feet were 82.125.

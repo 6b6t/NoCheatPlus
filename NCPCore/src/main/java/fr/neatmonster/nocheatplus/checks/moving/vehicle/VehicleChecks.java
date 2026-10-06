@@ -815,6 +815,10 @@ public class VehicleChecks extends CheckListener {
         }
         else {
             data.vehicleSetBacks.resetAll(vLoc);
+            // VehicleEnvelope uses this as its own in-air movement counter.
+            // A real mount starts that counter; the passenger's earlier fall
+            // cannot make a newly spawned/falling boat violate its envelope.
+            data.sfJumpPhase = 0;
         }
         aux.resetVehiclePositions(vehicle, vLoc, data, cc);
         if (pData.isDebugActive(checkType)) {

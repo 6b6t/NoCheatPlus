@@ -723,6 +723,10 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
 
     /** Entity-owned token for pending native-distance restores; never transferred. */
     public long noFallGeneration;
+    /** One owning-entity landing probe at a time; resets invalidate its generation. */
+    public boolean noFallNativeLandingTaskPending;
+    public long noFallNativeLandingGeneration;
+
 
     /** Clear the fall check and invalidate callbacks for the previous descent. */
     public void clearNoFallData() {
