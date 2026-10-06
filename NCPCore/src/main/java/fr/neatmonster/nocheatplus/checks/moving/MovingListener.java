@@ -244,6 +244,33 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                 );
         teleportCompletionSupported = registerTeleportCompletionEvent(api);
         registerWindChargeKnockback(api);
+        registerServerJump(api);
+    }
+
+    /** Paper's PlayerJumpEvent is fired when the server starts a jump from its own ground state. */
+    private void registerServerJump(final NoCheatPlusAPI api) {
+        try {
+            registerServerJump(api, Class.forName("com.destroystokyo.paper.event.player.PlayerJumpEvent").asSubclass(Event.class));
+        } catch (ClassNotFoundException unavailable) {
+            // Without the event, glide-jump debt keeps the previous handling.
+        } catch (ClassCastException invalid) {
+            StaticLog.logWarning("Failed to register native jump observation: " + invalid.getMessage());
+        }
+    }
+
+    private <E extends Event> void registerServerJump(final NoCheatPlusAPI api, final Class<E> type) {
+        api.getEventRegistry().register(type, new MiniListener<E>() {
+            @Override public void onEvent(final E event) {
+                if (!(event instanceof org.bukkit.event.player.PlayerEvent)) return;
+                final Player player = ((org.bukkit.event.player.PlayerEvent) event).getPlayer();
+                if (!Folia.isOwnedByCurrentRegion(player)) return;
+                final IPlayerData pData = DataManager.getPlayerData(player);
+                if (!pData.isCheckActive(CheckType.MOVING, player) || !noFall.isEnabled(player, pData)) return;
+                final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+                if (cc.noFallDealDamage || cc.noFallSkipAllowFlight && player.getAllowFlight()) return;
+                NoFall.onServerJump(player, pData.getGenericInstance(MovingData.class));
+            }
+        }, EventPriority.MONITOR, null, true);
     }
 
     /** Optional native impulse observer; legacy handling remains the fallback. */
@@ -2644,8 +2671,7 @@ catch (java.lang.Throwable thr) {}
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         if (player.isInsideVehicle()) {
             // Ignore vehicles (noFallFallDistance will be inaccurate anyway).
-            data.clearNoFallData();
-            data.clearGlideDebt();
+            endFallAtOwner(player, data);
             return;
         }
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
@@ -2659,8 +2685,7 @@ catch (java.lang.Throwable thr) {}
         if (event.isCancelled() || !Bridge1_9.isGlidingWithElytra(player)
                 && !MovingUtil.shouldCheckSurvivalFly(player, pLoc, moveInfo.to, data, cc, pData)
             || !noFall.isEnabled(player, pData) || cc.noFallSkipAllowFlight && player.getAllowFlight()) {
-            data.clearNoFallData();
-            data.clearGlideDebt();
+            endFallAtOwner(player, data);
             aux.returnPlayerMoveInfo(moveInfo);
             return;
         }
@@ -2703,8 +2728,7 @@ catch (java.lang.Throwable thr) {}
                             if (!Bridge1_9.isGlidingWithElytra(player) && !MovingUtil.shouldCheckSurvivalFly(player, restoreInfo.from, restoreInfo.to, data,
                                     pData.getGenericInstance(MovingConfig.class), pData)) return;
                             if (restoreInfo.from.isResetCond()) {
-                                data.clearNoFallData();
-                                data.clearGlideDebt();
+                                endFallAtOwner(player, data);
                                 return;
                             }
                             if (restoreInfo.from.isOnGround(0.00001) || entitySupportsFeet(player, false)) {
@@ -3016,22 +3040,26 @@ catch (java.lang.Throwable thr) {}
             if (data.noFallNativeLandingTaskToken != taskToken) return;
             data.noFallNativeLandingTaskPending = false;
             final long generation = data.noFallNativeLandingGeneration;
-            if (!player.isOnline() || player.isDead() || player.isInsideVehicle()
-                    || player.isFlying()
+            if (!player.isOnline() || player.isDead()
                     || pData.getGenericInstance(MovingData.class) != data
-                    || !pData.isCheckActive(CheckType.MOVING, player)
-                    || !noFall.isEnabled(player, pData)
                     || !NoFall.mayRestoreCancelledFall(data, generation)) {
+                // Departure, death or a stale/retired callback: never touch a
+                // checkpoint that may belong to a handoff or a newer fall.
                 if (pData.getGenericInstance(MovingData.class) == data && data.noFallGeneration == generation) {
                     data.clearNoFallData();
                     data.clearGlideDebt();
                 }
                 return;
             }
+            if (player.isInsideVehicle() || player.isFlying()
+                    || !pData.isCheckActive(CheckType.MOVING, player)
+                    || !noFall.isEnabled(player, pData)) {
+                endFallAtOwner(player, data);
+                return;
+            }
             final MovingConfig current = pData.getGenericInstance(MovingConfig.class);
             if (current.noFallDealDamage || current.noFallSkipAllowFlight && player.getAllowFlight()) {
-                data.clearNoFallData();
-                data.clearGlideDebt();
+                endFallAtOwner(player, data);
                 return;
             }
             final PlayerMoveInfo info = aux.usePlayerMoveInfo();
@@ -3040,12 +3068,22 @@ catch (java.lang.Throwable thr) {}
                 info.from.collectBlockFlags(0.00001);
                 if (!Bridge1_9.isGlidingWithElytra(player) && !MovingUtil.shouldCheckSurvivalFly(player, info.from, info.to, data, current, pData)
                         || info.from.isResetCond()) {
-                    data.clearNoFallData();
-                    data.clearGlideDebt();
+                    endFallAtOwner(player, data);
                     return;
                 }
                 final double swept = nativeSweptBlockContactY(player, data);
-                if (!info.from.isOnGround(0.00001) && !entitySupportsFeet(player, false) && Double.isNaN(swept)) {
+                final boolean supported = info.from.isOnGround(0.00001) || entitySupportsFeet(player, false) || !Double.isNaN(swept);
+                if (data.noFallHandoffDistance > 0f) {
+                    // First probe after a restored landing: only a native zero at
+                    // that same support proves it was processed. A reverted landing
+                    // (still airborne, or distance never reset) remains owed.
+                    final float handoff = data.noFallHandoffDistance;
+                    final boolean consumed = supported && player.getFallDistance() <= 0f
+                            && Math.abs(player.getLocation().getY() - data.noFallHandoffY) <= 1.0e-7;
+                    data.noFallHandoffDistance = 0f;
+                    if (!consumed) data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt, handoff);
+                }
+                if (!supported) {
                     // A tiny post-contact hop can be below Bukkit's movement
                     // threshold in both directions. Its accepted false-ground
                     // contact receipt is still owed, even if this first probe
@@ -3063,9 +3101,17 @@ catch (java.lang.Throwable thr) {}
                     }
                     return;
                 }
+                final double contactY = Double.isNaN(swept) ? player.getLocation().getY() : swept;
                 if (!Double.isNaN(swept)) data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt,
                         (float)NoFall.getApplicableFallHeight(player, swept, data));
-                completeNativeLanding(player, Double.isNaN(swept) ? player.getLocation().getY() : swept, data);
+                else if (player.getFallDistance() <= 0f && NoFall.retainedNativeResetDebt(data) <= 0f) {
+                    // Same rule as onNoFallNativePosition: a native zero at proven
+                    // support must not strand damaging accepted descent. Whichever
+                    // owner callback runs first after a sub-event landing applies it.
+                    final float debt = (float) Math.max(0.0, data.noFallMaxY - contactY);
+                    if (NoFall.getDamage(player, debt) >= Magic.FALL_DAMAGE_MINIMUM) data.noFallContactFallDebt = debt;
+                }
+                completeNativeLanding(player, contactY, data);
             } finally {
                 aux.returnPlayerMoveInfo(info);
             }
@@ -3079,6 +3125,14 @@ catch (java.lang.Throwable thr) {}
 
 
     /** Consume before dispatch, so native cancellation and immunity cannot replay. */
+    /** A current owner observation authoritatively ended this fall. The saved
+     * worker checkpoint must end with it, or a later join would revive it. */
+    private static void endFallAtOwner(final Player player, final MovingData data) {
+        data.clearNoFallData();
+        data.clearGlideDebt();
+        if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+    }
+
     private void completeNativeLanding(final Player player, final double y, final MovingData data) {
         final float nativeDistance = player.getFallDistance();
         final float cancelledDebt = NoFall.retainedNativeResetDebt(data);

@@ -757,9 +757,14 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public fr.neatmonster.nocheatplus.checks.net.model.DataPacketFlying noFallBoatGroundStep;
 
 
+    /** Damaging landing restored for native processing, awaiting owner confirmation. */
+    public float noFallHandoffDistance;
+    public double noFallHandoffY;
+
     /** Clear the fall check and invalidate callbacks for the previous descent. */
     public void clearNoFallData() {
         noFallGeneration++;
+        noFallHandoffDistance = 0f;
         noFallCancelledAirFallDebt = 0f;
         noFallSetBackFallDebt = 0f;
         noFallContactFallDebt = 0f;

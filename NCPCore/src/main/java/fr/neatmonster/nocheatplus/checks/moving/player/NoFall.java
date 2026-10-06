@@ -385,7 +385,7 @@ public class NoFall extends Check {
     private void adjustFallDistance(final Player player, final double minY, final boolean reallyOnGround, 
                                     final MovingData data, final MovingConfig cc) {
 
-        final float landingDistance = Math.max(data.noFallContactFallDebt,
+        final float landingDistance = Math.max(Math.max(data.noFallContactFallDebt, data.noFallHandoffDistance),
                 Math.max(data.noFallFallDistance, (float) (data.noFallMaxY - minY)));
         float noFallFallDistance = landingDistance;
         if (ServerVersion.compareMinecraftVersion("26.1") >= 0) {
@@ -396,6 +396,7 @@ public class NoFall extends Check {
                 noFallFallDistance = Math.max(0f, noFallFallDistance + (float) current.yDistance);
             }
         }
+        boolean restored = false;
         if (landingDistance >= Magic.FALL_DAMAGE_DIST) {
             final float fallDistance = player.getFallDistance();
 
@@ -404,10 +405,20 @@ public class NoFall extends Check {
                 && fallDistance < Magic.FALL_DAMAGE_DIST // Ensure damage.
                 ) {
                 player.setFallDistance(noFallFallDistance);
+                restored = true;
             }
         }
         data.clearNoFallData();
         data.clearGlideDebt();
+        if (restored && ServerVersion.compareMinecraftVersion("26.1") >= 0
+                && getDamage(player, landingDistance) >= Magic.FALL_DAMAGE_MINIMUM) {
+            // Native distance was reset by something this check did not accept.
+            // Restoring it is only a request: native can still revert this
+            // landing packet (tiny upward packet before the contact). The next
+            // owner probe confirms it; a FALL event clears it.
+            data.noFallHandoffDistance = landingDistance;
+            data.noFallHandoffY = minY;
+        }
         // Force damage on event fire, no need air checking!
         // TODO: Later on use deal damage and override on ground at packet level
         // (don't have to calculate reduced damage or account for block change things)
@@ -468,6 +479,20 @@ public class NoFall extends Check {
         data.noFallMaxY = player.getLocation().getY() + yDistance + data.noFallFallDistance;
         data.noFallGlideEstablished = true;
         data.noFallContactFallDebt = contactDebt;
+    }
+
+    /** The server starts a jump only from its own ground state. A gliding
+     * player reaching that state with damaging descent has met the ground, and
+     * vanilla would have charged that landing. Keep it as an explicit receipt so
+     * the glide limit the jump velocity triggers cannot forgive it. */
+    public static void onServerJump(final Player player, final MovingData data) {
+        if (ServerVersion.compareMinecraftVersion("26.1") < 0 || player.isInsideVehicle()
+                || !Bridge1_9.isGlidingWithElytra(player)) return;
+        final float owed = Math.max(retainedNativeResetDebt(data),
+                (float) getApplicableFallHeight(player, player.getLocation().getY(), data));
+        if (getDamage(player, owed) >= Magic.FALL_DAMAGE_MINIMUM) {
+            data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt, owed);
+        }
     }
 
     public static void stopGlide(final Player player, final MovingData data) {
@@ -586,6 +611,32 @@ public class NoFall extends Check {
         }
         data.noFallMaxY = feet.getY();
         return feet;
+    }
+
+    /** Clients draw a falling boat a few ticks behind the server. An honest
+     * client can land on that displayed top after the server boat moved on, and
+     * vanilla accepts its ground packet. Require the exact received true-ground
+     * position and an owned, collidable boat whose recent native top passed
+     * through it. Each query also keeps the nearby boat's recent native frames. */
+    private boolean receivedBoatTopContact(final Player player, final LocationData to,
+            final MovingData data, final IPlayerData pData) {
+        if (mcAccess == null || player.isInsideVehicle() || !Folia.isOwnedByCurrentRegion(player)) return false;
+        final double halfWidth = player.getBoundingBox().getWidthX() / 2.0;
+        if (!(halfWidth > 0.0) || !Double.isFinite(halfWidth)) return false;
+        boolean supported = false;
+        try {
+            for (final Entity boat : player.getNearbyEntities(1.5, 8.0, 1.5)) {
+                if (!Folia.isOwnedByCurrentRegion(boat) || !boat.isValid() || !MaterialUtil.isBoat(boat.getType())
+                        || !mcAccess.getHandle().canCollideWith(player, boat)) continue;
+                if (mcAccess.getHandle().hasSweptBoatSupport(boat, to.getX() - halfWidth, to.getY(),
+                        to.getZ() - halfWidth, to.getX() + halfWidth, to.getZ() + halfWidth)) supported = true;
+            }
+        } catch (RuntimeException foreignEntity) {
+            return false;
+        }
+        if (!supported) return false;
+        final DataPacketFlying received = findReceivedPosition(to.getX(), to.getY(), to.getZ(), data, pData);
+        return received != null && received.onGround;
     }
 
     /** A descending true-ground step can follow a falling boat without a
@@ -765,7 +816,8 @@ public class NoFall extends Check {
         if (nativeLanding) {
             // The movement checks' step tolerance is not a completed contact.
             fromOnGround = missedContact != null || pFrom.isOnGround(0.00001) || pFrom.standsOnEntityContact(0.00001, 0, 0);
-            toOnGround = pTo.isOnGround(0.00001) || pTo.standsOnEntityContact(0.00001, 0, 0);
+            toOnGround = pTo.isOnGround(0.00001) || pTo.standsOnEntityContact(0.00001, 0, 0)
+                    || !fromOnGround && !fromReset && !toReset && yDiff <= 0.0 && receivedBoatTopContact(player, to, data, pData);
         }
         else if (yDiff < 0 && cc.yOnGround < cc.noFallyOnGround) {
             // In fact this is somewhat heuristic, but it seems to work well.
@@ -797,6 +849,7 @@ public class NoFall extends Check {
         // TODO: early returns (...) 
 
         final double minY = Math.min(fromY, toY);
+        boolean landedFromAir = false;
 
         if (fromReset || toReset) {
             // Water, web, powder snow, climbables: vanilla ends the fall here.
@@ -822,6 +875,7 @@ public class NoFall extends Check {
                 data.noFallFallDistance -= yDiff;
             }
             touchDown(player, minY, previousSetBackY, data, cc, pData);
+            landedFromAir = true;
         }
         else {
             // Ensure fall distance is correct, or "anyway"?
@@ -837,7 +891,9 @@ public class NoFall extends Check {
          * TODO: Consider setting this before handleOnGround (at least for
          * resetTo). This is after dealing damage, needs to be done differently.
          */
-        data.noFallMaxY = Math.max(Math.max(fromY, toY), data.noFallMaxY);
+        // Native resets at the contact itself. A support that falls or breaks
+        // away (falling boat) must not charge the pre-contact height again.
+        data.noFallMaxY = Math.max(nativeLanding && landedFromAir ? toY : Math.max(fromY, toY), data.noFallMaxY);
 
         // TODO: fall distance might be behind (!)
         // TODO: should be the data.noFallMaxY be counted in ?

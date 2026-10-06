@@ -201,4 +201,96 @@ public class TestFallStateSnapshot {
         fr.neatmonster.nocheatplus.checks.moving.player.NoFall.onGlidingMove(f.player,f.data,-.2);
         assertEquals(1.2f,f.data.noFallFallDistance,1e-6);assertEquals(11.563f,f.data.noFallContactFallDebt,0);
     }
+
+    /** REVIEW-CODE-3 P1: a queued owner probe that ends the fall must also end
+     * its worker checkpoint; stale/retired callbacks must never clear a newer one. */
+    @Test public void ownerProbeResetInvalidatesTheWorkerCheckpoint() throws Exception {
+        String old = fr.neatmonster.nocheatplus.compat.versions.ServerVersion.getMinecraftVersion();
+        fr.neatmonster.nocheatplus.compat.versions.ServerVersion.setMinecraftVersion("26.2");
+        try {
+            for (String kind : new String[] {"geometric", "contact"}) {
+                for (String mode : new String[] {"water", "policy", "allow-flight", "vehicle", "flying", "moving-off",
+                        "nofall-off", "air-control", "stale-vehicle", "replaced-data-vehicle", "offline-control"}) {
+                    runOwnerProbe(kind, mode);
+                }
+            }
+        } finally {
+            fr.neatmonster.nocheatplus.compat.versions.ServerVersion.setMinecraftVersion(old);
+        }
+    }
+
+    private static void runOwnerProbe(String kind, String mode) throws Exception {
+        try (var bukkit = mockStatic(Bukkit.class);
+             var folia = mockStatic(fr.neatmonster.nocheatplus.compat.Folia.class);
+             var movement = mockStatic(fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil.class)) {
+            Fixture source = new Fixture();
+            MovingData data = source.data; Player player = source.player;
+            data.noFallMaxY = source.location.getY() + ("geometric".equals(kind) ? 12 : 0);
+            data.noFallFallDistance = "geometric".equals(kind) ? 12 : 0;
+            data.noFallContactFallDebt = "contact".equals(kind) ? 12 : 0;
+            FallStateSnapshot.save(player, data, source.location);
+            assertEquals(2, source.serialized.size());
+            var pd = mock(fr.neatmonster.nocheatplus.players.IPlayerData.class);
+            var cc = mock(fr.neatmonster.nocheatplus.checks.moving.MovingConfig.class);
+            var nf = mock(fr.neatmonster.nocheatplus.checks.moving.player.NoFall.class, CALLS_REAL_METHODS);
+            when(pd.getGenericInstance(MovingData.class)).thenReturn(mode.startsWith("replaced") ? mock(MovingData.class) : data);
+            when(pd.getGenericInstance(fr.neatmonster.nocheatplus.checks.moving.MovingConfig.class)).thenReturn(cc);
+            when(pd.isCheckActive(fr.neatmonster.nocheatplus.checks.CheckType.MOVING, player)).thenReturn(!"moving-off".equals(mode));
+            when(nf.isEnabled(player, pd)).thenReturn(!"nofall-off".equals(mode));
+            when(player.isOnline()).thenReturn(!"offline-control".equals(mode));
+            when(player.isInsideVehicle()).thenReturn(mode.endsWith("vehicle"));
+            when(player.isFlying()).thenReturn("flying".equals(mode));
+            when(player.getAllowFlight()).thenReturn("allow-flight".equals(mode));
+            TestClientNoFallSequences.field(cc, fr.neatmonster.nocheatplus.checks.moving.MovingConfig.class, "noFallSkipAllowFlight", true);
+            var listener = mock(fr.neatmonster.nocheatplus.checks.moving.MovingListener.class, CALLS_REAL_METHODS);
+            var aux = mock(fr.neatmonster.nocheatplus.checks.moving.util.AuxMoving.class);
+            var info = mock(fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveInfo.class);
+            var support = mock(fr.neatmonster.nocheatplus.utilities.location.PlayerLocation.class);
+            TestClientNoFallSequences.field(info, fr.neatmonster.nocheatplus.checks.moving.model.MoveInfo.class, "from", support);
+            when(aux.usePlayerMoveInfo()).thenReturn(info);
+            TestClientNoFallSequences.field(listener, fr.neatmonster.nocheatplus.checks.moving.MovingListener.class, "aux", aux);
+            TestClientNoFallSequences.field(listener, fr.neatmonster.nocheatplus.checks.moving.MovingListener.class, "noFall", nf);
+            TestClientNoFallSequences.field(data, MovingData.class, "playerMoves", mock(fr.neatmonster.nocheatplus.checks.moving.model.MoveTrace.class));
+            var access = mock(fr.neatmonster.nocheatplus.compat.MCAccess.class);
+            var handle = mock(fr.neatmonster.nocheatplus.components.registry.event.IGenericInstanceHandle.class);
+            when(handle.getHandle()).thenReturn(access);
+            TestClientNoFallSequences.field(listener, fr.neatmonster.nocheatplus.checks.CheckListener.class, "mcAccess", handle);
+            when(support.isResetCond()).thenReturn("water".equals(mode));
+            movement.when(() -> fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil.shouldCheckSurvivalFly(player, support, null, data, cc, pd))
+                    .thenReturn(!"policy".equals(mode));
+            folia.when(fr.neatmonster.nocheatplus.compat.Folia::isFoliaServer).thenReturn(true);
+            folia.when(() -> fr.neatmonster.nocheatplus.compat.Folia.isOwnedByCurrentRegion(player)).thenReturn(true);
+            var plugins = mock(org.bukkit.plugin.PluginManager.class); var plugin = mock(org.bukkit.plugin.Plugin.class);
+            bukkit.when(Bukkit::getServer).thenReturn(mock(Server.class)); bukkit.when(Bukkit::getPluginManager).thenReturn(plugins);
+            when(plugins.getPlugin("NoCheatPlus")).thenReturn(plugin);
+            var task = new java.util.concurrent.atomic.AtomicReference<java.util.function.Consumer<Object>>();
+            folia.when(() -> fr.neatmonster.nocheatplus.compat.Folia.runSyncDelayedTaskForEntity(eq(player), eq(plugin), any(), any(), eq(1L)))
+                    .thenAnswer(c -> { task.set(c.getArgument(2)); return new Object(); });
+            var queue = fr.neatmonster.nocheatplus.checks.moving.MovingListener.class.getDeclaredMethod("queueNativeLanding", Player.class,
+                    MovingData.class, fr.neatmonster.nocheatplus.checks.moving.MovingConfig.class, fr.neatmonster.nocheatplus.players.IPlayerData.class);
+            queue.setAccessible(true);
+            queue.invoke(listener, player, data, cc, pd);
+            if ("stale-vehicle".equals(mode)) {
+                // A reset after queueing starts a newer fall with its own checkpoint.
+                data.clearNoFallData(); data.noFallMaxY = source.location.getY() + 7; data.noFallFallDistance = 7;
+                FallStateSnapshot.save(player, data, source.location);
+            }
+            task.get().accept(null);
+            Fixture dest = new Fixture(); dest.serialized.putAll(source.serialized);
+            dest.location.add(.001, -.001, 0);
+            FallStateSnapshot.restore(dest.player, dest.data, true);
+            final float restored = Math.max(dest.data.noFallFallDistance,
+                    fr.neatmonster.nocheatplus.checks.moving.player.NoFall.retainedNativeResetDebt(dest.data));
+            final String c = kind + "/" + mode;
+            if (mode.endsWith("control") || mode.startsWith("replaced")) {
+                assertEquals(c, 2, source.serialized.size()); assertEquals(c, 12f, restored, 1e-4);
+            } else if ("stale-vehicle".equals(mode)) {
+                assertEquals(c, 2, source.serialized.size()); assertEquals(c, 7f, restored, 1e-4);
+            } else {
+                assertEquals(c, 0, source.serialized.size()); assertEquals(c, 0f, restored, 0f);
+                assertEquals(c, 0f, Math.max(data.noFallFallDistance,
+                        fr.neatmonster.nocheatplus.checks.moving.player.NoFall.retainedNativeResetDebt(data)), 0f);
+            }
+        }
+    }
 }
