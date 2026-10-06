@@ -47,7 +47,12 @@ public class TestElytraSwapEnvelope {
         return (y - 0.08) * 0.98;
     }
 
-    /** A move without an elytra in the chest slot. */
+    /** A move without an elytra in the chest slot, made at this pitch. */
+    private static boolean allowAt(final ElytraResidual.State state, final double h, final double y, final double pitch) {
+        return ElytraResidual.allow(state, h, y, pitch, false, false, false);
+    }
+
+    /** A move without an elytra in the chest slot (no pitch: only the pitch-free envelope). */
     private static boolean allow(final ElytraResidual.State state, final double h, final double y,
                                  final boolean onGround, final boolean resetCond) {
         return ElytraResidual.allow(state, h, y, onGround, resetCond, false);
@@ -155,12 +160,12 @@ public class TestElytraSwapEnvelope {
         assertTrue(allow(plain, 1.49, -0.15, false, false));
         assertTrue(allow(plain, 1.51, -0.15, false, false));
         assertFalse("+0.10 without a descent", allow(plain, 1.61, -0.15, false, false));
-        // A rocket adds speed along the look: PLAN test 2's growth is accepted while it boosts.
+        // A rocket adds speed along the look: PLAN test 2's growth is accepted while it boosts at pitch -10.
         for (final int ping : new int[] {50, 160}) {
             final ElytraResidual.State state = new ElytraResidual.State();
             assertTrue(ElytraResidual.begin(state, 1.45, -0.15, ping, CAP, true));
             for (final double h : new double[] {1.47, 1.49, 1.51, 1.61}) {
-                assertTrue("ping " + ping + " lag " + h, allow(state, h, -0.15, false, false));
+                assertTrue("ping " + ping + " lag " + h, allowAt(state, h, -0.15, -10.0));
             }
             double h = 1.61;
             double y = -0.15;
@@ -214,9 +219,15 @@ public class TestElytraSwapEnvelope {
         final ElytraResidual.State level = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(level, 1.55, 0.0, 160, CAP));
         assertEquals(level.lagMoves + 1, acceptedUntilRejected(level, new double[] {1.55, 0.0}, m -> m));
+        // With a rocket at pitch -10 (boost toward vy +0.3) the hover fits the boost through the lag
+        // phase; after it, only the one air tick.
         final ElytraResidual.State rocketHover = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(rocketHover, 1.55, 0.0, 160, CAP, true));
-        assertEquals(rocketHover.lagMoves + 1, acceptedUntilRejected(rocketHover, new double[] {1.55, 0.15}, m -> m));
+        int hovered = 0;
+        while (hovered < 20 && allowAt(rocketHover, 1.55, 0.15, -10.0)) {
+            hovered++;
+        }
+        assertEquals(rocketHover.lagMoves + 1, hovered);
 
         // Whatever the shape and ping: never past move 10, never past the lag phase, the late glide and one air tick.
         for (final int ping : new int[] {0, 160, 300, 2000}) {
@@ -296,12 +307,14 @@ public class TestElytraSwapEnvelope {
         assertTrue(ElytraResidual.begin(gravity, 1.5, -0.15, 160, CAP));
         assertTrue(allow(gravity, 1.5 * 0.99, fall(-0.15), false, false));
         assertFalse("faster than gravity", allow(gravity, 1.47, fall(-0.15) - 0.1, false, false));
-        // With a rocket (no gravity bound) the old limit still holds: at most 0.30 below the last move.
+        // A rocket tick has no gravity bound, but the old limit still holds: at most 0.30 below the
+        // last move. A boost at pitch +60 from vy -0.15 pushes to about -0.84: rejected.
         final ElytraResidual.State steeper = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(steeper, 1.5, -0.15, 160, CAP, true));
-        assertTrue(allow(steeper, 1.5, -0.44, false, false));
-        assertTrue(allow(steeper, 1.5, -0.73, false, false));
-        assertFalse("more than 0.30 below the last move", allow(steeper, 1.5, -1.05, false, false));
+        final double[] boosted = ElytraResidual.vanillaRocket(1.5, -0.15, 60.0);
+        final double rocketY = ElytraResidual.vanillaGlide(boosted[0], boosted[2], 60.0)[1];
+        assertTrue(rocketY < -0.15 - 0.30);
+        assertFalse("more than 0.30 below the last move", allowAt(steeper, 1.0, rocketY - 0.01, 60.0));
 
         final ElytraResidual.State climb = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(climb, 1.5, -0.15, 160, CAP));
@@ -471,7 +484,7 @@ public class TestElytraSwapEnvelope {
     @Test
     public void climbWithoutLosingHorizontalSpeedIsRejected() {
         // Level glide, then a climb that keeps its speed: never above the unequip height (vertical
-        // speed 0). With a rocket, up to the start + 0.15 (the rocket holds the glide there).
+        // speed 0). With a rocket, as far as the boost at the claimed pitch pushes.
         final ElytraResidual.State held = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(held, 1.5, -0.15, 160, CAP));
         assertTrue(allow(held, 1.5, -0.10, false, false));
@@ -481,9 +494,12 @@ public class TestElytraSwapEnvelope {
         assertFalse(held.open);
         final ElytraResidual.State rocket = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(rocket, 1.5, 0.0, 160, CAP, true));
-        assertTrue(allow(rocket, 1.5, 0.10, false, false));
-        assertTrue(allow(rocket, 1.5, 0.15, false, false));
-        assertFalse("above the start + 0.15", allow(rocket, 1.5, 0.20, false, false));
+        assertTrue(allowAt(rocket, 1.5, 0.10, -10.0));
+        assertTrue(allowAt(rocket, 1.5, 0.15, -10.0));
+        assertFalse("above what the boost at pitch -10 gives", allowAt(rocket, 1.5, 0.40, -10.0));
+        final ElytraResidual.State flat = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(flat, 1.5, 0.0, 160, CAP, true));
+        assertFalse("a boost at pitch 0 adds no height", allowAt(flat, 1.5, 0.10, 0.0));
 
         // A vanilla pitch -60 zoom from the same speed pays for its climb and is accepted ...
         final double[] ys = new double[5];
@@ -507,30 +523,36 @@ public class TestElytraSwapEnvelope {
             assertTrue(ElytraResidual.begin(state, 1.65, 0.0, 2000, CAP));
             assertFalse("zoom height with h " + cheat[0], allow(state, cheat[0], ys[0], false, false));
             assertFalse(state.open);
-            // With a rocket, the first move fits under the start ceiling; the next is above it and unpaid.
-            final ElytraResidual.State boosted = new ElytraResidual.State();
-            assertTrue(ElytraResidual.begin(boosted, 1.65, 0.0, 2000, CAP, true));
-            assertTrue(allow(boosted, cheat[0], ys[0], false, false));
-            assertFalse("above the start ceiling with h " + cheat[1], allow(boosted, cheat[1], ys[1], false, false));
+            // Also at the zoom's own pitch.
+            final ElytraResidual.State pitched = new ElytraResidual.State();
+            assertTrue(ElytraResidual.begin(pitched, 1.65, 0.0, 2000, CAP));
+            assertFalse("pitch -60, zoom height with h " + cheat[0], allowAt(pitched, cheat[0], ys[0], -60.0));
         }
     }
 
     @Test
     public void speedGainedWithoutLiftCannotPayForALaterClimb() {
-        // Climbing rocket glide, then a speed gain no descent explains (a rocket window has no lift
-        // coupling), then that speed is "spent" on a climb above the start ceiling.
+        // Climbing glide, then a speed gain no lift explains (as much as the envelope lets through),
+        // then that speed is "spent" on a climb: the debt is repaid first.
         final ElytraResidual.State pumped = new ElytraResidual.State();
-        assertTrue(ElytraResidual.begin(pumped, 1.65, 0.0, 2000, CAP, true));
+        assertTrue(ElytraResidual.begin(pumped, 1.65, 0.0, 2000, CAP));
         double[] move = {1.65, 0.0};
         for (int i = 0; i < 2; i++) {
             move = glide(move[0], move[1], -60.0);
             assertTrue(allow(pumped, move[0], move[1], false, false));
         }
-        assertTrue(allow(pumped, move[0] + 0.14, move[1] - 0.02, false, false));
-        assertTrue(pumped.hDebt > 0.13);
-        final double paidCeiling = ElytraResidual.maxGlideY(move[1] - 0.02, move[0] + 0.14, 0.13);
-        assertTrue(paidCeiling > move[1] + 0.05);
-        assertFalse("the debt is repaid first", allow(pumped, move[0], move[1] + 0.05, false, false));
+        final double pumpH = move[0] + 0.06;
+        final double pumpY = ElytraResidual.minGlideY(move[1], move[0], pumpH) + 0.001;
+        assertTrue(pumpY <= ElytraResidual.maxGlideY(move[1], move[0], 0.0));
+        assertTrue(allow(pumped, pumpH, pumpY, false, false));
+        assertTrue(pumped.hDebt > 0.05);
+        // Without the debt the same last move would pay for this climb.
+        final double probeY = ElytraResidual.maxGlideY(pumpY, pumpH, pumpH + 0.9 * 0.1 * Math.max(0.0, 0.08 - pumpY) - move[0] / 0.99) - 0.002;
+        assertTrue(probeY > pumpY + 0.05);
+        final ElytraResidual.State fresh = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(fresh, pumpH, pumpY, 2000, CAP));
+        assertTrue("no debt: paid", allow(fresh, move[0], probeY, false, false));
+        assertFalse("the debt is repaid first", allow(pumped, move[0], probeY, false, false));
     }
 
     @Test
@@ -713,45 +735,206 @@ public class TestElytraSwapEnvelope {
                     {0.377645, -0.206743}, {0.343657, -0.281009}},
     };
 
+    /** The pitch each LAB_PULL_UPS client flew at. */
+    private static final double[] LAB_PULL_UP_PITCH = {30.0, -45.0, -45.0};
+
     @Test
     public void labPullUpUnequipsStayAccepted() {
         for (int i = 0; i < LAB_PULL_UPS.length; i++) {
             final double[][] swap = LAB_PULL_UPS[i];
-            final ElytraResidual.State state = new ElytraResidual.State();
-            assertTrue(ElytraResidual.begin(state, swap[0][0], swap[0][1], 160, CAP));
-            for (int j = 1; j < swap.length; j++) {
-                assertTrue("pull-up " + i + " move " + j, allow(state, swap[j][0], swap[j][1], false, false));
+            for (final boolean withPitch : new boolean[] {false, true}) {
+                final ElytraResidual.State state = new ElytraResidual.State();
+                assertTrue(ElytraResidual.begin(state, swap[0][0], swap[0][1], 160, CAP));
+                for (int j = 1; j < swap.length; j++) {
+                    final double pitch = withPitch ? LAB_PULL_UP_PITCH[i] : Double.NaN;
+                    assertTrue("pull-up " + i + " move " + j + " pitch " + pitch, allowAt(state, swap[j][0], swap[j][1], pitch));
+                }
             }
         }
     }
 
-    /** REVIEW-LAB-2 problem 1: a climbing start no longer converts the window into tens of blocks. */
+    /** With a pitch, glide moves follow the vanilla tick at that pitch: a zoom is paid by the speed it loses. */
     @Test
-    public void climbingStartCannotRiseMoreThanHalfABlockPerTick() {
-        for (final boolean rocket : new boolean[] {false, true}) {
-            // A vanilla pitch -60 zoom from 2.7 b/t at vy +1.0 is accepted while vy stays at or under 1.5.
+    public void zoomFollowsVanillaAtItsPitchAndIsPaidBySpeed() {
+        for (final double pitch : new double[] {-30.0, -45.0, -60.0, -75.0, -90.0}) {
+            // A vanilla zoom from 2.7 b/t at vy +1.0 continues through the lag phase and the late glide.
             final ElytraResidual.State state = new ElytraResidual.State();
-            assertTrue(ElytraResidual.begin(state, 2.7, 1.0, 300, CAP, rocket));
-            assertEquals(1.5, state.riseCap, 1e-12);
+            assertTrue(ElytraResidual.begin(state, 2.7, 1.0, 160, CAP));
             double[] move = {2.7, 1.0};
-            int accepted = 0;
-            while (accepted < 10) {
-                move = glide(move[0], move[1], -60.0);
-                final boolean ok = allow(state, move[0], move[1], false, false);
-                if (move[1] > 1.5 + 1e-9) {
-                    assertFalse("rocket " + rocket + " vy " + move[1], ok);
-                    break;
-                }
-                assertTrue("rocket " + rocket + " vy " + move[1], ok);
-                accepted++;
+            for (int i = 0; i < 9; i++) {
+                move = glide(move[0], move[1], pitch);
+                assertTrue("pitch " + pitch + " move " + (i + 1), ElytraResidual.allow(state, move[0], move[1], pitch, false, false, false));
             }
-            assertTrue(accepted >= 1 && accepted < 10);
+            // The same climb without losing the speed is not a glide at any pitch.
+            for (double claimed = -90.0; claimed <= 90.0; claimed += 7.5) {
+                final ElytraResidual.State held = new ElytraResidual.State();
+                assertTrue(ElytraResidual.begin(held, 2.0, 0.3, 160, CAP));
+                final double[] vanilla = glide(2.0, 0.3, pitch);
+                assertFalse("claimed pitch " + claimed, ElytraResidual.allow(held, 2.0, vanilla[1] + 0.02, claimed, false, false, false));
+            }
         }
-        // Without a rocket a start at vy +1.0 cannot be held: the start ceiling is never above 0.
+        // Without a rocket a start at vy +1.0 cannot be held: only the one repeat is accepted.
         final ElytraResidual.State held = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(held, 1.6, 1.0, 160, CAP));
-        assertTrue("first air tick", allow(held, 1.6, 1.0, false, false));
-        assertFalse("held vy +1.0", allow(held, 1.6, 1.0, false, false));
+        assertTrue("first air tick", ElytraResidual.allow(held, 1.6, 1.0, -20.0, false, false, false));
+        assertFalse("held vy +1.0", ElytraResidual.allow(held, 1.6, 1.0, -20.0, false, false, false));
+    }
+
+    // Round 4 (REVIEW-LAB-3 R1 and Z1, REVIEW-CODE-3 findings 1 and 2) -------------
+
+    /**
+     * REVIEW-LAB-3 R1 (smoke/rev3, jar 79cfb400): unequips 0.05-0.2 s after firing a rocket, each
+     * {{beginH, beginY}, window moves...}, all set back by that jar at move 1 or 2.
+     */
+    private static final double[][][] LAB_ROCKET = {
+            {{1.106954, 0.868272}, {1.164963, 1.014073}, {1.193014, 1.087854}},                          // R1-r1, pitch -40
+            {{0.760906, 1.184001}, {0.772516, 1.325327}, {0.778084, 1.395207}},                          // R1-r2, pitch -60
+            {{0.976011, 0.588090}, {1.101646, 0.871505}},                                                // R1-r3, pitch -40
+            {{1.242759, 0.003056}, {1.434850, 0.156500}},                                                // R1-r3, pitch -10
+            {{1.230201, 0.001370}, {1.212172, 0.007490}, {1.419804, 0.158339}},                          // R1S-r1, pitch -10, boost starts on move 2
+            {{1.108204, 0.959999}, {1.165568, 1.059070}, {1.193306, 1.109927}, {1.206719, 1.135965}},    // R1S-r1, pitch -40
+            {{0.716190, 0.031067}, {0.976011, 0.588090}},                                                // R1S-r1, pitch -40
+            {{1.236227, 0.012199}, {1.431637, 0.160908}},                                                // R1S-r2, pitch -10
+    };
+    private static final double[] LAB_ROCKET_PITCH = {-40.0, -60.0, -40.0, -10.0, -10.0, -40.0, -40.0, -10.0};
+
+    @Test
+    public void labRocketUnequipsRightAfterFiringAreAccepted() {
+        for (int i = 0; i < LAB_ROCKET.length; i++) {
+            final double[][] swap = LAB_ROCKET[i];
+            final ElytraResidual.State state = new ElytraResidual.State();
+            assertTrue(ElytraResidual.begin(state, swap[0][0], swap[0][1], 160, CAP, 25));
+            for (int j = 1; j < swap.length; j++) {
+                assertTrue("rocket " + i + " move " + j, allowAt(state, swap[j][0], swap[j][1], LAB_ROCKET_PITCH[i]));
+            }
+            // Without the boost (no rocket fired, or it has expired) the same moves are not a glide.
+            final ElytraResidual.State none = new ElytraResidual.State();
+            assertTrue(ElytraResidual.begin(none, swap[0][0], swap[0][1], 160, CAP, 0));
+            boolean all = true;
+            for (int j = 1; j < swap.length; j++) {
+                all &= allowAt(none, swap[j][0], swap[j][1], LAB_ROCKET_PITCH[i]);
+            }
+            assertFalse("rocket " + i + " without a boost", all);
+        }
+    }
+
+    /** V1 rocket (all rounds): two rockets at once hold the glide at 1.6382 / 0.3070, then the first air tick and the coast. */
+    @Test
+    public void twoRocketsAtOnceAreAccepted() {
+        final double[][] moves = {
+                {1.638217868957895, 0.3070340032664376}, {1.6382178689579519, 0.30703400326649444},
+                {1.6382178689579519, 0.30703400326649444}, {1.6382178689579519, 0.30703400326649444},
+                {1.6561876518299528, 0.30108228600462894}, {1.507130806600486, 0.2166606445013599}};
+        // NCP's boost counter showed 6 ticks left at the unequip.
+        final ElytraResidual.State state = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(state, 1.638217868957895, 0.3070340032664376, 160, CAP, 6));
+        for (int j = 0; j < moves.length; j++) {
+            assertTrue("move " + (j + 1), allowAt(state, moves[j][0], moves[j][1], -10.0));
+        }
+        // The fixed point of boost, boost, glide at pitch -10 is that move.
+        final double[] two = ElytraResidual.vanillaRocket(1.638217868957895, 0.3070340032664376, -10.0);
+        assertTrue(two[0] >= 1.6382 && two[2] >= 0.30);
+    }
+
+    /** REVIEW-LAB-3 Z1: steep zooms at about 2 b/t (pitch -45 to -75), set back by the 0.5 rise cap. */
+    private static final double[][][] LAB_ZOOM = {
+            {{1.884463, 0.978853}, {1.800745, 1.113145}, {1.720746, 1.234607}, {1.644302, 1.343948}, {1.571253, 1.441839}, {1.501450, 1.528922}},
+            {{2.079883, 0.386466}, {2.006669, 0.514221}, {1.936031, 0.632927}, {1.867881, 0.742994}, {1.802129, 0.844814}, {1.738692, 0.938766}},
+            {{1.819027, 0.620444}, {1.738216, 0.753976}, {1.660995, 0.875046}, {1.587205, 0.984337}, {1.516693, 1.082503}, {1.449313, 1.170161}},
+            {{2.166224, 0.344517}, {2.089970, 0.480769}, {2.016400, 0.607533}, {1.945420, 0.725236}, {1.876939, 0.834289}, {1.810868, 0.935087}},
+            {{1.813376, 0.695441}, {1.749543, 0.793378}, {1.687957, 0.883694}, {1.628538, 0.966741}, {1.571212, 1.042856},
+                    {1.515903, 1.112365}, {1.462541, 1.175577}, {1.411058, 1.232792}},
+            {{1.980624, 0.681081}, {1.899688, 0.818915}, {1.822059, 0.945200}, {1.747602, 1.060527}, {1.676188, 1.165459}, {1.607692, 1.260534}},
+            {{1.795896, 0.564435}, {1.716112, 0.696285}, {1.639874, 0.815830}, {1.567022, 0.923747}, {1.497406, 1.020679}, {1.430884, 1.107237}},
+    };
+    private static final double[] LAB_ZOOM_PITCH = {-75.0, -45.0, -75.0, -45.0, -45.0, -60.0, -75.0};
+
+    @Test
+    public void labSteepZoomsAreAccepted() {
+        for (int i = 0; i < LAB_ZOOM.length; i++) {
+            final double[][] swap = LAB_ZOOM[i];
+            final ElytraResidual.State state = new ElytraResidual.State();
+            assertTrue(ElytraResidual.begin(state, swap[0][0], swap[0][1], 160, CAP));
+            for (int j = 1; j < swap.length; j++) {
+                assertTrue("zoom " + i + " move " + j, allowAt(state, swap[j][0], swap[j][1], LAB_ZOOM_PITCH[i]));
+            }
+            // Continue the vanilla zoom to the end of the lag phase and late glide: still accepted.
+            double[] move = swap[swap.length - 1];
+            for (int j = swap.length; j < 10; j++) {
+                move = glide(move[0], move[1], LAB_ZOOM_PITCH[i]);
+                assertTrue("zoom " + i + " vanilla move " + j, allowAt(state, move[0], move[1], LAB_ZOOM_PITCH[i]));
+            }
+        }
+    }
+
+    /** REVIEW-CODE-3 finding 2 (review3-evidence/Rise.java): the repeat rose 0.0049 above the last move. */
+    @Test
+    public void theRepeatedAirTickCannotRise() {
+        for (final double pitch : new double[] {Double.NaN, -60.0, 0.0}) {
+            final ElytraResidual.State state = new ElytraResidual.State();
+            assertTrue(ElytraResidual.begin(state, 2.7, 0.0, 500, CAP, false));
+            final boolean first = allowAt(state, 2.5839, 0.265287999, pitch);
+            final boolean second = first && allowAt(state, 2.465970804, 0.5, pitch);
+            assertFalse("pitch " + pitch, second && allowAt(state, 2.465970804, 0.5049, pitch));
+        }
+        // Rising nothing is still the first air tick; falling it may be within rounding.
+        final ElytraResidual.State exact = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(exact, 1.5, 0.3, 160, CAP));
+        assertTrue(allowAt(exact, 1.5 + 0.026, 0.3, -20.0));
+        // V5 level (smoke/rev2, LabAV173117): the worker handoff pause after a level glide.
+        final ElytraResidual.State pause = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(pause, 1.3996588690327485, -0.17293064696175975, 160, CAP));
+        assertTrue(allowAt(pause, 0.005135724080048476, -0.05083848129228841, 0.0));
+        assertTrue(allowAt(pause, 0.008060171552472184, -0.046921061110168694, 0.0));
+    }
+
+    /** REVIEW-CODE-3 finding 1 (review3-evidence/Probe.java): late glide gained 0.2 per move from a deep descent. */
+    @Test
+    public void lateGlideGrowsNoFasterThanTheLagPhase() {
+        // The probe itself: +0.15 per lag move while keeping vy -3.9 is lift without descent, rejected at once.
+        final ElytraResidual.State probe = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(probe, 1.6, -3.9, 150, CAP, true));
+        assertFalse(allow(probe, 1.75, -3.9, false, false));
+        // A deep descent into the late glide: the late move may not grow more than +0.15 either.
+        for (final double grow : new double[] {0.20, 0.15}) {
+            final ElytraResidual.State t = new ElytraResidual.State();
+            assertTrue(ElytraResidual.begin(t, 2.35, -3.9, 0, CAP));
+            for (int i = 1; i <= t.lagMoves; i++) {
+                assertTrue(allow(t, 2.35, -3.9, false, false));
+            }
+            final double h = 2.35 + grow;
+            assertTrue(h <= (2.35 + 0.9 * 0.1 * (0.08 + 3.9)) * 0.99 + 0.005);
+            assertEquals("late +" + grow, grow <= 0.15, allow(t, h, -3.5, false, false));
+        }
+    }
+
+    @Test
+    public void rocketTicksOnlyInTheLagPhaseWhileTheBoostLasts() {
+        // Boost toward the look from (1.0, 0.0) at pitch -40: the tick a rocket gives.
+        final double[] boosted = ElytraResidual.vanillaRocket(1.0, 0.0, -40.0);
+        final double[] tick = ElytraResidual.vanillaGlide(boosted[0], boosted[1], -40.0);
+        // Accepted while NCP's boost ticks last, not after.
+        final ElytraResidual.State two = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(two, 1.0, 0.0, 300, CAP, 2));
+        assertTrue(allowAt(two, tick[0], tick[1], -40.0));
+        double[] next = ElytraResidual.vanillaRocket(tick[0], tick[1], -40.0);
+        double[] tick2 = ElytraResidual.vanillaGlide(next[0], next[1], -40.0);
+        assertTrue(allowAt(two, tick2[0], tick2[1], -40.0));
+        next = ElytraResidual.vanillaRocket(tick2[0], tick2[1], -40.0);
+        final double[] tick3 = ElytraResidual.vanillaGlide(next[0], next[1], -40.0);
+        assertFalse("third boost after 2 boost ticks", allowAt(two, tick3[0], tick3[1], -40.0));
+        // Never in the late glide (after the lag phase), and never without a pitch.
+        final ElytraResidual.State late = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(late, 1.0, 0.0, 0, CAP, 30));
+        for (int i = 0; i < late.lagMoves; i++) {
+            assertTrue(allowAt(late, 1.0, -0.05 * (i + 1), 0.0));
+        }
+        final double[] lateBoost = ElytraResidual.vanillaRocket(1.0, late.lastY, -40.0);
+        final double[] lateTick = ElytraResidual.vanillaGlide(lateBoost[0], lateBoost[1], -40.0);
+        assertFalse("boost in the late glide", allowAt(late, lateTick[0], lateTick[1], -40.0));
+        final ElytraResidual.State noPitch = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(noPitch, 1.0, 0.0, 300, CAP, 30));
+        assertFalse(allow(noPitch, tick[0], tick[1], false, false));
     }
 
     // Source check -------------------------------------------------------------

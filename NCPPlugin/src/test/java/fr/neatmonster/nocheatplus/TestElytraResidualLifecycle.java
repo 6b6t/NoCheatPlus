@@ -346,8 +346,10 @@ public class TestElytraResidualLifecycle {
         assertTrue(capCall.contains("getSpeedAttributeMultiplier(player)"));
         assertTrue(capCall.contains("data.walkSpeed"));
         // The start ceiling only with an unexpired firework boost.
-        assertTrue(listener.contains("final boolean rocket = data.fireworksBoostTickExpire >= tick;"));
-        assertTrue(listener.contains("elytraCap, rocket)"));
+        assertTrue(listener.contains("final int rocketTicks = Math.max(0, data.fireworksBoostTickExpire - tick);"));
+        assertTrue(listener.contains("elytraCap, rocketTicks)"));
+        // The move's pitch is the look vanilla used for that tick.
+        assertTrue(sf.contains("ElytraResidual.allow(data.elytraResidual, hDistance, yDistance, to.getPitch(),"));
         // CreativeFly's own cap uses the same three modifiers.
         final String cf = new String(Files.readAllBytes(new File(dir, moving + "player/CreativeFly.java").toPath()), StandardCharsets.UTF_8);
         assertTrue(cf.contains("fSpeed = 1.0 + 0.2 * (speedModifier + 1.0)"));
