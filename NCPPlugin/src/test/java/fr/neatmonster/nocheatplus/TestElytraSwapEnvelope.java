@@ -220,14 +220,14 @@ public class TestElytraSwapEnvelope {
         assertTrue(ElytraResidual.begin(level, 1.55, 0.0, 160, CAP));
         assertEquals(level.lagMoves + 1, acceptedUntilRejected(level, new double[] {1.55, 0.0}, m -> m));
         // With a rocket at pitch -10 (boost toward vy +0.3) the hover fits the boost through the lag
-        // phase; after it, only the one air tick.
+        // phase and the late glide, never past move 10.
         final ElytraResidual.State rocketHover = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(rocketHover, 1.55, 0.0, 160, CAP, true));
         int hovered = 0;
         while (hovered < 20 && allowAt(rocketHover, 1.55, 0.15, -10.0)) {
             hovered++;
         }
-        assertEquals(rocketHover.lagMoves + 1, hovered);
+        assertEquals(Math.min(ElytraResidual.MAX_LAG_MOVES, rocketHover.lagMoves + ElytraResidual.LATE_GLIDE_MOVES), hovered);
 
         // Whatever the shape and ping: never past move 10, never past the lag phase, the late glide and one air tick.
         for (final int ping : new int[] {0, 160, 300, 2000}) {
@@ -818,6 +818,26 @@ public class TestElytraSwapEnvelope {
         }
     }
 
+    /**
+     * Smoke fix4-R1S-r2 (slot A, this round's first build): a boosted glide that outlived the 7-move lag
+     * phase (8 boost ticks), then the first air tick with the boost. That build set back move 8.
+     */
+    @Test
+    public void boostedGlideIntoTheLateGlideIsAccepted() {
+        final double[][] moves = {
+                {1.2162294973162062, 1.1535569751184198}, {1.217803148791404, 1.158267858360034},
+                {1.2185640825293547, 1.1606396283199558}, {1.218932029411306, 1.1618324704265035},
+                {1.219109948855774, 1.1624317957654569}, {1.2191959811888893, 1.1627326374859024},
+                {1.2192375818265617, 1.1628835180720216}, {1.2192576976712814, 1.1629591265678982},
+                {1.260754968330076, 1.1278004665851995}};
+        final ElytraResidual.State state = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(state, 1.2129751022988273, 1.1442106653269661, 160, CAP, 20));
+        assertEquals(7, state.lagMoves);
+        for (int j = 0; j < moves.length; j++) {
+            assertTrue("move " + (j + 1), allowAt(state, moves[j][0], moves[j][1], -40.0));
+        }
+    }
+
     /** V1 rocket (all rounds): two rockets at once hold the glide at 1.6382 / 0.3070, then the first air tick and the coast. */
     @Test
     public void twoRocketsAtOnceAreAccepted() {
@@ -913,25 +933,33 @@ public class TestElytraSwapEnvelope {
         // Boost toward the look from (1.0, 0.0) at pitch -40: the tick a rocket gives.
         final double[] boosted = ElytraResidual.vanillaRocket(1.0, 0.0, -40.0);
         final double[] tick = ElytraResidual.vanillaGlide(boosted[0], boosted[1], -40.0);
-        // Accepted while NCP's boost ticks last, not after.
+        // Accepted while NCP's boost ticks last; after them at most the one first air tick.
         final ElytraResidual.State two = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(two, 1.0, 0.0, 300, CAP, 2));
-        assertTrue(allowAt(two, tick[0], tick[1], -40.0));
-        double[] next = ElytraResidual.vanillaRocket(tick[0], tick[1], -40.0);
-        double[] tick2 = ElytraResidual.vanillaGlide(next[0], next[1], -40.0);
-        assertTrue(allowAt(two, tick2[0], tick2[1], -40.0));
-        next = ElytraResidual.vanillaRocket(tick2[0], tick2[1], -40.0);
-        final double[] tick3 = ElytraResidual.vanillaGlide(next[0], next[1], -40.0);
-        assertFalse("third boost after 2 boost ticks", allowAt(two, tick3[0], tick3[1], -40.0));
-        // Never in the late glide (after the lag phase), and never without a pitch.
-        final ElytraResidual.State late = new ElytraResidual.State();
-        assertTrue(ElytraResidual.begin(late, 1.0, 0.0, 0, CAP, 30));
-        for (int i = 0; i < late.lagMoves; i++) {
-            assertTrue(allowAt(late, 1.0, -0.05 * (i + 1), 0.0));
+        double[] move = {1.0, 0.0};
+        int boostedMoves = 0;
+        while (boostedMoves < 10) {
+            final double[] next = ElytraResidual.vanillaRocket(move[0], move[1], -40.0);
+            move = ElytraResidual.vanillaGlide(next[0], next[1], -40.0);
+            if (!allowAt(two, move[0], move[1], -40.0)) {
+                break;
+            }
+            boostedMoves++;
         }
-        final double[] lateBoost = ElytraResidual.vanillaRocket(1.0, late.lastY, -40.0);
-        final double[] lateTick = ElytraResidual.vanillaGlide(lateBoost[0], lateBoost[1], -40.0);
-        assertFalse("boost in the late glide", allowAt(late, lateTick[0], lateTick[1], -40.0));
+        assertTrue("boosted moves " + boostedMoves, boostedMoves >= 2 && boostedMoves <= 3);
+        // In the late glide too while the boost lasts (REVIEW-LAB-3 follow-up: smoke fix4-R1S-r2 glided
+        // 8 boosted moves at lag 7), not once NCP's boost ticks are over.
+        for (final int rocketTicks : new int[] {30, 2}) {
+            final ElytraResidual.State late = new ElytraResidual.State();
+            assertTrue(ElytraResidual.begin(late, 1.0, 0.0, 0, CAP, rocketTicks));
+            for (int i = 0; i < late.lagMoves; i++) {
+                assertTrue(allowAt(late, 1.0, -0.05 * (i + 1), 0.0));
+            }
+            final double[] lateBoost = ElytraResidual.vanillaRocket(1.0, late.lastY, -40.0);
+            final double[] lateTick = ElytraResidual.vanillaGlide(lateBoost[0], lateBoost[1], -40.0);
+            assertEquals("boost in the late glide, " + rocketTicks + " ticks", rocketTicks > late.lagMoves,
+                    allowAt(late, lateTick[0], lateTick[1], -40.0));
+        }
         final ElytraResidual.State noPitch = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(noPitch, 1.0, 0.0, 300, CAP, 30));
         assertFalse(allow(noPitch, tick[0], tick[1], false, false));

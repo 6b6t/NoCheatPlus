@@ -31,9 +31,9 @@ package fr.neatmonster.nocheatplus.checks.moving;
  * firework boost may still last, a move may instead fit the vanilla boost plus
  * glide tick at its pitch ({@link #vanillaRocket}). For
  * {@link #LATE_GLIDE_MOVES} more moves, a move the coast rejects is still
- * accepted if it fits a glide tick without the rocket (the server can be a few
- * ticks behind the client). Lag phase, late glide and the first air tick
- * together never pass move {@link #MAX_LAG_MOVES}.</li>
+ * accepted if it fits a glide or boost tick (the server can be a few ticks
+ * behind the client). Lag phase, late glide and the first air tick together
+ * never pass move {@link #MAX_LAG_MOVES}.</li>
  * <li><b>Coast</b>: horizontal speed must fall with air drag
  * ({@link #COAST_DRAG}) and the player must fall with gravity, never above the
  * highest vertical speed the window accepted. The window closes once the move
@@ -347,14 +347,20 @@ public final class ElytraResidual {
                     && yDistance <= (state.lastY - GRAVITY) * VERTICAL_DRAG + yMargin;
             if (!coast) {
                 // Late glide: the server can be a few moves behind the client, so a client can
-                // still glide after the lag phase. No rocket, no faster than drag and lift allow,
-                // and no more than +0.15 per move (as in the lag phase).
-                if (index <= lateEnd
-                        && hDistance <= (state.lastH + GLIDE_STEER_KEEP * maxLift(state.lastY)) * GLIDE_H_DRAG + GLIDE_H_MARGIN) {
+                // still glide after the lag phase (with a boost while it may still last). A
+                // plain glide move is no faster than drag and lift allow and grows by at most
+                // +0.15 (as in the lag phase); after the late glide only the first air tick.
+                if (index <= lateEnd) {
                     kind = glideLike(state, hDistance, yDistance, pitch, index, true);
                 }
-                else if (index <= Math.min(lateEnd + 1, MAX_LAG_MOVES) && isRepeat(state, hDistance, yDistance, pitch, false)) {
-                    kind = REPEAT;
+                else if (index <= Math.min(lateEnd + 1, MAX_LAG_MOVES)) {
+                    if (isRepeat(state, hDistance, yDistance, pitch, false)) {
+                        kind = REPEAT;
+                    }
+                    else if (Double.isFinite(pitch) && index <= state.rocketMoves + 1
+                            && isRepeat(state, hDistance, yDistance, pitch, true)) {
+                        kind = ROCKET_REPEAT;
+                    }
                 }
                 if (kind == REJECT) {
                     end(state);
@@ -421,8 +427,8 @@ public final class ElytraResidual {
      * ({@link #vanillaGlide}). A fall at or below min(start + {@link #Y_SLACK}, 0)
      * also passes the upper bounds (a worker handoff pause, a client stopping);</li>
      * <li>an air tick (the client stopped gliding);</li>
-     * <li>a rocket tick, lag phase only, while the boost may still last: no
-     * higher and no faster than the vanilla boost plus glide tick at that pitch;</li>
+     * <li>a rocket tick, while the boost may still last (lag phase or late glide):
+     * no higher and no faster than the vanilla boost plus glide tick at that pitch;</li>
      * <li>once per window, the first air tick: the last move again (after a rocket
      * tick: the last move with the boost applied), never higher.</li>
      * </ul>
@@ -430,7 +436,7 @@ public final class ElytraResidual {
     private static int glideLike(final State state, final double hDistance, final double yDistance,
                                  final double pitch, final int index, final boolean late) {
         final boolean hasPitch = Double.isFinite(pitch);
-        if (hasPitch && !late && index <= Math.min(state.lagMoves, state.rocketMoves)) {
+        if (hasPitch && index <= state.rocketMoves) {
             // Glide is monotone: h grows with h and with descent, vy grows with h and vy.
             final double[] boosted = vanillaRocket(state.lastH, state.lastY, pitch);
             if (hDistance <= vanillaGlide(boosted[0], boosted[1], pitch)[0] + GLIDE_H_MARGIN
@@ -438,7 +444,8 @@ public final class ElytraResidual {
                 return ROCKET;
             }
         }
-        if (hDistance <= state.lastH + LAG_H_GROWTH && yDistance >= minGlideY(state.lastY, state.lastH, hDistance)) {
+        if (hDistance <= state.lastH + LAG_H_GROWTH && yDistance >= minGlideY(state.lastY, state.lastH, hDistance)
+                && (!late || hDistance <= (state.lastH + GLIDE_STEER_KEEP * maxLift(state.lastY)) * GLIDE_H_DRAG + GLIDE_H_MARGIN)) {
             double upper = maxGlideY(state.lastY, state.lastH, pay(state, hDistance));
             boolean hOk = true;
             if (hasPitch) {
@@ -458,8 +465,7 @@ public final class ElytraResidual {
         if (isRepeat(state, hDistance, yDistance, pitch, false)) {
             return REPEAT;
         }
-        if (hasPitch && !late && index <= Math.min(state.lagMoves, state.rocketMoves)
-                && isRepeat(state, hDistance, yDistance, pitch, true)) {
+        if (hasPitch && index <= state.rocketMoves + 1 && isRepeat(state, hDistance, yDistance, pitch, true)) {
             return ROCKET_REPEAT;
         }
         return REJECT;
