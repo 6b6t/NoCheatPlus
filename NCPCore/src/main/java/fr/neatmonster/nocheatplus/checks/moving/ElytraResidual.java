@@ -27,7 +27,10 @@ package fr.neatmonster.nocheatplus.checks.moving;
  * vanilla glide physics allows ({@link #maxGlideY}): the lift a descent gives,
  * plus a pitch-up climb that the horizontal speed lost in the same move pays
  * for. A move may also stay at or below the starting vertical speed plus
- * {@link #Y_SLACK} (a rocket holds the glide there).</li>
+ * {@link #Y_SLACK} (a rocket holds the glide there). For
+ * {@link #LATE_GLIDE_MOVES} more moves (never past {@link #MAX_LAG_MOVES}), a
+ * move the coast rejects is still accepted if it is a strict vanilla glide tick
+ * (the server can be a few ticks behind the client).</li>
  * <li><b>Coast</b>: horizontal speed must fall with air drag
  * ({@link #COAST_DRAG}) and the player must fall with gravity, never above the
  * highest vertical speed the window accepted. The window closes once the move
@@ -46,6 +49,13 @@ public final class ElytraResidual {
 
     /** Lag phase, maximum moves, whatever the ping. */
     public static final int MAX_LAG_MOVES = 10;
+
+    /**
+     * Late glide: moves after the lag phase in which a strict vanilla glide tick is
+     * still accepted (the server can be a few ticks behind the client). Never past
+     * {@link #MAX_LAG_MOVES}.
+     */
+    public static final int LATE_GLIDE_MOVES = 3;
 
     /** One extra lag move per this much ping. */
     public static final int PING_MS_PER_MOVE = 50;
@@ -108,8 +118,11 @@ public final class ElytraResidual {
     /** Glide drag on horizontal speed. */
     public static final double GLIDE_H_DRAG = 0.99;
 
-    /** Lag phase: margin above the vanilla glide bound (rounding). Real glides stay within 0.0003. */
+    /** Margin above the vanilla glide bound for vertical distance (rounding). Real glides stay within 0.0003. */
     public static final double GLIDE_Y_MARGIN = 0.005;
+
+    /** Margin above the vanilla glide bound for horizontal distance. Real glides stay 0.005 below the bound. */
+    public static final double GLIDE_H_MARGIN = 0.005;
 
     /** CreativeFly: default walk speed, the base of the walk speed ratio (Magic.DEFAULT_WALKSPEED). */
     public static final double DEFAULT_WALK_SPEED = 0.2;
@@ -147,8 +160,10 @@ public final class ElytraResidual {
          * Must be spent again before any climb is paid for.
          */
         public double hDebt;
-        /** The one move that repeats the last vertical distance (first air tick) was used. */
+        /** The one move that repeats the last move (first air tick) was used. */
         public boolean repeated;
+        /** Last move accepted as a glide (lag phase or late glide); the coast is counted from here. */
+        public int glideEnd;
     }
 
     private ElytraResidual() {}
@@ -219,6 +234,7 @@ public final class ElytraResidual {
         state.yHigh = state.yCap;
         state.hDebt = 0.0;
         state.repeated = false;
+        state.glideEnd = 0;
         return true;
     }
 
@@ -247,6 +263,7 @@ public final class ElytraResidual {
             return false;
         }
         double hDebt = state.hDebt;
+        boolean glide = lag;
         boolean repeat = false;
         if (lag) {
             // The client may still be gliding. Never more than wearing the elytra allows.
@@ -254,24 +271,11 @@ public final class ElytraResidual {
                 end(state);
                 return false;
             }
-            // Horizontal speed this move spent beyond drag (positive) or gained beyond lift (negative).
-            final double spent = state.lastH + GLIDE_STEER_KEEP * maxLift(state.lastY) - hDistance / GLIDE_H_DRAG;
-            final double paid;
-            if (spent < 0.0) {
-                hDebt -= spent;
-                paid = 0.0;
-            }
-            else {
-                final double repaid = Math.min(hDebt, spent);
-                hDebt -= repaid;
-                paid = spent - repaid;
-            }
+            final double paid = pay(state, hDistance);
+            hDebt = debtAfter(state, hDistance);
             // Glide physics, or no higher than the start (rocket, level glide).
             if (yDistance > Math.max(state.yCap, maxGlideY(state.lastY, state.lastH, paid))) {
-                // The first tick after the glide stops moves by the last glide velocity
-                // (vanilla applies air drag and gravity after the move). Once per window.
-                if (state.repeated || yDistance > state.lastY + GLIDE_Y_MARGIN
-                        || hDistance > state.lastH + COAST_H_MARGIN) {
+                if (!isRepeat(state, hDistance, yDistance)) {
                     end(state);
                     return false;
                 }
@@ -282,12 +286,29 @@ public final class ElytraResidual {
             // Vanilla coast: air drag horizontally, gravity vertically. Rising above the
             // old ceiling (only after a paid climb) must follow vanilla gravity exactly.
             final double yMargin = state.lastY > Math.max(state.yCap, 0.0) ? GLIDE_Y_MARGIN : COAST_Y_MARGIN;
-            if (yDistance > state.yHigh
-                    || index - state.lagMoves > MAX_COAST_MOVES
-                    || hDistance > state.lastH * COAST_DRAG + COAST_H_MARGIN
-                    || yDistance > (state.lastY - GRAVITY) * VERTICAL_DRAG + yMargin) {
-                end(state);
-                return false;
+            final boolean coast = yDistance <= state.yHigh
+                    && index - Math.max(state.lagMoves, state.glideEnd) <= MAX_COAST_MOVES
+                    && hDistance <= state.lastH * COAST_DRAG + COAST_H_MARGIN
+                    && yDistance <= (state.lastY - GRAVITY) * VERTICAL_DRAG + yMargin;
+            if (!coast) {
+                // Late glide: the server can be a few moves behind the client, so a client can
+                // still glide after the lag phase. Only a strict vanilla glide tick, for
+                // LATE_GLIDE_MOVES more moves, and the first air tick right after it.
+                final int lateEnd = Math.min(MAX_LAG_MOVES, state.lagMoves + LATE_GLIDE_MOVES);
+                if (index <= lateEnd
+                        && hDistance <= (state.lastH + GLIDE_STEER_KEEP * maxLift(state.lastY)) * GLIDE_H_DRAG + GLIDE_H_MARGIN
+                        && yDistance <= maxGlideY(state.lastY, state.lastH, pay(state, hDistance))) {
+                    glide = true;
+                }
+                else if (index <= lateEnd + 1 && isRepeat(state, hDistance, yDistance)) {
+                    glide = true;
+                    repeat = true;
+                }
+                else {
+                    end(state);
+                    return false;
+                }
+                hDebt = debtAfter(state, hDistance);
             }
         }
         state.moves = index;
@@ -295,14 +316,48 @@ public final class ElytraResidual {
         state.lastY = yDistance;
         state.hDebt = hDebt;
         state.repeated |= repeat;
-        if (lag) {
+        if (glide) {
             state.yHigh = Math.max(state.yHigh, yDistance);
+            state.glideEnd = index;
         }
         else if (hDistance <= NORMAL_AIR_H) {
             // Normal air move from here on; SurvivalFly judges the rest.
             end(state);
         }
         return true;
+    }
+
+    /**
+     * Horizontal speed this move spent beyond glide drag (positive), or gained
+     * beyond the most lift could give (negative, becomes debt).
+     */
+    static double spent(final State state, final double hDistance) {
+        return state.lastH + GLIDE_STEER_KEEP * maxLift(state.lastY) - hDistance / GLIDE_H_DRAG;
+    }
+
+    /** Debt this move repays. */
+    private static double repaid(final State state, final double hDistance) {
+        return Math.min(state.hDebt, Math.max(0.0, spent(state, hDistance)));
+    }
+
+    /** Debt after this move: unexplained speed gains add to it, spent speed repays it first. */
+    private static double debtAfter(final State state, final double hDistance) {
+        final double spent = spent(state, hDistance);
+        return spent < 0.0 ? state.hDebt - spent : state.hDebt - repaid(state, hDistance);
+    }
+
+    /** Speed this move spent that may pay for a climb: what is left after repaying the debt. */
+    static double pay(final State state, final double hDistance) {
+        return Math.max(0.0, spent(state, hDistance)) - repaid(state, hDistance);
+    }
+
+    /**
+     * The first tick after the glide stops moves by the last glide velocity plus
+     * input (vanilla applies air drag and gravity after the move). Once per window.
+     */
+    private static boolean isRepeat(final State state, final double hDistance, final double yDistance) {
+        return !state.repeated && Math.abs(yDistance - state.lastY) <= GLIDE_Y_MARGIN
+                && Math.abs(hDistance - state.lastH) <= COAST_H_MARGIN;
     }
 
     /** Most horizontal speed one glide tick can gain from lift, at any pitch: 0.1 * (0.08 - vy). */

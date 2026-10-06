@@ -167,34 +167,68 @@ public class TestElytraSwapEnvelope {
         }
     }
 
+    /** Moves accepted before the window rejects one (feeding the same shape until it does). */
+    private static int acceptedUntilRejected(final ElytraResidual.State state, final double[] start,
+                                             final java.util.function.UnaryOperator<double[]> next) {
+        double[] move = start;
+        int accepted = 0;
+        while (accepted < 100) {
+            move = next.apply(move);
+            if (!allow(state, move[0], move[1], false, false)) {
+                return accepted;
+            }
+            accepted++;
+        }
+        throw new AssertionError("never rejected");
+    }
+
     @Test
-    public void heldSpeedOrHoverFailsOnTheFirstCoastMove() {
+    public void heldSpeedOrHoverEndsAfterTheLagAndLateGlide() {
+        // A held level glide is what a client that is still gliding sends: accepted through the
+        // lag phase and the late glide, then once as the first air tick, then rejected.
         final ElytraResidual.State held = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(held, 1.55, -0.15, 0, CAP));
         assertEquals(3, held.lagMoves);
-        for (int i = 0; i < held.lagMoves; i++) {
-            assertTrue("lag " + i, allow(held, 1.55, -0.15, false, false));
+        for (int i = 0; i < held.lagMoves + ElytraResidual.LATE_GLIDE_MOVES; i++) {
+            assertTrue("move " + (i + 1), allow(held, 1.55, -0.15, false, false));
         }
-        assertFalse("constant 1.55", allow(held, 1.55, fall(-0.15), false, false));
+        assertTrue("first air tick, once", allow(held, 1.55, -0.15, false, false));
+        assertFalse("constant 1.55 after that", allow(held, 1.55, -0.15, false, false));
         assertFalse(held.open);
 
+        // Hover at y = 0 at a constant speed (Flight): no glide pays for it, so only the first air tick follows the lag.
         final ElytraResidual.State hover = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(hover, 1.55, 0.0, 160, CAP));
-        double h = 1.55;
-        for (int i = 0; i < hover.lagMoves; i++) {
-            h *= 0.91;
-            assertTrue("lag " + i, allow(hover, h, 0.0, false, false));
-        }
-        assertFalse("hover at y=0", allow(hover, h * 0.91, 0.0, false, false));
-        assertFalse(hover.open);
+        assertEquals(hover.lagMoves + 1, acceptedUntilRejected(hover, new double[] {1.55, 0.0}, m -> m));
 
-        // A glide that keeps its vertical speed after the lag is not a coast either.
-        final ElytraResidual.State glide = new ElytraResidual.State();
-        assertTrue(ElytraResidual.begin(glide, 1.55, -0.15, 0, CAP));
-        for (int i = 0; i < glide.lagMoves; i++) {
-            assertTrue(allow(glide, 1.40, -0.15, false, false));
+        // Whatever the shape and ping: never more than the lag phase, the late glide and one air tick.
+        for (final int ping : new int[] {0, 160, 300, 2000}) {
+            final int limit = Math.min(ElytraResidual.MAX_LAG_MOVES, ElytraResidual.lagMoves(ping) + ElytraResidual.LATE_GLIDE_MOVES) + 1;
+            final java.util.List<java.util.function.UnaryOperator<double[]>> shapes = java.util.Arrays.asList(
+                    m -> m,                                          // held speed and height
+                    m -> new double[] {m[0] * 0.91, 0.0},            // hover, speed lost to drag pays for it
+                    m -> new double[] {m[0] * 0.91, m[1]},           // held height, speed lost
+                    m -> new double[] {m[0], fall(m[1])});           // held speed, falling
+            for (int i = 0; i < shapes.size(); i++) {
+                final ElytraResidual.State state = new ElytraResidual.State();
+                assertTrue(ElytraResidual.begin(state, 1.55, -0.15, ping, CAP));
+                final int accepted = acceptedUntilRejected(state, new double[] {1.55, -0.15}, shapes.get(i));
+                assertTrue("ping " + ping + " shape " + i + ": " + accepted + " > " + limit, accepted <= limit);
+            }
         }
-        assertFalse(allow(glide, 1.40 * 0.91, -0.15, false, false));
+    }
+
+    /** Lab M2 (cand-M23-r1, LabBM151625): Meteor Flight 0.1 right after a real glide and a swap. */
+    @Test
+    public void flightAfterSwapIsCaughtOnItsFirstMove() {
+        final ElytraResidual.State state = new ElytraResidual.State();
+        assertTrue(ElytraResidual.begin(state, 1.6245, -0.1588, 160, CAP));
+        for (final double[] glideMove : new double[][] {
+                {1.6242, -0.1577}, {1.6238, -0.1567}, {1.6233, -0.1559}, {1.6227, -0.1551}, {1.6221, -0.1545}}) {
+            assertTrue(allow(state, glideMove[0], glideMove[1], false, false));
+        }
+        assertFalse("Flight 0.98 / 0.0", allow(state, 0.98, 0.0, false, false));
+        assertFalse(state.open);
     }
 
     @Test
@@ -334,6 +368,9 @@ public class TestElytraSwapEnvelope {
             {{1.219320, -1.070664}, {1.281013, -1.002285}, {1.337519, -0.940299}, {1.389319, -0.884108}, {1.436845, -0.833172}},
             {{1.232017, -1.080362}, {1.294231, -1.011076}, {1.351193, -0.948268}, {1.403388, -0.891332}},
             {{1.520617, -0.745141}, {1.557544, -0.707198}, {1.591566, -0.672802}, {1.622949, -0.641623}, {1.651935, -0.613359}, {1.678742, -0.587737}},
+            // fix2-V2-r1 (LabAV163056, slot A): this client kept gliding 8 moves, one more than the lag phase.
+            {{1.219320, -1.070664}, {1.281013, -1.002285}, {1.337519, -0.940299}, {1.389319, -0.884108}, {1.436845, -0.833172},
+                    {1.480492, -0.786998}, {1.520617, -0.745141}, {1.557544, -0.707198}, {1.591566, -0.672802}},
             // cand-V2-r3 (LabBV152354).
             {{1.151912, -1.146097}, {1.219320, -1.070664}, {1.281013, -1.002285}, {1.337519, -0.940299}, {1.389319, -0.884108}},
             {{1.219320, -1.070664}, {1.281013, -1.002285}, {1.337519, -0.940299}, {1.389319, -0.884108}},
@@ -356,12 +393,12 @@ public class TestElytraSwapEnvelope {
         for (final Object[] run : new Object[][] {{"V2", LAB_V2, 160}, {"V3", LAB_V3, 300}}) {
             final double[][][] swaps = (double[][][]) run[1];
             final int ping = (Integer) run[2];
-            final int lag = ElytraResidual.lagMoves(ping);
+            final int lateEnd = Math.min(ElytraResidual.MAX_LAG_MOVES, ElytraResidual.lagMoves(ping) + ElytraResidual.LATE_GLIDE_MOVES);
             for (int i = 0; i < swaps.length; i++) {
                 final double[][] swap = swaps[i];
                 // The client kept gliding for these moves; the lab setback hid the rest. Continue
-                // the vanilla glide at pitch 30 for every length that still fits in the lag phase.
-                for (int extra = 0; swap.length - 1 + extra < lag; extra++) {
+                // the vanilla glide at pitch 30 for every length up to the end of the late glide.
+                for (int extra = 0; swap.length - 1 + extra <= lateEnd; extra++) {
                     final List<double[]> moves = new ArrayList<double[]>();
                     for (int j = 1; j < swap.length; j++) {
                         moves.add(swap[j]);
@@ -388,7 +425,8 @@ public class TestElytraSwapEnvelope {
                         continue;
                     }
                     for (final int ping : new int[] {0, 160, 300}) {
-                        for (int extra = 0; extra < ElytraResidual.lagMoves(ping); extra++) {
+                        final int lateEnd = Math.min(ElytraResidual.MAX_LAG_MOVES, ElytraResidual.lagMoves(ping) + ElytraResidual.LATE_GLIDE_MOVES);
+                        for (int extra = 0; extra <= lateEnd; extra++) {
                             final List<double[]> moves = new ArrayList<double[]>();
                             double[] next = move;
                             for (int k = 0; k < extra; k++) {
