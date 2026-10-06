@@ -41,7 +41,7 @@ public class TestNoFallContactPrecision {
    m.to.setLocation("world",16,81.5625,16,0,0);m.toIsValid=true;m.yDistance=81.5625-82.193473889991;
    when(trace.getCurrentMove()).thenReturn(m);d.noFallMaxY=93;d.noFallFallDistance=(float)(93-82.193473889991);
    PlayerLocation from=mock(PlayerLocation.class),to=mock(PlayerLocation.class);
-   when(to.standsOnEntity(.00001,0,0)).thenReturn(true);
+   when(to.standsOnEntityContact(.00001,0,0)).thenReturn(true);
    when(p.getFallDistance()).thenReturn(0f);
    check.check(p,from,to,Double.NEGATIVE_INFINITY,d,cc,mock(IPlayerData.class));
    var distance=org.mockito.ArgumentCaptor.forClass(Float.class);verify(p).setFallDistance(distance.capture());

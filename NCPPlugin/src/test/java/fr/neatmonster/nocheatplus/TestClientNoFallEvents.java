@@ -31,7 +31,7 @@ public class TestClientNoFallEvents {
         Field f = owner.getDeclaredField(name); f.setAccessible(true); f.set(target, value);
     }
     private void event(boolean ground, boolean reset, String entityKind, boolean shouldCancel) throws Exception {
-        boolean skipAir = false; double nativeDamage = 9;
+        boolean skipAir = false; double nativeDamage = "boat-history".equals(entityKind) ? 3 : 9;
         String previous = ServerVersion.getMinecraftVersion();
         try (var manager = mockStatic(DataManager.class);
              var movement = mockStatic(MovingUtil.class);
@@ -84,7 +84,12 @@ public class TestClientNoFallEvents {
                 when(entity.getUniqueId()).thenReturn(java.util.UUID.fromString("00000000-0000-0000-0000-000000000001"));
                 when(player.getUniqueId()).thenReturn(java.util.UUID.fromString("00000000-0000-0000-0000-000000000002"));
                 when(entity.getBoundingBox()).thenReturn(new org.bukkit.util.BoundingBox(15.5,80,15.5,16.5,81,16.5));
-                when(player.getNearbyEntities(1.5,1.5,1.5)).thenReturn(java.util.List.of(entity));
+                when(player.getNearbyEntities(1.5,8,1.5)).thenReturn(java.util.List.of(entity));
+                if ("boat-history".equals(entityKind)) {
+                    when(player.getLocation()).thenReturn(new Location(world,16,81.84805,16));
+                    when(entity.getBoundingBox()).thenReturn(new org.bukkit.util.BoundingBox(15.5,81,15.5,16.5,81.5625,16.5));
+                    when(access.hasSweptBoatSupport(eq(entity),anyDouble(),anyDouble(),anyDouble(),anyDouble(),anyDouble())).thenReturn(true);
+                }
             }
             if ("boat-swept".equals(entityKind)) when(access.hasVerticalCollisionBelow(player)).thenReturn(true);
             if ("boat-swept".equals(entityKind)) when(player.getLocation()).thenReturn(new Location(world,16,81.65,16));
@@ -107,4 +112,6 @@ public class TestClientNoFallEvents {
     @Test public void boatBelowWithoutContactCannotConsumeFall() throws Exception { event(false,false,"boat-above",true); }
     @Test public void boatBesideWithoutOverlapCannotConsumeFall() throws Exception { event(false,false,"boat-beside",true); }
     @Test public void nonCollidableAreaEffectCloudIsNotLandingSupport() throws Exception { event(false,false,"cloud",true); }
+    @Test public void nativePreviousBoatPositionPreservesTheThreePointDismountLanding() throws Exception { event(false,false,"boat-history",false); }
+
 }

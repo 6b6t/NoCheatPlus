@@ -173,6 +173,12 @@ public class RichEntityLocation extends RichBoundsLocation {
                 maxX + xzMargin, minY + yMargin, maxZ + xzMargin);
     }
 
+    /** Completed native contact, distinct from entity motion interpolation. */
+    public boolean standsOnEntityContact(final double yOnGround, final double xzMargin, final double yMargin) {
+        return blockCache.standsOnEntityContact(entity, minX - xzMargin, minY - yOnGround - yMargin, minZ - xzMargin,
+                maxX + xzMargin, minY + yMargin, maxZ + xzMargin);
+    }
+
     /**
      * Checks if the entity is on ground, including entities such as Minecart, Boat.
      * 

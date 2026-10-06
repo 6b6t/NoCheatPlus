@@ -85,7 +85,7 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
     public boolean standsOnEntity(final Entity entity, final double minX, final double minY, final double minZ, final double maxX, final double maxY, final double maxZ){
         if (fr.neatmonster.nocheatplus.compat.versions.ServerVersion.compareMinecraftVersion("26.1") >= 0
                 && entity instanceof org.bukkit.entity.Player) {
-            return standsOnNativeEntity((org.bukkit.entity.Player) entity, minX, minY, minZ, maxX, maxY, maxZ);
+            return standsOnNativeEntity((org.bukkit.entity.Player) entity, minX, minY, minZ, maxX, maxY, maxZ, false);
         }
         try{
             // TODO: Probably check vehicle ids too before doing this ?
@@ -110,11 +110,28 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
         return false;
     }
 
-    private boolean standsOnNativeEntity(final org.bukkit.entity.Player player, final double minX, final double minY,
+    @Override
+    public boolean standsOnEntityContact(final Entity entity, final double minX, final double minY,
             final double minZ, final double maxX, final double maxY, final double maxZ) {
+        if (fr.neatmonster.nocheatplus.compat.versions.ServerVersion.compareMinecraftVersion("26.1") >= 0
+                && entity instanceof org.bukkit.entity.Player) {
+            return standsOnNativeEntity((org.bukkit.entity.Player) entity, minX, minY, minZ, maxX, maxY, maxZ, true);
+        }
+        return standsOnEntity(entity, minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    private boolean standsOnNativeEntity(final org.bukkit.entity.Player player, final double minX, final double minY,
+            final double minZ, final double maxX, final double maxY, final double maxZ, final boolean contact) {
         if (!fr.neatmonster.nocheatplus.compat.Folia.isOwnedByCurrentRegion(player)) return false;
+        final org.bukkit.Location feet = player.getLocation();
+        final boolean currentFeet = Math.abs(feet.getY() - maxY) <= 0.00001
+                && Math.abs(feet.getX() - (minX + maxX) * 0.5) <= 0.00001
+                && Math.abs(feet.getZ() - (minZ + maxZ) * 0.5) <= 0.00001;
         try {
-            for (final Entity other : player.getNearbyEntities(1.5, 2.0, 1.5)) {
+            // A falling boat can leave the immediate collision neighborhood
+            // while the client still displays its tracked/interpolated boxes.
+            // Observe ahead of contact; support still requires a real box span.
+            for (final Entity other : player.getNearbyEntities(1.5, 8.0, 1.5)) {
                 if (!fr.neatmonster.nocheatplus.compat.Folia.isOwnedByCurrentRegion(other) || !other.isValid()
                         || other.getUniqueId().equals(player.getUniqueId())
                         || !NativeLandingAccess.canCollide(player, other)) continue;
@@ -122,10 +139,16 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
                 if (box.getMaxX() <= minX || box.getMinX() >= maxX
                         || box.getMaxZ() <= minZ || box.getMinZ() >= maxZ) continue;
                 if (box.getMaxY() >= minY - 0.00001 && box.getMaxY() <= maxY + 0.00001) return true;
+                // Interpolation may explain a gravity transition, but must not
+                // consume NoFall descent on every point along the old path.
+                // A strict contact needs native ground at actual current feet.
+                final boolean swept = NativeLandingAccess.supportsSweptBoat(other, minX, maxY, minZ, maxX, maxZ);
+                if (swept
+                        && (!contact || currentFeet && player.isOnGround())) return true;
                 // Native swept contact with a descending boat can precede its
                 // next position. Only the actual current feet/collision pair
                 // can select this exception, never a proposed movement endpoint.
-                if (Math.abs(player.getLocation().getY() - maxY) <= 0.00001
+                if (currentFeet
                         && NativeLandingAccess.hasCollisionBelow(player)
                         && Math.abs(box.getMaxY() - maxY) <= 0.85) return true;
             }
