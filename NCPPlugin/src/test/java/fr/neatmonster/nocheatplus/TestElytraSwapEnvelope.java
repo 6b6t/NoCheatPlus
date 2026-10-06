@@ -311,8 +311,8 @@ public class TestElytraSwapEnvelope {
         // last move. A boost at pitch +60 from vy -0.15 pushes to about -0.84: rejected.
         final ElytraResidual.State steeper = new ElytraResidual.State();
         assertTrue(ElytraResidual.begin(steeper, 1.5, -0.15, 160, CAP, true));
-        final double[] boosted = ElytraResidual.vanillaRocket(1.5, -0.15, 60.0);
-        final double rocketY = ElytraResidual.vanillaGlide(boosted[0], boosted[2], 60.0)[1];
+        final double[] boosted = ElytraResidual.vanillaRocket(1.5, -0.15, 60.0, 1);
+        final double rocketY = ElytraResidual.vanillaGlide(boosted[0], boosted[1], 60.0)[1];
         assertTrue(rocketY < -0.15 - 0.30);
         assertFalse("more than 0.30 below the last move", allowAt(steeper, 1.0, rocketY - 0.01, 60.0));
 
@@ -851,9 +851,11 @@ public class TestElytraSwapEnvelope {
         for (int j = 0; j < moves.length; j++) {
             assertTrue("move " + (j + 1), allowAt(state, moves[j][0], moves[j][1], -10.0));
         }
-        // The fixed point of boost, boost, glide at pitch -10 is that move.
-        final double[] two = ElytraResidual.vanillaRocket(1.638217868957895, 0.3070340032664376, -10.0);
-        assertTrue(two[0] >= 1.6382 && two[2] >= 0.30);
+        // The fixed point of two boosts, then the glide tick, at pitch -10 is that move.
+        final double[] two = ElytraResidual.vanillaRocket(1.638217868957895, 0.3070340032664376, -10.0, 2);
+        final double[] tick = ElytraResidual.vanillaGlide(two[0], two[1], -10.0);
+        assertEquals(1.6382178689579519, tick[0], 1e-4);
+        assertEquals(0.30703400326649444, tick[1], 1e-4);
     }
 
     /** REVIEW-LAB-3 Z1: steep zooms at about 2 b/t (pitch -45 to -75), set back by the 0.5 rise cap. */
@@ -931,7 +933,7 @@ public class TestElytraSwapEnvelope {
     @Test
     public void rocketTicksOnlyInTheLagPhaseWhileTheBoostLasts() {
         // Boost toward the look from (1.0, 0.0) at pitch -40: the tick a rocket gives.
-        final double[] boosted = ElytraResidual.vanillaRocket(1.0, 0.0, -40.0);
+        final double[] boosted = ElytraResidual.vanillaRocket(1.0, 0.0, -40.0, 1);
         final double[] tick = ElytraResidual.vanillaGlide(boosted[0], boosted[1], -40.0);
         // Accepted while NCP's boost ticks last; after them at most the one first air tick.
         final ElytraResidual.State two = new ElytraResidual.State();
@@ -939,7 +941,7 @@ public class TestElytraSwapEnvelope {
         double[] move = {1.0, 0.0};
         int boostedMoves = 0;
         while (boostedMoves < 10) {
-            final double[] next = ElytraResidual.vanillaRocket(move[0], move[1], -40.0);
+            final double[] next = ElytraResidual.vanillaRocket(move[0], move[1], -40.0, 1);
             move = ElytraResidual.vanillaGlide(next[0], next[1], -40.0);
             if (!allowAt(two, move[0], move[1], -40.0)) {
                 break;
@@ -955,7 +957,7 @@ public class TestElytraSwapEnvelope {
             for (int i = 0; i < late.lagMoves; i++) {
                 assertTrue(allowAt(late, 1.0, -0.05 * (i + 1), 0.0));
             }
-            final double[] lateBoost = ElytraResidual.vanillaRocket(1.0, late.lastY, -40.0);
+            final double[] lateBoost = ElytraResidual.vanillaRocket(1.0, late.lastY, -40.0, 1);
             final double[] lateTick = ElytraResidual.vanillaGlide(lateBoost[0], lateBoost[1], -40.0);
             assertEquals("boost in the late glide, " + rocketTicks + " ticks", rocketTicks > late.lagMoves,
                     allowAt(late, lateTick[0], lateTick[1], -40.0));

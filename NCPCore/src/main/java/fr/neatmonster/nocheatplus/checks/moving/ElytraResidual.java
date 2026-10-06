@@ -107,6 +107,9 @@ public final class ElytraResidual {
      */
     public static final double ROCKET_LIMIT = ROCKET_PUSH / (1.0 - ROCKET_KEEP);
 
+    /** Rockets at once that are checked one by one; more count as the limit {@link #ROCKET_LIMIT}. */
+    public static final int MAX_ROCKETS = 3;
+
     /** A repeated move (first air tick) may not be higher than the last move by more than this (rounding). */
     public static final double REPEAT_RISE = 1.0E-6;
 
@@ -437,11 +440,13 @@ public final class ElytraResidual {
                                  final double pitch, final int index, final boolean late) {
         final boolean hasPitch = Double.isFinite(pitch);
         if (hasPitch && index <= state.rocketMoves) {
-            // Glide is monotone: h grows with h and with descent, vy grows with h and vy.
-            final double[] boosted = vanillaRocket(state.lastH, state.lastY, pitch);
-            if (hDistance <= vanillaGlide(boosted[0], boosted[1], pitch)[0] + GLIDE_H_MARGIN
-                    && yDistance <= vanillaGlide(boosted[0], boosted[2], pitch)[1] + GLIDE_Y_MARGIN) {
-                return ROCKET;
+            // One, two, three or (in the limit) many rockets at once: the move must fit one of them.
+            for (int rockets = 1; rockets <= MAX_ROCKETS + 1; rockets++) {
+                final double[] boosted = vanillaRocket(state.lastH, state.lastY, pitch, rockets > MAX_ROCKETS ? 0 : rockets);
+                final double[] tick = vanillaGlide(boosted[0], boosted[1], pitch);
+                if (hDistance <= tick[0] + GLIDE_H_MARGIN && yDistance <= tick[1] + GLIDE_Y_MARGIN) {
+                    return ROCKET;
+                }
             }
         }
         if (hDistance <= state.lastH + LAG_H_GROWTH && yDistance >= minGlideY(state.lastY, state.lastH, hDistance)
@@ -496,18 +501,16 @@ public final class ElytraResidual {
     }
 
     /**
-     * Firework boosts (FireworkRocketEntity#tick) on a glide, one or more rockets
-     * at once, each v = v * 0.5 + look * 0.85: {highest h, lowest vy, highest vy}.
-     * One rocket gives the first value, many approach look * 1.7; h is an upper
-     * bound for any yaw.
+     * Firework boosts (FireworkRocketEntity#tick) on a glide: {h, vy} after this
+     * many rockets at once, each v = v * 0.5 + look * 0.85, so after n of them
+     * v * 0.5^n + look * 1.7 * (1 - 0.5^n). rockets 0: the limit of many, look * 1.7.
+     * h is an upper bound for any yaw.
      */
-    public static double[] vanillaRocket(final double h0, final double vy0, final double pitchDegrees) {
+    public static double[] vanillaRocket(final double h0, final double vy0, final double pitchDegrees, final int rockets) {
         final double pitch = Math.toRadians(pitchDegrees);
-        final double lookH = Math.cos(pitch);
-        final double lookY = -Math.sin(pitch);
-        final double oneY = vy0 * ROCKET_KEEP + ROCKET_PUSH * lookY;
-        return new double[] {Math.max(h0 * ROCKET_KEEP + ROCKET_PUSH * lookH, ROCKET_LIMIT * lookH),
-                Math.min(oneY, ROCKET_LIMIT * lookY), Math.max(oneY, ROCKET_LIMIT * lookY)};
+        final double keep = rockets <= 0 ? 0.0 : Math.pow(ROCKET_KEEP, rockets);
+        return new double[] {h0 * keep + ROCKET_LIMIT * (1.0 - keep) * Math.cos(pitch),
+                vy0 * keep - ROCKET_LIMIT * (1.0 - keep) * Math.sin(pitch)};
     }
 
     /**
@@ -536,22 +539,25 @@ public final class ElytraResidual {
         if (state.repeated) {
             return false;
         }
-        double h = state.lastH;
-        double yLow = state.lastY;
-        double yHigh = state.lastY;
-        if (rocket) {
-            if (!state.rocketLast) {
-                return false;
-            }
-            final double[] boosted = vanillaRocket(h, yLow, pitch);
-            h = boosted[0];
-            yLow = boosted[1];
-            yHigh = boosted[2];
+        if (!rocket) {
+            return repeats(state.lastH, state.lastY, hDistance, yDistance);
         }
-        // Never higher than that velocity; falling, within rounding (and a worker handoff pause).
-        final boolean notHigher = yDistance <= yHigh + REPEAT_RISE
-                || yDistance <= 0.0 && yDistance <= yHigh + GLIDE_Y_MARGIN;
-        return notHigher && yDistance >= yLow - GLIDE_Y_MARGIN && hDistance <= h + COAST_H_MARGIN;
+        if (!state.rocketLast) {
+            return false;
+        }
+        for (int rockets = 1; rockets <= MAX_ROCKETS + 1; rockets++) {
+            final double[] boosted = vanillaRocket(state.lastH, state.lastY, pitch, rockets > MAX_ROCKETS ? 0 : rockets);
+            if (repeats(boosted[0], boosted[1], hDistance, yDistance)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** The move is this velocity again (plus air input): never higher; falling, within rounding (and a worker handoff pause). */
+    private static boolean repeats(final double h, final double y, final double hDistance, final double yDistance) {
+        final boolean notHigher = yDistance <= y + REPEAT_RISE || yDistance <= 0.0 && yDistance <= y + GLIDE_Y_MARGIN;
+        return notHigher && yDistance >= y - GLIDE_Y_MARGIN && hDistance <= h + COAST_H_MARGIN;
     }
 
     /** Most horizontal speed one glide tick can gain from lift, at any pitch: 0.1 * (0.08 - vy). */
