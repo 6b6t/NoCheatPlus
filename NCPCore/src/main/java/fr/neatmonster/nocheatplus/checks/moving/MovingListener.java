@@ -2882,7 +2882,9 @@ catch (java.lang.Throwable thr) {}
         data.noFallNativeLandingGeneration = data.noFallGeneration;
         if (data.noFallNativeLandingTaskPending) return;
         data.noFallNativeLandingTaskPending = true;
+        final long taskToken = ++data.noFallNativeLandingTaskToken;
         final Object task = Folia.runSyncDelayedTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> {
+            if (data.noFallNativeLandingTaskToken != taskToken) return;
             data.noFallNativeLandingTaskPending = false;
             final long generation = data.noFallNativeLandingGeneration;
             if (!player.isOnline() || player.isDead() || player.isInsideVehicle()
@@ -2904,9 +2906,11 @@ catch (java.lang.Throwable thr) {}
             } finally {
                 aux.returnPlayerMoveInfo(info);
             }
-        }, null, 1L);
+        }, () -> {
+            if (data.noFallNativeLandingTaskToken == taskToken) data.invalidateNativeLandingTask();
+        }, 1L);
         if (task == null || task instanceof Integer && ((Integer) task) == -1) {
-            data.noFallNativeLandingTaskPending = false;
+            if (data.noFallNativeLandingTaskToken == taskToken) data.invalidateNativeLandingTask();
         }
     }
 

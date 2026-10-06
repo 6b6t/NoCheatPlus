@@ -30,7 +30,7 @@ public class TestClientNoFallNativeDispatch {
   return Arrays.asList(new Object[][]{{"Vanilla",true},{"LB/NoGround",false},{"BleachHack/NoGround",false},
    {"LB/Hypixel/false-contact",false},{"LB/Hypixel/immediate-jump",false},{"LB/Blink/false-contact-burst",false},{"native-zero",false},{"teleport",false},{"water",false},
    {"air",false},{"disabled",false},{"parent-disabled",false},{"allow-flight",false},
-   {"glide",false},{"vehicle",false},{"offline",false},{"dead",false},{"policy",false},{"replaced-data",false}});
+   {"glide",false},{"vehicle",false},{"offline",false},{"dead",false},{"policy",false},{"replaced-data",false},{"retired/reconnect",false}});
  }
  final String name; final boolean wireGround;
  public TestClientNoFallNativeDispatch(String n,boolean g){name=n;wireGround=g;}
@@ -57,9 +57,9 @@ public class TestClientNoFallNativeDispatch {
    TestClientNoFallSequences.field(listener,MovingListener.class,"aux",aux);
    TestClientNoFallSequences.field(listener,MovingListener.class,"noFall",nf);
    TestClientNoFallSequences.field(listener,CheckListener.class,"mcAccess",h);
-   AtomicReference<Consumer<Object>> task=new AtomicReference<>();
-   folia.when(()->Folia.runSyncDelayedTaskForEntity(eq(p),eq(plugin),any(),isNull(),eq(1L)))
-       .thenAnswer(c->{task.set(c.getArgument(2));return new Object();});
+   AtomicReference<Consumer<Object>> task=new AtomicReference<>();AtomicReference<Runnable> retired=new AtomicReference<>();
+   folia.when(()->Folia.runSyncDelayedTaskForEntity(eq(p),eq(plugin),any(),any(),eq(1L)))
+       .thenAnswer(c->{task.set(c.getArgument(2));retired.set(c.getArgument(3));return new Object();});
    Method queue=MovingListener.class.getDeclaredMethod("queueNativeLanding",Player.class,MovingData.class,MovingConfig.class,IPlayerData.class);
    queue.setAccessible(true);
    float[] distance={0};double[] damage={0};
@@ -76,6 +76,13 @@ public class TestClientNoFallNativeDispatch {
     y=next;
    }
    assertNotNull(task.get());
+   if(name.equals("retired/reconnect")){
+    assertNotNull("Scheduler retirement must release the pending landing probe",retired.get());
+    Consumer<Object> oldTask=task.get();retired.get().run();
+    assertFalse(d.noFallNativeLandingTaskPending);
+    queue.invoke(listener,p,d,cc,pd);assertNotSame(oldTask,task.get());
+    oldTask.accept(null);assertEquals(0,damage[0],0);
+   }
    boolean blocked=!name.contains("/") && !name.equals("Vanilla");
    if(name.equals("native-zero"))distance[0]=0;
    if(name.equals("teleport"))d.noFallGeneration++;
@@ -103,7 +110,7 @@ public class TestClientNoFallNativeDispatch {
    task.get().accept(null);task.get().accept(null); // Replay must not submit a second landing.
    assertEquals(name,blocked?0:9,damage[0],0);
    verify(access,times(wireGround||blocked?0:1)).dispatchNativeLanding(p);
-   folia.verify(()->Folia.runSyncDelayedTaskForEntity(eq(p),eq(plugin),any(),isNull(),eq(1L)),times(1));
+   folia.verify(()->Folia.runSyncDelayedTaskForEntity(eq(p),eq(plugin),any(),any(),eq(1L)),times(name.equals("retired/reconnect")?2:1));
   }finally{ServerVersion.setMinecraftVersion(old);}
  }
 }

@@ -608,6 +608,9 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Called when a player leaves the server.
      */
     public void onPlayerLeave() {
+        invalidateNativeLandingTask();
+        noFallGeneration++;
+        noFallCancelledAirFallDebt = 0f;
         resetSetBackTeleport();
         removeAllPlayerSpeedModifiers();
         trace.reset();
@@ -724,8 +727,15 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     /** Entity-owned token for pending native-distance restores; never transferred. */
     public long noFallGeneration;
     /** One owning-entity landing probe at a time; resets invalidate its generation. */
-    public boolean noFallNativeLandingTaskPending;
+    public volatile boolean noFallNativeLandingTaskPending;
     public long noFallNativeLandingGeneration;
+    /** Each scheduled probe has a fixed token, separate from refreshed fall generations. */
+    public volatile long noFallNativeLandingTaskToken;
+
+    public void invalidateNativeLandingTask() {
+        noFallNativeLandingTaskToken++;
+        noFallNativeLandingTaskPending = false;
+    }
     /** Native distance erased by a FALL event this check cancelled while airborne. */
     public float noFallCancelledAirFallDebt;
 
