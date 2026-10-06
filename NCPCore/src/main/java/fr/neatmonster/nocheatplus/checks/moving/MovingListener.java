@@ -1934,9 +1934,10 @@ catch (java.lang.Throwable thr) {}
         // This means moving data has been reset by a teleport.
         final Location requested = requestedMovePositions.remove(event);
         if (!processingEvents.remove(player.getName(), event)) return;
+        final MovingData moving = pData.getGenericInstance(MovingData.class);
+        if (moving != null) invalidateChangedBoatStep(moving, event);
         final NetData netData = pData.getGenericInstance(NetData.class);
         if (netData != null) {
-            final MovingData moving = pData.getGenericInstance(MovingData.class);
             final Location endpoint = requested == null ? event.getTo() : requested;
             netData.acknowledgeNoFallPosition(endpoint.getX(), endpoint.getY(), endpoint.getZ(),
                     moving == null ? 0L : moving.noFallMatchedPacketSequence);
@@ -1949,7 +1950,6 @@ catch (java.lang.Throwable thr) {}
         final Location from = event.getFrom();
         // Feed yawrate and reset moving data positions if necessary.
         final MovingData mData = pData.getGenericInstance(MovingData.class);
-        invalidateChangedBoatStep(mData, event);
         final int tick = TickTask.getTick();
         final MovingConfig mCc = pData.getGenericInstance(MovingConfig.class);
 
