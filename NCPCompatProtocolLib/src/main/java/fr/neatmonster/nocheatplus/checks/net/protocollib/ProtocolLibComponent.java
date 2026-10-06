@@ -103,11 +103,13 @@ public class ProtocolLibComponent implements IDisableListener, INotifyReload, Jo
                 && worldMan.isActiveAnywhere(CheckType.MOVING_NOFALL);
         if (!worldMan.isActiveAnywhere(CheckType.NET)) {
             if (nativeNoFall) {
-                // Observe movement for native landing receipts without enabling
-                // any net enforcement or unrelated packet hook.
+                // Observe native receipts and bound only their outstanding admission.
+                // The configured NET checks remain disabled.
+                register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallTeleportObserver", plugin);
+                register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketGate", plugin);
                 register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketObserver", plugin);
                 NCPAPIProvider.getNoCheatPlusAPI().addFeatureTags("packet-listeners",
-                        java.util.Collections.singletonList("NoFallPacketObserver"));
+                        java.util.Arrays.asList("NoFallTeleportObserver", "NoFallPacketGate", "NoFallPacketObserver"));
                 StaticLog.logInfo("NoFall movement observation active; net checks remain disabled.");
             }
             else StaticLog.logInfo("No packet level checks activated.");
@@ -130,7 +132,11 @@ public class ProtocolLibComponent implements IDisableListener, INotifyReload, Jo
         }
         final boolean netMovement = worldMan.isActiveAnywhere(CheckType.NET_FLYINGFREQUENCY)
                 || worldMan.isActiveAnywhere(CheckType.NET_MOVING);
-        if (nativeNoFall) register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketObserver", plugin);
+        if (nativeNoFall) {
+            register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallTeleportObserver", plugin);
+            register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketGate", plugin);
+            register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketObserver", plugin);
+        }
         if (netMovement) {
             register("fr.neatmonster.nocheatplus.checks.net.protocollib.MovingFlying", plugin);
         }

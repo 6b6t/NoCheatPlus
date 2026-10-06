@@ -21,6 +21,7 @@ public class TestFallStateSnapshot {
         Fixture() {
             when(world.getKey()).thenReturn(NamespacedKey.minecraft("overworld"));
             when(player.getLocation()).thenReturn(location);
+            when(player.getVelocity()).thenReturn(new org.bukkit.util.Vector(0,-0.8,0));
             when(player.getPersistentDataContainer()).thenReturn(container);
             doAnswer(call -> {
                 Object value = call.getArgument(2);
@@ -55,7 +56,7 @@ public class TestFallStateSnapshot {
         for (boolean changeWorld : new boolean[] {false, true}) {
             Fixture f = new Fixture(); f.save(); f.data.clearNoFallData();
             if (changeWorld) when(f.world.getKey()).thenReturn(NamespacedKey.minecraft("the_nether"));
-            else f.location.setY(90);
+            else { FallStateSnapshot.clear(f.player); f.location.setY(90); }
             FallStateSnapshot.restore(f.player, f.data);
             assertEquals(0, f.data.noFallFallDistance, 0); assertTrue(f.serialized.isEmpty());
         }
@@ -73,11 +74,12 @@ public class TestFallStateSnapshot {
         FallStateSnapshot.save(f.player, f.data, f.location); assertTrue(f.serialized.isEmpty());
     }
     @Test public void ordinaryWorkerTeleportCannotReviveResetSourceDistance() throws Exception {
-        Fixture f=new Fixture();f.save();f.data.clearNoFallData();f.location.setY(81);
+        Fixture f=new Fixture();f.save();f.data.clearNoFallData();FallStateSnapshot.clear(f.player);f.location.setY(81);
         var trace=mock(fr.neatmonster.nocheatplus.checks.moving.model.MoveTrace.class);
         var placement=new fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData();placement.from.onGround=true;
         when(trace.getFirstPastMove()).thenReturn(placement);
         var field=MovingData.class.getField("playerMoves");field.setAccessible(true);field.set(f.data,trace);
+        fr.neatmonster.nocheatplus.checks.moving.player.NoFall.afterTeleport(f.player,f.data,f.location,0,true);
         FallStateSnapshot.restore(f.player,f.data,true);
         verify(f.player, never()).setFallDistance(anyFloat());
         assertEquals(81,f.data.noFallMaxY,0);assertEquals(0,f.data.noFallFallDistance,0);
@@ -116,7 +118,7 @@ public class TestFallStateSnapshot {
         when(f.player.getFallDistance()).thenReturn(1f);
         FallStateSnapshot.restore(f.player, f.data);
         assertEquals(1f, f.data.noFallFallDistance, 0);
-        assertEquals(81.565, f.data.noFallMaxY, 0);
+        assertEquals(82.565, f.data.noFallMaxY, 0);
         assertEquals(0f, f.data.noFallGlideCarry, 0);
         verify(f.player, never()).setFallDistance(anyFloat());
     }
@@ -129,7 +131,7 @@ public class TestFallStateSnapshot {
         when(f.player.getFallDistance()).thenReturn(1f);
         FallStateSnapshot.restore(f.player, f.data, true);
         assertEquals(1f, f.data.noFallFallDistance, 0);
-        assertEquals(90, f.data.noFallMaxY, 0);
+        assertEquals(91, f.data.noFallMaxY, 0);
         verify(f.player, never()).setFallDistance(anyFloat());
     }
 
@@ -164,14 +166,39 @@ public class TestFallStateSnapshot {
         }
     }
     @Test public void sameHeightHorizontalTeleportDiscardsExplicitDebt() {
-        Fixture f=new Fixture();f.save();f.data.clearNoFallData();f.location.setX(600);
+        Fixture f=new Fixture();f.save();f.data.clearNoFallData();FallStateSnapshot.clear(f.player);f.location.setX(600);
         FallStateSnapshot.restore(f.player,f.data);assertTrue(f.serialized.isEmpty());
         assertEquals(0,f.data.noFallContactFallDebt,0);
     }
-    @Test public void serverConfirmedGlideCannotReviveExplicitDebt() {
+    @Test public void migrationDuringGlideKeepsExplicitSpoofDebt() {
         Fixture f=new Fixture();f.save();f.data.noFallContactFallDebt=12;
         FallStateSnapshot.save(f.player,f.data,f.location);f.data.clearNoFallData();when(f.player.isGliding()).thenReturn(true);
         when(f.player.getFallDistance()).thenReturn(1f);FallStateSnapshot.restore(f.player,f.data);
-        assertEquals(0,f.data.noFallContactFallDebt,0);assertEquals(1,f.data.noFallFallDistance,0);
+        assertEquals(12,f.data.noFallContactFallDebt,0);assertEquals(23.435f,f.data.noFallFallDistance,0);
+    }
+
+    @Test public void nativeDriftAndRelocatedMigrationPreserveZeroNativeContactDebt() {
+        for (double dx : new double[]{0,0.001,0.05,12.4}) for (double dy : new double[]{0,-0.001,-0.05}) {
+            Fixture source=new Fixture(); source.data.noFallMaxY=source.location.getY();source.data.noFallContactFallDebt=12;
+            FallStateSnapshot.save(source.player,source.data,source.location);
+            Fixture target=new Fixture();target.serialized.putAll(source.serialized);target.location.add(dx,dy,0);
+            FallStateSnapshot.restore(target.player,target.data);
+            assertEquals(12,target.data.noFallContactFallDebt,0);
+            assertEquals(target.location.getY(),target.data.noFallMaxY,0);
+            verify(target.player,never()).setFallDistance(anyFloat());
+            FallStateSnapshot.save(target.player,target.data,target.location);
+            Fixture third=new Fixture();third.serialized.putAll(target.serialized);
+            FallStateSnapshot.restore(third.player,third.data);assertEquals(12,third.data.noFallContactFallDebt,0);
+        }
+    }
+
+    @Test public void nativeGlideLimitCrossesMigrationWithoutForgivingACompletedContact() {
+        Fixture f=new Fixture();f.save();f.data.noFallGlideEstablished=true;f.data.noFallGlideLimitPending=true;
+        f.data.noFallContactFallDebt=11.563f;when(f.player.isGliding()).thenReturn(true);
+        FallStateSnapshot.save(f.player,f.data,f.location);f.data.clearNoFallData();f.data.clearGlideDebt();
+        FallStateSnapshot.restore(f.player,f.data);assertTrue(f.data.noFallGlideLimitPending);
+        when(f.player.getFallDistance()).thenReturn(0f);
+        fr.neatmonster.nocheatplus.checks.moving.player.NoFall.onGlidingMove(f.player,f.data,-.2);
+        assertEquals(1.2f,f.data.noFallFallDistance,1e-6);assertEquals(11.563f,f.data.noFallContactFallDebt,0);
     }
 }

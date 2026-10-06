@@ -33,4 +33,42 @@ public class TestNoFallReceiptQueue {
   NetData d=net();for(int i=0;i<10000;i++)d.addNoFallPacket(new DataPacketFlying(false,16,81,16,i));
   assertEquals(1,d.copyNoFallPackets().length);d.clearFlyingQueue();assertEquals(0,d.copyNoFallPackets().length);
  }
+
+ @Test public void sustainedNoEventTrafficAndGroundAlternationStayBoundedWithoutEvictingContact() throws Exception {
+  for(boolean flags:new boolean[]{false,true}) {
+   NetData d=net();DataPacketFlying contact=new DataPacketFlying(false,16,81,16,0);d.addNoFallPacket(contact);
+   for(int i=0;i<100000;i++) d.addNoFallPacket(new DataPacketFlying(flags&&(i%2==0),16+(flags?0:(i%2)*0.001),81,16,i));
+   assertTrue(d.copyNoFallPackets().length<=NetData.NO_FALL_POSITION_LIMIT);
+   assertSame(contact,d.copyNoFallPackets()[0]);assertFalse(d.canAddNoFallPacket());
+   d.acknowledgeNativeNoFallPosition(16.001,81,16);
+   if(!flags)assertTrue(d.canAddNoFallPacket());
+  }
+ }
+ @Test public void nativePlacementRetiresTinyMovesButKeepsOneContactForTheNextOwnerMove() throws Exception {
+  NetData d=net();var contact=new DataPacketFlying(true,16,81,16,0);d.addNoFallPacket(contact);
+  for(int i=0;i<10000;i++) {
+   d.addNoFallPacket(new DataPacketFlying(i%2==0,16,81,16,i));
+   d.acknowledgeNativeNoFallPosition(16,81,16);
+   assertEquals(1,d.copyNoFallPackets().length);
+  }
+  assertTrue(d.beginNoFallRetirement());assertFalse(d.beginNoFallRetirement());d.endNoFallRetirement();
+  d.acknowledgeNoFallPosition(16,81,16,d.copyNoFallPackets()[0].getSequence());assertEquals(0,d.copyNoFallPackets().length);
+ }
+ @Test public void ignoredAndDelayedOwnerTrafficCannotGrowMemoryOrEvictOutstandingLanding() throws Exception {
+  NetData d=net();var contact=new DataPacketFlying(false,16,81,16,0);d.addNoFallPacket(contact);
+  for(int i=0;i<100000;i++){d.addNoFallPacket(new DataPacketFlying(false,16+i*0.0000002,81,16,i));d.acknowledgeNativeNoFallPosition(100,100,100);}
+  assertEquals(NetData.NO_FALL_POSITION_LIMIT,d.copyNoFallPackets().length);assertSame(contact,d.copyNoFallPackets()[0]);
+  d.clearFlyingQueue();assertTrue(d.canAddNoFallPacket());
+ }
+
+ @Test public void ignoredBeforeTeleportAckReceiptsRetireOnlyForTheActualFinalNativeId() throws Exception {
+  NetData d=net();d.expectNoFallTeleport(42);
+  for(int i=0;i<100000;i++)d.addNoFallPacket(new DataPacketFlying(false,16+i*.000001,81,16,i));
+  assertFalse(d.canAddNoFallPacket());assertFalse(d.confirmNoFallTeleport(41));
+  assertEquals(NetData.NO_FALL_POSITION_LIMIT,d.copyNoFallPackets().length);
+  assertTrue(d.confirmNoFallTeleport(42));assertEquals(0,d.copyNoFallPackets().length);assertTrue(d.canAddNoFallPacket());
+  d.addNoFallPacket(new DataPacketFlying(false,16,81,16,100001));
+  assertFalse(d.confirmNoFallTeleport(42));assertEquals(1,d.copyNoFallPackets().length);
+  d.expectNoFallTeleport(43);d.clearFlyingQueue();assertFalse(d.confirmNoFallTeleport(43));
+ }
 }

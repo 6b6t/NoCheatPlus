@@ -16,6 +16,7 @@ public class TestNoFallGlideDebt {
         Air(double y, float fall) {
             World world = mock(World.class);
             when(player.getLocation()).thenReturn(new Location(world, 16.5, y, 16.5));
+            when(player.getVelocity()).thenReturn(new org.bukkit.util.Vector(0,-0.2,0));
             when(player.getFallDistance()).thenReturn(fall);
             data.noFallFallDistance = fall;
             data.noFallMaxY = y;
@@ -28,18 +29,22 @@ public class TestNoFallGlideDebt {
         assertEquals(0f, air.data.noFallGlideCarry, 0);
         assertTrue(air.data.noFallGlideEstablished);
         when(air.player.getFallDistance()).thenReturn(1f);
+        when(air.player.getTicksLived()).thenReturn(1);
         NoFall.stopGlide(air.player, air.data);
-        assertEquals(1f, air.data.noFallFallDistance, 0);
-        assertEquals(88, air.data.noFallMaxY, 0);
+        assertEquals(1f, air.data.noFallFallDistance, 1e-6);
+        assertEquals(89, air.data.noFallMaxY, 1e-6);
         verify(air.player, never()).setFallDistance(anyFloat());
     }
 
     @Test public void repeatedGlideMovesDoNotCreateDebtOrChangeNativeDistance() {
         Air air = new Air(93, 2f);
-        for (int move = 0; move < 100; move++) NoFall.onGlidingMove(air.player, air.data, -0.2);
+        for (int move = 0; move < 100; move++) {
+            when(air.player.getTicksLived()).thenReturn(move);
+            NoFall.onGlidingMove(air.player, air.data, -0.2);
+        }
         assertEquals(0, air.data.noFallGlideTicks);
         assertEquals(0f, air.data.noFallGlideCarry, 0);
-        assertEquals(2f, air.data.noFallFallDistance, 0);
+        assertEquals(1.2f, air.data.noFallFallDistance, 1e-6);
         NoFall.stopGlide(air.player, air.data);
         verify(air.player, never()).setFallDistance(anyFloat());
     }
@@ -101,9 +106,10 @@ public class TestNoFallGlideDebt {
 
     @Test public void aSteepDiveAlsoUsesNativeDistance() {
         Air air = new Air(90, 4f);
+        when(air.player.getVelocity()).thenReturn(new org.bukkit.util.Vector(0,-0.8,0));
         NoFall.onGlidingMove(air.player, air.data, -0.8);
-        assertEquals(4f, air.data.noFallFallDistance, 0);
-        assertEquals(90, air.data.noFallMaxY, 0);
+        assertEquals(4.8f, air.data.noFallFallDistance, 1e-6);
+        assertEquals(94, air.data.noFallMaxY, 1e-6);
     }
     @Test public void teleportAfterGlideUsesTheCurrentNativeReset() {
         Player player = mock(Player.class);
@@ -125,5 +131,13 @@ public class TestNoFallGlideDebt {
         when(air.player.getFallDistance()).thenReturn(6f);
         assertEquals(6f, NoFall.distanceForTeleport(air.player, air.data), 0f);
         verify(air.player, never()).setFallDistance(anyFloat());
+    }
+
+    @Test public void aSuppressedPhysicalContactSurvivesCloseRedeployAndNativeGlideLimits() {
+        Air air=new Air(81,0);air.data.noFallContactFallDebt=11.563f;air.data.noFallGlideEstablished=true;
+        NoFall.stopGlide(air.player,air.data);assertEquals(11.563f,air.data.noFallContactFallDebt,0);
+        NoFall.onGlidingMove(air.player,air.data,0);when(air.player.getTicksLived()).thenReturn(1);
+        NoFall.onGlidingMove(air.player,air.data,-.2);assertEquals(11.563f,air.data.noFallContactFallDebt,0);
+        air.data.clearNoFallData();assertEquals(0,air.data.noFallContactFallDebt,0);
     }
 }

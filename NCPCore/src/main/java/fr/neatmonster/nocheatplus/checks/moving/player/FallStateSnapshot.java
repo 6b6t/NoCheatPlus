@@ -57,7 +57,9 @@ public final class FallStateSnapshot {
                         Double.doubleToRawLongBits(data.noFallCancelledAirFallDebt),
                         Double.doubleToRawLongBits(data.noFallSetBackFallDebt),
                         Double.doubleToRawLongBits(data.noFallContactFallDebt),
-                        Double.doubleToRawLongBits(accepted.getX()), Double.doubleToRawLongBits(accepted.getZ())});
+                        Double.doubleToRawLongBits(accepted.getX()), Double.doubleToRawLongBits(accepted.getZ()),
+                        Double.doubleToRawLongBits(4.0),
+                        Double.doubleToRawLongBits(data.noFallGlideLimitPending ? 1.0 : 0.0)});
     }
 
     public static void restore(Player player, MovingData data) {
@@ -78,7 +80,9 @@ public final class FallStateSnapshot {
         double[] state = bits == null ? null : java.util.stream.LongStream.of(bits).mapToDouble(Double::longBitsToDouble).toArray();
         Location current = player.getLocation();
         if (state == null) return;
-        final boolean explicit = state.length == 12;
+        final boolean limit = state.length == 14 && state[12] == 4.0 && (state[13] == 0.0 || state[13] == 1.0);
+        final boolean migration = limit || state.length == 13 && state[12] == 3.0;
+        final boolean explicit = state.length == 12 || migration;
         final boolean glide = (state.length == 7 || explicit) && Double.isFinite(state[4]) && state[4] >= 0 && state[4] <= 20 * 60 * 30
                 && Double.isFinite(state[5]) && state[5] >= 0 && state[5] <= Float.MAX_VALUE
                 && (state[6] == 0.0 || state[6] == 1.0);
@@ -90,11 +94,11 @@ public final class FallStateSnapshot {
                 || Math.abs(state[0]) > 30_000_000 || Math.abs(state[1]) > 30_000_000
                 || (!Double.isNaN(state[3]) && (!Double.isFinite(state[3]) || Math.abs(state[3]) > 30_000_000))
                 || !current.getWorld().getKey().toString().equals(world)
-                || !preserveOrdinaryTeleport && placementChanged(current, state)) {
+                || !migration && !preserveOrdinaryTeleport && placementChanged(current, state)) {
             clear(player);
             return;
         }
-        if (player.isGliding() || glide && (state[4] > 0 || state[5] > 0 || state[6] == 1.0)) {
+        if (!migration && (player.isGliding() || glide && (state[4] > 0 || state[5] > 0 || state[6] == 1.0))) {
             // Native entity data carries the glide distance across workers. Old
             // seven-value snapshots must not revive the removed pre-glide debt.
             NoFall.onGlidingMove(player, data, 0.0);
@@ -102,7 +106,7 @@ public final class FallStateSnapshot {
             clear(player);
             return;
         }
-        if (placementChanged(current, state)) {
+        if (!migration && placementChanged(current, state)) {
             // Fox ordinary teleports arrive through join. Native entity data
             // owns retention/resets; the checkpoint must not resurrect old debt.
             data.clearWindChargeImpulse();
@@ -113,10 +117,19 @@ public final class FallStateSnapshot {
         // Neither age nor repeated migration forgives an unfinished descent.
         // Successful ordinary teleports/death/respawn explicitly clear the checkpoint.
         data.noFallFallDistance = Math.max(data.noFallFallDistance, (float) state[2]);
-        data.noFallMaxY = Math.max(data.noFallMaxY, state[1]);
+        // New checkpoints are invalidated by approved ordinary teleport/reset
+        // events. Coordinate drift and Fox's migration relocation are not reset
+        // evidence. Re-anchor at arrival without charging the placement delta.
+        data.noFallMaxY = Math.max(data.noFallMaxY, migration
+                ? current.getY() + Math.max(state[2], state[1] - state[0]) : state[1]);
         data.noFallCurrentLocOnWindChargeHit = Double.isNaN(state[3]) ? null :
                 new Location(current.getWorld(), current.getX(), state[3], current.getZ());
         data.clearGlideDebt();
+        if (migration) {
+            data.noFallGlideEstablished = state[6] == 1.0 && player.isGliding();
+            data.noFallGlideLimitPending = limit && state[13] == 1.0;
+            data.noFallGlideAccountingTick = player.getTicksLived() - 1;
+        }
         if (explicit) {
             data.noFallCancelledAirFallDebt = Math.max(data.noFallCancelledAirFallDebt, (float) state[7]);
             data.noFallSetBackFallDebt = Math.max(data.noFallSetBackFallDebt, (float) state[8]);
@@ -130,7 +143,7 @@ public final class FallStateSnapshot {
 
     private static boolean placementChanged(Location current, double[] state) {
         return Math.abs(current.getY() - state[0]) > 1.0e-5
-                || state.length == 12 && (Math.abs(current.getX() - state[10]) > 1.0e-5
+                || state.length >= 12 && (Math.abs(current.getX() - state[10]) > 1.0e-5
                     || Math.abs(current.getZ() - state[11]) > 1.0e-5);
     }
 }

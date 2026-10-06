@@ -76,7 +76,7 @@ public class TestNoFallMissedBoatContact {
     assertEquals(1,d.noFallMatchedPacketSequence);
     TestClientNoFallSequences.move(nf,p,pd,cc,d,trace,contactY,targetY,false,false);
    } else TestClientNoFallSequences.move(nf,p,pd,cc,d,trace,87.62655034851794,targetY,false,false);
-   boolean accepted=List.of("legitimate","upward-departure","owed-large","split-small","split-owed-large").contains(name);
+   boolean accepted=List.of("legitimate","upward-departure","owed-large","split-small","split-owed-large","native-positive").contains(name);
    if(accepted) {
     assertEquals(name.equals("upward-departure")?targetY:contactY,d.noFallMaxY,1e-7);
     assertEquals(Math.max(0,contactY-targetY),d.noFallFallDistance,1e-5);

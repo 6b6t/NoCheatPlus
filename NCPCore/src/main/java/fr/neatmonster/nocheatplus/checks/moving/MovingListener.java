@@ -1051,9 +1051,7 @@ catch (java.lang.Throwable thr) {}
         if (!noFall.isEnabled(player, pData) || cc.noFallSkipAllowFlight && player.getAllowFlight()) {
             data.clearNoFallData();
             data.clearGlideDebt();
-        } else if (Bridge1_9.isGlidingWithElytra(player)) {
-            noFall.onGlidingMove(player, data, thisMove.yDistance);
-        } else {
+        } else if (!Bridge1_9.isGlidingWithElytra(player)) {
             noFall.stopGlide(player, data);
         }
     
@@ -2647,7 +2645,8 @@ catch (java.lang.Throwable thr) {}
         final PlayerLocation pLoc = moveInfo.from;
         pLoc.collectBlockFlags(yOnGround);
 
-        if (event.isCancelled() || !MovingUtil.shouldCheckSurvivalFly(player, pLoc, moveInfo.to, data, cc, pData) 
+        if (event.isCancelled() || !Bridge1_9.isGlidingWithElytra(player)
+                && !MovingUtil.shouldCheckSurvivalFly(player, pLoc, moveInfo.to, data, cc, pData)
             || !noFall.isEnabled(player, pData) || cc.noFallSkipAllowFlight && player.getAllowFlight()) {
             data.clearNoFallData();
             data.clearGlideDebt();
@@ -2667,7 +2666,7 @@ catch (java.lang.Throwable thr) {}
             // and attributes there. Recomputing damage from geometric distance here
             // would undo legitimate wind-charge mitigation (and other native rules).
             // Client-only support still cannot consume the descent or cause damage.
-            if (!Bridge1_9.isGlidingWithElytra(player) && !pLoc.isOnGround(0.00001) && !pLoc.isResetCond()
+            if (!pLoc.isOnGround(0.00001) && !pLoc.isResetCond()
                     && !entitySupportsFeet(player)) {
                 // Still airborne. Cancelling is required so a ground spoof cannot
                 // consume the fall, but the server zeroes fallDistance anyway.
@@ -2681,7 +2680,6 @@ catch (java.lang.Throwable thr) {}
                     final long generation = data.noFallGeneration;
                     Folia.runSyncDelayedTaskForEntity(player, Bukkit.getPluginManager().getPlugin("NoCheatPlus"), ignored -> {
                         if (!player.isOnline() || player.isDead() || player.isInsideVehicle()
-                                || Bridge1_9.isGlidingWithElytra(player)
                                 || pData.getGenericInstance(MovingData.class) != data
                                 || !pData.isCheckActive(CheckType.MOVING, player)
                                 || !noFall.isEnabled(player, pData)
@@ -2691,7 +2689,7 @@ catch (java.lang.Throwable thr) {}
                         try {
                             restoreInfo.set(player, player.getLocation(), null, yOnGround);
                             restoreInfo.from.collectBlockFlags(yOnGround);
-                            if (!MovingUtil.shouldCheckSurvivalFly(player, restoreInfo.from, restoreInfo.to, data,
+                            if (!Bridge1_9.isGlidingWithElytra(player) && !MovingUtil.shouldCheckSurvivalFly(player, restoreInfo.from, restoreInfo.to, data,
                                     pData.getGenericInstance(MovingConfig.class), pData)) return;
                             if (restoreInfo.from.isResetCond()) {
                                 data.clearNoFallData();
@@ -2869,7 +2867,7 @@ catch (java.lang.Throwable thr) {}
         if (!data.noFallNativeLandingTaskPending
                 || data.noFallNativeLandingGeneration != data.noFallGeneration
                 || cc.noFallDealDamage || Math.max(player.getFallDistance(), NoFall.retainedNativeResetDebt(data)) <= 0f
-                || player.isInsideVehicle() || Bridge1_9.isGlidingWithElytra(player)
+                || player.isInsideVehicle()
                 || cc.noFallSkipAllowFlight && player.getAllowFlight()
                 || !noFall.isEnabled(player, pData) || from.isResetCond()
                 || !from.isOnGround(0.00001) && !entitySupportsFeet(player, false)) return;
@@ -2898,7 +2896,7 @@ catch (java.lang.Throwable thr) {}
             data.noFallNativeLandingTaskPending = false;
             final long generation = data.noFallNativeLandingGeneration;
             if (!player.isOnline() || player.isDead() || player.isInsideVehicle()
-                    || player.isFlying() || Bridge1_9.isGlidingWithElytra(player)
+                    || player.isFlying()
                     || pData.getGenericInstance(MovingData.class) != data
                     || !pData.isCheckActive(CheckType.MOVING, player)
                     || !noFall.isEnabled(player, pData)
@@ -2919,7 +2917,7 @@ catch (java.lang.Throwable thr) {}
             try {
                 info.set(player, player.getLocation(), null, 0.00001);
                 info.from.collectBlockFlags(0.00001);
-                if (!MovingUtil.shouldCheckSurvivalFly(player, info.from, info.to, data, current, pData)
+                if (!Bridge1_9.isGlidingWithElytra(player) && !MovingUtil.shouldCheckSurvivalFly(player, info.from, info.to, data, current, pData)
                         || info.from.isResetCond()) {
                     data.clearNoFallData();
                     data.clearGlideDebt();

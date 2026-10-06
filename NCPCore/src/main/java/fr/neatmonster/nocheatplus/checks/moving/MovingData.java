@@ -238,12 +238,16 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public float noFallGlideCarry = 0f;
     /** Native glide accounting is active until the next move after closing. */
     public boolean noFallGlideEstablished = false;
+    public int noFallGlideAccountingTick = Integer.MIN_VALUE;
+    public boolean noFallGlideLimitPending;
 
     /** Drop native-glide transition state and any legacy snapshot debt. */
     public void clearGlideDebt() {
         noFallGlideTicks = 0;
         noFallGlideCarry = 0f;
         noFallGlideEstablished = false;
+        noFallGlideAccountingTick = Integer.MIN_VALUE;
+        noFallGlideLimitPending = false;
     }
 
     // *----------Data of the SurvivalFly check----------*

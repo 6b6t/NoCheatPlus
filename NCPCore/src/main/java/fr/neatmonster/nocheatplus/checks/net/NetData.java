@@ -90,6 +90,10 @@ public class NetData extends ACheckData {
      * Positionless traffic cannot evict them. Identical consecutive receipts coalesce. */
     private final LinkedList<DataPacketFlying> noFallPositions = new LinkedList<>();
     private long noFallSequence;
+    private DataPacketFlying noFallNativePosition;
+    private int noFallAwaitingTeleport = Integer.MIN_VALUE;
+    public static final int NO_FALL_POSITION_LIMIT = 8192;
+    private boolean noFallRetirementPending;
 
     /** Maximum amount of packets to store. */
     private final int flyingQueueMaxSize = 15;
@@ -150,7 +154,50 @@ public class NetData extends ACheckData {
         lock.lock();
         flyingQueue.clear();
         noFallPositions.clear();
+        noFallNativePosition = null;
+        noFallAwaitingTeleport = Integer.MIN_VALUE;
         lock.unlock();
+    }
+
+    /** Final outgoing native teleport ID. No coordinate or client claim is
+     * used to identify ignored-before-ACK native movement. */
+    public void expectNoFallTeleport(final int id) {
+        lock.lock();
+        try { noFallAwaitingTeleport = id; }
+        finally { lock.unlock(); }
+    }
+
+    public boolean confirmNoFallTeleport(final int id) {
+        lock.lock();
+        try {
+            if (id == Integer.MIN_VALUE || id != noFallAwaitingTeleport) return false;
+            noFallAwaitingTeleport = Integer.MIN_VALUE;
+            noFallPositions.clear();
+            noFallNativePosition = null;
+            return true;
+        } finally { lock.unlock(); }
+    }
+
+    /** Bounded admission. Existing proof is never evicted for newer traffic. */
+    public boolean canAddNoFallPacket() {
+        lock.lock();
+        try { return noFallPositions.size() < NO_FALL_POSITION_LIMIT; }
+        finally { lock.unlock(); }
+    }
+
+    public boolean beginNoFallRetirement() {
+        lock.lock();
+        try {
+            if (noFallRetirementPending) return false;
+            noFallRetirementPending = true;
+            return true;
+        } finally { lock.unlock(); }
+    }
+
+    public void endNoFallRetirement() {
+        lock.lock();
+        try { noFallRetirementPending = false; }
+        finally { lock.unlock(); }
     }
 
     /** Called only after all packet enforcement, at ProtocolLib MONITOR. */
@@ -160,6 +207,7 @@ public class NetData extends ACheckData {
         try {
             final DataPacketFlying last = noFallPositions.peekLast();
             if (last != null && last.onGround == packet.onGround && last.isSamePos(packet)) return;
+            if (noFallPositions.size() >= NO_FALL_POSITION_LIMIT) return;
             packet.setSequence(++noFallSequence);
             noFallPositions.addLast(packet);
         } finally { lock.unlock(); }
@@ -167,8 +215,29 @@ public class NetData extends ACheckData {
 
     public DataPacketFlying[] copyNoFallPackets() {
         lock.lock();
-        try { return noFallPositions.toArray(new DataPacketFlying[0]); }
+        try {
+            final java.util.ArrayList<DataPacketFlying> result = new java.util.ArrayList<>(noFallPositions);
+            if (noFallNativePosition != null) result.add(noFallNativePosition);
+            return result.toArray(new DataPacketFlying[0]);
+        }
         finally { lock.unlock(); }
+    }
+
+    /** Retire no-event traffic, keeping one processed native point as contact
+     * evidence until the next Bukkit decision consumes it. */
+    public void acknowledgeNativeNoFallPosition(final double x, final double y, final double z) {
+        lock.lock();
+        try {
+            long through = 0;
+            for (DataPacketFlying packet : noFallPositions) {
+                if (Math.abs(packet.getX() - x) <= 1.0e-7 && Math.abs(packet.getY() - y) <= 1.0e-7
+                        && Math.abs(packet.getZ() - z) <= 1.0e-7) {
+                    through = packet.getSequence();
+                    noFallNativePosition = packet;
+                }
+            }
+            while (!noFallPositions.isEmpty() && noFallPositions.getFirst().getSequence() <= through) noFallPositions.removeFirst();
+        } finally { lock.unlock(); }
     }
 
     /** The owner's final Bukkit decision retires the requested endpoint and all
@@ -181,12 +250,12 @@ public class NetData extends ACheckData {
                 if (Math.abs(packet.getX() - x) <= 1.0e-7 && Math.abs(packet.getY() - y) <= 1.0e-7
                         && Math.abs(packet.getZ() - z) <= 1.0e-7) {
                     through = Math.max(through, packet.getSequence());
-                    break;
                 }
             }
             while (!noFallPositions.isEmpty() && noFallPositions.getFirst().getSequence() <= through) {
                 noFallPositions.removeFirst();
             }
+            if (noFallNativePosition != null && noFallNativePosition.getSequence() <= through) noFallNativePosition = null;
         } finally { lock.unlock(); }
     }
 

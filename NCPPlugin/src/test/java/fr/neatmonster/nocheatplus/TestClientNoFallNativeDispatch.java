@@ -140,7 +140,7 @@ public class TestClientNoFallNativeDispatch {
    }
    if(name.equals("glide")){try(var glide=mockStatic(Bridge1_9.class)){
     glide.when(()->Bridge1_9.isGlidingWithElytra(p)).thenReturn(true);task.get().accept(null);
-    verify(access,never()).dispatchNativeLanding(p);return;
+    assertEquals(9,damage[0],0);verify(access).dispatchNativeLanding(p);return;
    }}
    if(name.equals("vehicle"))when(p.isInsideVehicle()).thenReturn(true);
    if(name.equals("offline"))when(p.isOnline()).thenReturn(false);

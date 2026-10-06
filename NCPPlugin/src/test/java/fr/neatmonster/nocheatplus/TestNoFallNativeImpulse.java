@@ -16,7 +16,7 @@ public class TestNoFallNativeImpulse {
  @Test public void packetMotionAloneCannotDiscardEarlierDescent()throws Exception{ accounting(false); }
  private void accounting(boolean nativeImpulse)throws Exception{
   String old=ServerVersion.getMinecraftVersion();ServerVersion.setMinecraftVersion("26.2");
-  try{
+  try(var folia=mockStatic(fr.neatmonster.nocheatplus.compat.Folia.class)){
    NoFall check=mock(NoFall.class,CALLS_REAL_METHODS);Player p=mock(Player.class);
    MovingData d=mock(MovingData.class,CALLS_REAL_METHODS);MovingConfig cc=mock(MovingConfig.class);
    MoveTrace trace=mock(MoveTrace.class);TestClientNoFallSequences.field(d,MovingData.class,"playerMoves",trace);

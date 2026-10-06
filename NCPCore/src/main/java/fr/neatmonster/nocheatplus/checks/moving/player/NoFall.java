@@ -444,19 +444,45 @@ public class NoFall extends Check {
      * These handlers only rebase check state; they never write native distance.
      */
     public static void onGlidingMove(final Player player, final MovingData data, final double yDistance) {
-        data.clearNoFallData();
-        data.clearGlideDebt();
-        data.noFallFallDistance = Math.max(0f, player.getFallDistance());
-        data.noFallMaxY = player.getLocation().getY();
+        final float nativeDistance = Math.max(0f, player.getFallDistance());
+        final float contactDebt = data.noFallContactFallDebt;
+        if (!data.noFallGlideEstablished) {
+            // A real deployment starts with native distance. Never resurrect
+            // descent from before deployment.
+            data.clearNoFallData();
+            data.clearGlideDebt();
+            data.noFallFallDistance = nativeDistance;
+        }
+        // updateFallFlying applies its limit once per native tick, before
+        // the next packet descent. Ground spoofing can erase native distance,
+        // but cannot invent that velocity-based reset or repeat it per packet.
+        final int tick = player.getTicksLived();
+        if (tick != data.noFallGlideAccountingTick && data.noFallGlideLimitPending) {
+            final float limited = Math.min(1f, Math.max(data.noFallFallDistance, nativeDistance));
+            data.clearNoFallData();
+            data.noFallFallDistance = limited;
+        } else data.noFallFallDistance = Math.max(data.noFallFallDistance, nativeDistance);
+        data.noFallGlideAccountingTick = tick;
+        data.noFallGlideLimitPending = player.getVelocity().getY() > -0.5;
+        data.noFallFallDistance += (float) Math.max(0.0, -yDistance);
+        data.noFallMaxY = player.getLocation().getY() + yDistance + data.noFallFallDistance;
         data.noFallGlideEstablished = true;
+        data.noFallContactFallDebt = contactDebt;
     }
 
     public static void stopGlide(final Player player, final MovingData data) {
         if (!data.noFallGlideEstablished && data.noFallGlideTicks == 0 && data.noFallGlideCarry == 0f) return;
+        final boolean tracked = data.noFallGlideEstablished;
+        final float contactDebt = data.noFallContactFallDebt;
+        final float retained = tracked && data.noFallGlideLimitPending && player.getTicksLived() != data.noFallGlideAccountingTick
+                ? Math.min(1f, data.noFallFallDistance) : data.noFallFallDistance;
+        final float distance = tracked ? Math.max(retained, player.getFallDistance())
+                : Math.max(0f, player.getFallDistance());
         data.clearNoFallData();
         data.clearGlideDebt();
-        data.noFallFallDistance = Math.max(0f, player.getFallDistance());
-        data.noFallMaxY = player.getLocation().getY();
+        data.noFallFallDistance = distance;
+        data.noFallMaxY = player.getLocation().getY() + distance;
+        data.noFallContactFallDebt = contactDebt;
     }
 
     /** Re-anchor only accepted descent after our own corrective placement. */
@@ -509,7 +535,7 @@ public class NoFall extends Check {
     private Location rebaseMissedNativeBoatContact(final Player player, final PlayerMoveData move,
             final MovingData data, final MovingConfig cc, final IPlayerData pData) {
         if (cc.noFallDealDamage || ServerVersion.compareMinecraftVersion("26.1") < 0
-                || mcAccess == null || player.getFallDistance() != 0f
+                || mcAccess == null
                 || player.isInsideVehicle() || player.isFlying()
                 || cc.noFallSkipAllowFlight && player.getAllowFlight()
                 || move.from.resetCond || move.to.resetCond
@@ -658,10 +684,6 @@ public class NoFall extends Check {
                       final double previousSetBackY,
                       final MovingData data, final MovingConfig cc, final IPlayerData pData) {
 
-        if (Bridge1_9.isGlidingWithElytra(player)) {
-            onGlidingMove(player, data, 0.0);
-            return;
-        }
         final boolean debug = pData.isDebugActive(type);
         final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
         final LocationData from = thisMove.from;
@@ -710,6 +732,10 @@ public class NoFall extends Check {
         else {
             fromOnGround = from.onGround;
             toOnGround = to.onGround;
+        }
+
+        if (Bridge1_9.isGlidingWithElytra(player) && !toOnGround && !fromReset && !toReset) {
+            onGlidingMove(player, data, thisMove.yDistance);
         }
 
         // Keep an explicit receipt only when both accepted geometry and its
@@ -773,7 +799,7 @@ public class NoFall extends Check {
         // SKIP: data.noFallFallDistance = Math.max(mcFallDistance, data.noFallFallDistance);
 
         // Add y distance.
-        if (!toReset && !toOnGround && yDiff < 0) {
+        if (!Bridge1_9.isGlidingWithElytra(player) && !toReset && !toOnGround && yDiff < 0) {
             data.noFallFallDistance -= yDiff;
         }
         else if (cc.noFallAntiCriticals && (toReset || toOnGround || (fromReset || fromOnGround || thisMove.touchedGround) && yDiff >= 0)) {
