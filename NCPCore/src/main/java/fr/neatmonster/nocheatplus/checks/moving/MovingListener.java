@@ -390,8 +390,11 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                     final Location to = (Location) getTo.invoke(event);
                     final long sequence = ((Number) getSequence.invoke(event)).longValue();
                     final IPlayerData pData = DataManager.getPlayerData(player);
-                    MovingUtil.onTeleportComplete(player, to, sequence,
-                            pData.getGenericInstance(MovingData.class), pData);
+                    final MovingData data = pData.getGenericInstance(MovingData.class);
+                    MovingUtil.onTeleportComplete(player, to, sequence, data, pData);
+                    if (data.noFallSetBackFallDebt > 0f) {
+                        queueNativeLanding(player, data, pData.getGenericInstance(MovingConfig.class), pData);
+                    }
                 } catch (ReflectiveOperationException e) {
                     StaticLog.logWarning("Failed to process teleport completion: " + e.getMessage());
                 }
@@ -2861,7 +2864,7 @@ catch (java.lang.Throwable thr) {}
             final MovingData data, final MovingConfig cc, final IPlayerData pData) {
         if (!data.noFallNativeLandingTaskPending
                 || data.noFallNativeLandingGeneration != data.noFallGeneration
-                || cc.noFallDealDamage || Math.max(player.getFallDistance(), data.noFallCancelledAirFallDebt) <= 0f
+                || cc.noFallDealDamage || Math.max(player.getFallDistance(), NoFall.retainedNativeResetDebt(data)) <= 0f
                 || player.isInsideVehicle() || Bridge1_9.isGlidingWithElytra(player)
                 || cc.noFallSkipAllowFlight && player.getAllowFlight()
                 || !noFall.isEnabled(player, pData) || from.isResetCond()
@@ -2880,7 +2883,7 @@ catch (java.lang.Throwable thr) {}
             final MovingConfig cc, final IPlayerData pData) {
         if (cc.noFallDealDamage || ServerVersion.compareMinecraftVersion("26.1") < 0
                 || Math.max(Math.max(player.getFallDistance(), data.noFallFallDistance),
-                        data.noFallCancelledAirFallDebt) <= 0f
+                        NoFall.retainedNativeResetDebt(data)) <= 0f
                 || Bukkit.getServer() == null) return;
         data.noFallNativeLandingGeneration = data.noFallGeneration;
         if (data.noFallNativeLandingTaskPending) return;
@@ -2895,15 +2898,29 @@ catch (java.lang.Throwable thr) {}
                     || pData.getGenericInstance(MovingData.class) != data
                     || !pData.isCheckActive(CheckType.MOVING, player)
                     || !noFall.isEnabled(player, pData)
-                    || !NoFall.mayRestoreCancelledFall(data, generation)) return;
+                    || !NoFall.mayRestoreCancelledFall(data, generation)) {
+                if (pData.getGenericInstance(MovingData.class) == data && data.noFallGeneration == generation) {
+                    data.clearNoFallData();
+                    data.clearGlideDebt();
+                }
+                return;
+            }
             final MovingConfig current = pData.getGenericInstance(MovingConfig.class);
-            if (current.noFallDealDamage || current.noFallSkipAllowFlight && player.getAllowFlight()) return;
+            if (current.noFallDealDamage || current.noFallSkipAllowFlight && player.getAllowFlight()) {
+                data.clearNoFallData();
+                data.clearGlideDebt();
+                return;
+            }
             final PlayerMoveInfo info = aux.usePlayerMoveInfo();
             try {
                 info.set(player, player.getLocation(), null, 0.00001);
                 info.from.collectBlockFlags(0.00001);
                 if (!MovingUtil.shouldCheckSurvivalFly(player, info.from, info.to, data, current, pData)
-                        || info.from.isResetCond()) return;
+                        || info.from.isResetCond()) {
+                    data.clearNoFallData();
+                    data.clearGlideDebt();
+                    return;
+                }
                 if (!info.from.isOnGround(0.00001) && !entitySupportsFeet(player, false)) return;
                 completeNativeLanding(player, player.getLocation().getY(), data);
             } finally {
@@ -2921,7 +2938,7 @@ catch (java.lang.Throwable thr) {}
     /** Consume before dispatch, so native cancellation and immunity cannot replay. */
     private void completeNativeLanding(final Player player, final double y, final MovingData data) {
         final float nativeDistance = player.getFallDistance();
-        final float cancelledDebt = data.noFallCancelledAirFallDebt;
+        final float cancelledDebt = NoFall.retainedNativeResetDebt(data);
         final float distance = Math.max(Math.max(nativeDistance, cancelledDebt),
                 (float) NoFall.getApplicableFallHeight(player, y, data));
         data.clearNoFallData();

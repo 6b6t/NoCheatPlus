@@ -42,6 +42,11 @@ public class DataPacketFlying extends DataLocation {
     public final boolean hasLook;
     public final long time;
     private long sequence = 0;
+    /** Published after network checks; cancelled packets cannot prove contact. */
+    private volatile boolean cancelled;
+
+    public boolean isCancelled() { return cancelled; }
+    public void setCancelled(boolean cancelled) { this.cancelled = cancelled; }
 
     public DataPacketFlying(boolean onGround, long time) {
         super(0, 0, 0, 0, 0);

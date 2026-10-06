@@ -12,6 +12,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import fr.neatmonster.nocheatplus.checks.CheckType;
+import fr.neatmonster.nocheatplus.checks.net.NetData;
+import fr.neatmonster.nocheatplus.checks.net.model.DataPacketFlying;
 import fr.neatmonster.nocheatplus.checks.CheckListener;
 import fr.neatmonster.nocheatplus.checks.moving.*;
 import fr.neatmonster.nocheatplus.checks.moving.model.*;
@@ -27,7 +29,7 @@ import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 @RunWith(Parameterized.class)
 public class TestClientNoFallNativeDispatch {
  @Parameterized.Parameters(name="{0}") public static Collection<Object[]> cases(){
-  return Arrays.asList(new Object[][]{{"Vanilla",true},{"LB/NoGround",false},{"BleachHack/NoGround",false},
+  return Arrays.asList(new Object[][]{{"Vanilla",true},{"LB/Hypixel/coalesced-zero",false},{"LB/Hypixel/future-coalesced-zero",false},{"LB/Hypixel/cancelled-contact-zero",false},{"LB/Hypixel/true-contact-zero",false},{"LB/Hypixel/stale-contact-zero",false},{"NCP/correction-accepted-only",false},{"LB/NoGround",false},{"BleachHack/NoGround",false},
    {"LB/Hypixel/false-contact",false},{"LB/Hypixel/immediate-jump",false},{"LB/Blink/false-contact-burst",false},{"native-zero",false},{"teleport",false},{"water",false},
    {"air",false},{"disabled",false},{"parent-disabled",false},{"allow-flight",false},
    {"glide",false},{"vehicle",false},{"offline",false},{"dead",false},{"policy",false},{"replaced-data",false},{"retired/reconnect",false}});
@@ -68,6 +70,17 @@ public class TestClientNoFallNativeDispatch {
    when(access.dispatchNativeLanding(p)).thenAnswer(c->{damage[0]+=Math.max(0,NoFall.getDamage(distance[0]));distance[0]=0;return true;});
    World world=mock(World.class);when(p.getLocation()).thenReturn(new Location(world,16,81,16));
    d.noFallMaxY=93;double y=93;
+   if(name.contains("contact-zero") || name.contains("coalesced-zero")) {
+    NetData net=mock(NetData.class);DataPacketFlying packet=new DataPacketFlying(name.contains("true-contact"),16,81,16,System.currentTimeMillis());
+    packet.setSequence(1);
+    if(name.contains("cancelled-contact"))packet.setCancelled(true);
+    if(name.contains("future-coalesced")) {
+     DataPacketFlying future=new DataPacketFlying(true,16,81,16,System.currentTimeMillis());future.setSequence(2);
+     when(net.copyFlyingQueue()).thenReturn(new DataPacketFlying[]{future,packet});
+    } else when(net.copyFlyingQueue()).thenReturn(new DataPacketFlying[]{packet});
+    when(pd.getGenericInstance(NetData.class)).thenReturn(net);
+    if(name.contains("stale-contact"))d.noFallMatchedPacketSequence=1;
+   }
    for(double next:new double[]{92.5,91.5,90,88,85,83,81}){
     TestClientNoFallSequences.move(nf,p,pd,cc,d,trace,y,next,next==81,false);
     queue.invoke(listener,p,d,cc,pd);
@@ -76,6 +89,18 @@ public class TestClientNoFallNativeDispatch {
     y=next;
    }
    assertNotNull(task.get());
+   if(name.equals("NCP/correction-accepted-only")) {
+    // Seven accepted blocks precede a rejected endpoint far below us.
+    d.noFallMaxY=90;d.noFallFallDistance=7;distance[0]=7;
+    when(p.getLocation()).thenReturn(new Location(world,16,83,16));
+    nf.checkDamage(p,69,d,pd);
+    assertEquals(7,d.noFallSetBackFallDebt,0);
+    // A tracked correction places us on stone and native teleporting erases FD.
+    distance[0]=0;Location target=new Location(world,16,81,16);
+    when(p.getLocation()).thenReturn(target);NoFall.afterSetBack(p,target,d);
+    assertEquals(88,d.noFallMaxY,0); // Do not charge the correction's own drop.
+    queue.invoke(listener,p,d,cc,pd);
+   }
    if(name.equals("retired/reconnect")){
     assertNotNull("Scheduler retirement must release the pending landing probe",retired.get());
     Consumer<Object> oldTask=task.get();retired.get().run();
@@ -83,7 +108,14 @@ public class TestClientNoFallNativeDispatch {
     queue.invoke(listener,p,d,cc,pd);assertNotSame(oldTask,task.get());
     oldTask.accept(null);assertEquals(0,damage[0],0);
    }
-   boolean blocked=!name.contains("/") && !name.equals("Vanilla");
+   boolean blocked=!name.contains("/") && !name.equals("Vanilla") || name.contains("true-contact-zero") || name.contains("stale-contact-zero") || name.contains("cancelled-contact-zero");
+   if(name.contains("contact-zero") || name.contains("coalesced-zero")) {
+    assertEquals(name.contains("coalesced-zero")?12:0,d.noFallContactFallDebt,0);
+    // Both tiny packets can run before the delayed owner probe. The accepted
+    // false-ground contact receipt must survive this native FD erasure.
+    distance[0]=0;
+   }
+   if(Arrays.asList("water","disabled","parent-disabled","allow-flight","vehicle","offline","dead","policy").contains(name))d.noFallContactFallDebt=12;
    if(name.equals("native-zero"))distance[0]=0;
    if(name.equals("teleport"))d.noFallGeneration++;
    if(name.equals("water"))when(support.isResetCond()).thenReturn(true);
@@ -108,7 +140,10 @@ public class TestClientNoFallNativeDispatch {
     finish.setAccessible(true);finish.invoke(listener,p,support,d,cc,pd);
    }
    task.get().accept(null);task.get().accept(null); // Replay must not submit a second landing.
-   assertEquals(name,blocked?0:9,damage[0],0);
+   if(Arrays.asList("water","disabled","parent-disabled","allow-flight","vehicle","offline","dead","policy").contains(name)) {
+    assertEquals("Invalidated contact cannot revive after the policy becomes active again",0,d.noFallContactFallDebt,0);
+   }
+   assertEquals(name,blocked?0:name.equals("NCP/correction-accepted-only")?4:9,damage[0],0);
    verify(access,times(wireGround||blocked?0:1)).dispatchNativeLanding(p);
    folia.verify(()->Folia.runSyncDelayedTaskForEntity(eq(p),eq(plugin),any(),any(),eq(1L)),times(name.equals("retired/reconnect")?2:1));
   }finally{ServerVersion.setMinecraftVersion(old);}

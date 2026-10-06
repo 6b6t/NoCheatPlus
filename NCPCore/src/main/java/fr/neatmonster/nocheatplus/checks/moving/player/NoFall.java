@@ -41,6 +41,8 @@ import fr.neatmonster.nocheatplus.checks.Check;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
+import fr.neatmonster.nocheatplus.checks.net.NetData;
+import fr.neatmonster.nocheatplus.checks.net.model.DataPacketFlying;
 import fr.neatmonster.nocheatplus.checks.moving.magic.Magic;
 import fr.neatmonster.nocheatplus.checks.moving.model.LocationData;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
@@ -383,7 +385,8 @@ public class NoFall extends Check {
     private void adjustFallDistance(final Player player, final double minY, final boolean reallyOnGround, 
                                     final MovingData data, final MovingConfig cc) {
 
-        final float landingDistance = Math.max(data.noFallFallDistance, (float) (data.noFallMaxY - minY));
+        final float landingDistance = Math.max(data.noFallContactFallDebt,
+                Math.max(data.noFallFallDistance, (float) (data.noFallMaxY - minY)));
         float noFallFallDistance = landingDistance;
         if (ServerVersion.compareMinecraftVersion("26.1") >= 0) {
             // PlayerMoveEvent precedes the native collision/fall-distance update.
@@ -454,6 +457,43 @@ public class NoFall extends Check {
         data.clearGlideDebt();
         data.noFallFallDistance = Math.max(0f, player.getFallDistance());
         data.noFallMaxY = player.getLocation().getY();
+    }
+
+    /** Re-anchor only accepted descent after our own corrective placement. */
+    public static void afterSetBack(final Player player, final Location target, final MovingData data) {
+        if (data.noFallSetBackFallDebt <= 0f) return;
+        // The correction's drop is not accepted movement. Starting the old
+        // maximum-Y calculation at its destination would charge that drop.
+        final float distance = Math.max(data.noFallSetBackFallDebt, player.getFallDistance());
+        data.noFallFallDistance = distance;
+        data.noFallMaxY = target.getY() + distance;
+        data.noFallSetBackFallDebt = distance;
+    }
+
+    public static float retainedNativeResetDebt(final MovingData data) {
+        return Math.max(data.noFallContactFallDebt,
+                Math.max(data.noFallCancelledAirFallDebt, data.noFallSetBackFallDebt));
+    }
+
+    /** Match accepted XYZ to the oldest unconsumed received packet, not the
+     * latest network-thread packet (which may already be a future tiny move).
+     * Packet ground alone is never support or accepted movement. */
+    private static DataPacketFlying matchAcceptedPacket(final LocationData to,
+            final MovingData data, final IPlayerData pData) {
+        final NetData net = pData.getGenericInstance(NetData.class);
+        if (net == null) return null;
+        DataPacketFlying match = null;
+        for (final DataPacketFlying packet : net.copyFlyingQueue()) {
+            if (packet.isCancelled() || !packet.hasPos
+                    || !Double.isFinite(packet.getX()) || !Double.isFinite(packet.getY()) || !Double.isFinite(packet.getZ())
+                    || packet.getSequence() <= data.noFallMatchedPacketSequence
+                    || Math.abs(packet.getX() - to.getX()) > 1.0e-7
+                    || Math.abs(packet.getY() - to.getY()) > 1.0e-7
+                    || Math.abs(packet.getZ() - to.getZ()) > 1.0e-7) continue;
+            if (match == null || packet.getSequence() < match.getSequence()) match = packet;
+        }
+        if (match != null) data.noFallMatchedPacketSequence = match.getSequence();
+        return match;
     }
 
     /** A reset/contact/teleport invalidates callbacks captured for an earlier fall. */
@@ -605,6 +645,16 @@ public class NoFall extends Check {
             toOnGround = to.onGround;
         }
 
+        // Keep an explicit receipt only when both accepted geometry and its
+        // matching received packet prove a suppressed native contact. A tiny
+        // later upward packet can reset native FD without a Bukkit move event.
+        final DataPacketFlying acceptedPacket = nativeLanding ? matchAcceptedPacket(to, data, pData) : null;
+        final float pendingContact = data.noFallContactFallDebt;
+        final float acceptedContactDistance = toOnGround && !fromReset && !toReset
+                ? Math.max(pendingContact, Math.max(player.getFallDistance(),
+                    Math.max(data.noFallFallDistance + (float) Math.max(0.0, -yDiff),
+                        (float) Math.max(0.0, data.noFallMaxY - toY)))) : 0f;
+
         // TODO: early returns (...) 
 
         final double minY = Math.min(fromY, toY);
@@ -636,6 +686,11 @@ public class NoFall extends Check {
         }
         else {
             // Ensure fall distance is correct, or "anyway"?
+        }
+
+        if (nativeLanding && toOnGround && !fromReset && !toReset
+                && (pendingContact > 0f || acceptedPacket != null && !acceptedPacket.onGround)) {
+            data.noFallContactFallDebt = acceptedContactDistance;
         }
 
         // Set reference y for nofall (always).
@@ -762,6 +817,8 @@ public class NoFall extends Check {
                 // The rejected endpoint is not accepted descent. Use the
                 // current owned position and previously accepted accounting.
                 final float distance = (float) getApplicableFallHeight(player, player.getLocation().getY(), data);
+                data.noFallSetBackFallDebt = Math.max(data.noFallSetBackFallDebt,
+                        Math.max(distance, player.getFallDistance()));
                 if (distance > player.getFallDistance()) player.setFallDistance(distance);
             }
             return;

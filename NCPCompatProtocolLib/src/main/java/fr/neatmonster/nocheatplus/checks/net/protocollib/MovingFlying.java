@@ -178,6 +178,7 @@ public class MovingFlying extends BaseAdapter {
         }
         final Player player = event.getPlayer();
         final IPlayerData pData = DataManager.getPlayerDataSafe(player);
+        if (!pData.getCurrentWorldDataSafe().isCheckActive(CheckType.NET)) return;
         final NetData data = pData.getGenericInstance(NetData.class);
         final AlmostBoolean matched = data.teleportQueue.processAck(teleportId);
         if (matched.decideOptimistically()) {
@@ -217,10 +218,15 @@ public class MovingFlying extends BaseAdapter {
         final IPlayerData pData = DataManager.getPlayerDataSafe(player);
         // Always update last received time.
         final NetData data = pData.getGenericInstance(NetData.class);
-        data.lastKeepAliveTime = time; // Update without much of a contract.
         // TODO: Leniency options too (packet order inversion). -> current: flyingQueue is fetched.
         final IWorldData worldData = pData.getCurrentWorldDataSafe();
+        if (worldData.isCheckActive(CheckType.NET)) data.lastKeepAliveTime = time;
         if (!worldData.isCheckActive(CheckType.NET_FLYINGFREQUENCY)) {
+            if (ServerVersion.compareMinecraftVersion("26.1") >= 0
+                    && worldData.isCheckActive(CheckType.MOVING_NOFALL) && !event.isCancelled()) {
+                final DataPacketFlying observed = interpretPacket(event, time);
+                if (observed != null && !isInvalidContent(observed)) data.addFlyingQueue(observed);
+            }
             return;
         }
 
@@ -309,6 +315,8 @@ public class MovingFlying extends BaseAdapter {
         //            event.setCancelled(true);
         //        }
 
+        if (packetData != null) packetData.setCancelled(cancel || event.isCancelled());
+
         // Process cancel and debug log.
         if (cancel) {
             event.setCancelled(true);
@@ -339,60 +347,32 @@ public class MovingFlying extends BaseAdapter {
      * @return Packet data if successful, or null on packet mismatch.
      */
     private DataPacketFlying interpretPacket(final PacketEvent event, final long time) {
-
         final PacketContainer packet = event.getPacket();
-        final List<Boolean> booleans = packet.getBooleans().getValues();
-        if (booleans.size() != 3 && booleans.size() != 4) {
-            // 4: 1.21.3 onwards
-            packetMismatch(event);
-            return null;
-        }
-        final boolean onGround = booleans.get(MovingFlying.indexOnGround);
-        final boolean hasPos = booleans.get(MovingFlying.indexhasPos);
-        final boolean hasLook = booleans.get(MovingFlying.indexhasLook);
-
-        if (!hasPos && !hasLook) {
-            return new DataPacketFlying(onGround, time);
-        }
-        final List<Double> doubles;
-        final List<Float> floats;
-
-        if (hasPos) {
-            doubles = packet.getDoubles().getValues();
-            if (doubles.size() != 3 && doubles.size() != 4) {
-                // 3: 1.8, 4: 1.7.10 and before (stance).
-                packetMismatch(event);
-                return null;
-            }
-            // TODO: before 1.8: stance (should make possible to reject in isInvalidContent).
-        }
-        else {
-            doubles = null;
-        }
-
-        if (hasLook) {
-            floats = packet.getFloat().getValues();
-            if (floats.size() != 2) {
-                packetMismatch(event);
-                return null;
-            }
-        }
-        else {
-            floats = null;
-        }
-        if (hasPos && hasLook) {
-            return new DataPacketFlying(onGround, doubles.get(indexX), doubles.get(indexY), doubles.get(indexZ), floats.get(indexYaw), floats.get(indexPitch), time);
-        }
-        else if (hasLook) {
-            return new DataPacketFlying(onGround, floats.get(indexYaw), floats.get(indexPitch), time);
-        }
-        else if (hasPos) {
-            return new DataPacketFlying(onGround, doubles.get(indexX), doubles.get(indexY), doubles.get(indexZ), time);
-        }
-        else {
-            throw new IllegalStateException("Can't be, it can't be!");
-        }
+        final DataPacketFlying result = decodePacket(event.getPacketType(), packet.getBooleans().getValues(),
+                packet.getDoubles().getValues(), packet.getFloat().getValues(), time);
+        if (result == null) packetMismatch(event);
+        return result;
     }
+
+    /** Decode the received protocol content without assuming modern boolean
+     * field offsets. Kept separate from PacketContainer's native reflection. */
+    public static DataPacketFlying decodePacket(final PacketType type, final List<Boolean> booleans,
+            final List<Double> doubles, final List<Float> floats, final long time) {
+        if (booleans.size() != 3 && booleans.size() != 4) return null;
+        final boolean onGround = booleans.get(indexOnGround);
+        final boolean modern = ServerVersion.compareMinecraftVersion("1.21.2") >= 0;
+        final boolean hasPos = modern ? type.equals(PacketType.Play.Client.POSITION)
+                || type.equals(PacketType.Play.Client.POSITION_LOOK) : booleans.get(indexhasPos);
+        final boolean hasLook = modern ? type.equals(PacketType.Play.Client.LOOK)
+                || type.equals(PacketType.Play.Client.POSITION_LOOK) : booleans.get(indexhasLook);
+        if (!hasPos && !hasLook) return new DataPacketFlying(onGround, time);
+        if (hasPos && doubles.size() != 3 && doubles.size() != 4) return null;
+        if (hasLook && floats.size() != 2) return null;
+        if (hasPos && hasLook) return new DataPacketFlying(onGround, doubles.get(indexX), doubles.get(indexY), doubles.get(indexZ), floats.get(indexYaw), floats.get(indexPitch), time);
+        if (hasLook) return new DataPacketFlying(onGround, floats.get(indexYaw), floats.get(indexPitch), time);
+        return new DataPacketFlying(onGround, doubles.get(indexX), doubles.get(indexY), doubles.get(indexZ), time);
+    }
+
 
     /**
      * Log warning to console, stop interpreting packet content.

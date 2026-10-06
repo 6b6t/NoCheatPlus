@@ -608,9 +608,12 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Called when a player leaves the server.
      */
     public void onPlayerLeave() {
+        noFallMatchedPacketSequence = 0L;
         invalidateNativeLandingTask();
         noFallGeneration++;
         noFallCancelledAirFallDebt = 0f;
+        noFallSetBackFallDebt = 0f;
+        noFallContactFallDebt = 0f;
         resetSetBackTeleport();
         removeAllPlayerSpeedModifiers();
         trace.reset();
@@ -738,12 +741,20 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     }
     /** Native distance erased by a FALL event this check cancelled while airborne. */
     public float noFallCancelledAirFallDebt;
+    /** Accepted descent erased by a tracked NCP correction, never its rejected endpoint. */
+    public float noFallSetBackFallDebt;
+    /** Accepted physical contact whose matching received packet denied ground. */
+    public float noFallContactFallDebt;
+    /** Last received movement sequence matched to an accepted position. */
+    public long noFallMatchedPacketSequence;
 
 
     /** Clear the fall check and invalidate callbacks for the previous descent. */
     public void clearNoFallData() {
         noFallGeneration++;
         noFallCancelledAirFallDebt = 0f;
+        noFallSetBackFallDebt = 0f;
+        noFallContactFallDebt = 0f;
         noFallFallDistance = 0;
         noFallMaxY = BlockProperties.getMinWorldY();
         noFallSkipAirCheck = false;
@@ -1574,6 +1585,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public void useVerticalBounce(final Player player) {
         noFallGeneration++;
         noFallCancelledAirFallDebt = 0f;
+        noFallSetBackFallDebt = 0f;
+        noFallContactFallDebt = 0f;
         // CHEATING: Ensure fall distance is reset.
         player.setFallDistance(0f);
         noFallMaxY = BlockProperties.getMinWorldY();

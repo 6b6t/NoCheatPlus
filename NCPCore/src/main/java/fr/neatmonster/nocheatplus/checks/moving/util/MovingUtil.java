@@ -179,6 +179,7 @@ public class MovingUtil {
             ensureChunksLoaded(player, target, "teleport", data, cc, pData);
         }
         data.onSetBack(moveInfo.from);
+        NoFall.afterSetBack(player, target, data);
         aux.returnPlayerMoveInfo(moveInfo);
         Combined.resetYawRate(player, target.getYaw(), System.currentTimeMillis(), true, pData);
         data.resetTeleported();
