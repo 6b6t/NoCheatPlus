@@ -1275,6 +1275,8 @@ catch (java.lang.Throwable thr) {}
         }
         // 2: Then creativefly
         else if (checkCf) {
+            // Re-equip or any other CreativeFly move ends an unequip window.
+            ElytraResidual.creativeFlyMove(data.elytraResidual);
             if (newTo == null) {
                 thisMove.flyCheck = CheckType.MOVING_CREATIVEFLY;
                 newTo = creativeFly.check(player, pFrom, pTo, data, cc, pData, time, tick, useBlockChangeTracker);
@@ -1699,7 +1701,29 @@ catch (java.lang.Throwable thr) {}
         data.addVerticalVelocity(new SimpleEntry(lastMove.yDistance, cc.velocityActivationCounter));
         data.addVerticalVelocity(new SimpleEntry(0.0, cc.velocityActivationCounter));
         data.setFrictionJumpPhase();
+        // Unequip only. Still wearing an elytra keeps the existing predictor; packet flight never opens this window.
+        if (lastMove.modelFlying != null
+                && MovingConfig.ID_JETPACK_ELYTRA.equals(lastMove.modelFlying.getId())
+                && !Bridge1_9.isWearingElytra(player)) {
+            // The CreativeFly elytra limit from the configured model (speed modifiers not applied).
+            final double elytraCap = lastMove.modelFlying.getHorizontalModSpeed() / 100.0 * ModelFlying.HORIZONTAL_SPEED;
+            if (ElytraResidual.begin(data.elytraResidual, lastMove.hDistance, lastMove.yDistance, getPingMs(player), elytraCap)
+                    && debug) {
+                debug(player, "Elytra unequip window: lag moves " + data.elytraResidual.lagMoves + ", cap " + elytraCap);
+            }
+        }
         if (debug) debug(player, "*** Transition from CreativeFly to SurvivalFly: Add velocity.");
+    }
+
+
+    /** Client ping in milliseconds, or 0 where the server API has none. */
+    private static int getPingMs(final Player player) {
+        try {
+            return player.getPing();
+        }
+        catch (final LinkageError e) {
+            return 0;
+        }
     }
 
 
