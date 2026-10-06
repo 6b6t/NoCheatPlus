@@ -455,7 +455,7 @@ public class SurvivalFly extends Check {
         // move is accepted; ground, liquid, climbable or any move outside the
         // window ends it and the move is judged as a normal survival move. So does an
         // elytra back in the chest slot, gliding or not.
-        if (ElytraResidual.allow(data.elytraResidual, hDistance, yDistance,
+        if (ElytraResidual.allow(data.elytraResidual, hDistance, yDistance, to.getPitch(),
                 fromOnGround || toOnGround, from.isResetCond() || to.isResetCond(),
                 data.elytraResidual.open && Bridge1_9.isWearingElytra(player))) {
             hDistanceAboveLimit = 0.0;

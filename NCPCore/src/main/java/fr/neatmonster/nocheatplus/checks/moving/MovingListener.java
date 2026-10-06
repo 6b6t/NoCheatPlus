@@ -1713,12 +1713,12 @@ catch (java.lang.Throwable thr) {}
                     modifiers ? mcAccess.getHandle().getFasterMovementAmplifier(player) : Double.NEGATIVE_INFINITY,
                     modifiers ? attributeAccess.getHandle().getSpeedAttributeMultiplier(player) : Double.MAX_VALUE,
                     data.walkSpeed);
-            // A firework boost that has not expired still holds the glide's vertical speed.
-            final boolean rocket = data.fireworksBoostTickExpire >= tick;
+            // A firework boost that has not expired may still push the glide.
+            final int rocketTicks = Math.max(0, data.fireworksBoostTickExpire - tick);
             if (ElytraResidual.begin(data.elytraResidual, lastMove.hDistance, lastMove.yDistance, getPingMs(player),
-                    elytraCap, rocket) && debug) {
+                    elytraCap, rocketTicks) && debug) {
                 debug(player, "Elytra unequip window: lag moves " + data.elytraResidual.lagMoves + ", cap " + elytraCap
-                        + (rocket ? ", rocket" : ""));
+                        + (rocketTicks > 0 ? ", rocket " + rocketTicks : ""));
             }
         }
         if (debug) debug(player, "*** Transition from CreativeFly to SurvivalFly: Add velocity.");
