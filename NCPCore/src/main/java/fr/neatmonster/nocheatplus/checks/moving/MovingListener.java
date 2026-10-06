@@ -2921,7 +2921,16 @@ catch (java.lang.Throwable thr) {}
                     data.clearGlideDebt();
                     return;
                 }
-                if (!info.from.isOnGround(0.00001) && !entitySupportsFeet(player, false)) return;
+                if (!info.from.isOnGround(0.00001) && !entitySupportsFeet(player, false)) {
+                    // A tiny post-contact hop can be below Bukkit's movement
+                    // threshold in both directions. Its accepted false-ground
+                    // contact receipt is still owed, even if this first probe
+                    // sees the hop rather than its return to support. Retain one
+                    // owner probe until real support or a lifecycle/policy reset;
+                    // ordinary airborne falls do not start a polling loop.
+                    if (data.noFallContactFallDebt > 0f) queueNativeLanding(player, data, current, pData);
+                    return;
+                }
                 completeNativeLanding(player, player.getLocation().getY(), data);
             } finally {
                 aux.returnPlayerMoveInfo(info);

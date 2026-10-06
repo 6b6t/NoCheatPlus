@@ -29,7 +29,7 @@ import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 @RunWith(Parameterized.class)
 public class TestClientNoFallNativeDispatch {
  @Parameterized.Parameters(name="{0}") public static Collection<Object[]> cases(){
-  return Arrays.asList(new Object[][]{{"Vanilla",true},{"LB/Hypixel/coalesced-zero",false},{"LB/Hypixel/future-coalesced-zero",false},{"LB/Hypixel/cancelled-contact-zero",false},{"LB/Hypixel/true-contact-zero",false},{"LB/Hypixel/stale-contact-zero",false},{"NCP/correction-accepted-only",false},{"LB/NoGround",false},{"BleachHack/NoGround",false},
+  return Arrays.asList(new Object[][]{{"Vanilla",true},{"LB/Hypixel/coalesced-zero",false},{"LB/Hypixel/hop-coalesced-zero",false},{"LB/Hypixel/reset-after-hop-coalesced-zero",false},{"LB/Hypixel/future-coalesced-zero",false},{"LB/Hypixel/cancelled-contact-zero",false},{"LB/Hypixel/true-contact-zero",false},{"LB/Hypixel/stale-contact-zero",false},{"NCP/correction-accepted-only",false},{"LB/NoGround",false},{"BleachHack/NoGround",false},
    {"LB/Hypixel/false-contact",false},{"LB/Hypixel/immediate-jump",false},{"LB/Blink/false-contact-burst",false},{"native-zero",false},{"teleport",false},{"water",false},
    {"air",false},{"disabled",false},{"parent-disabled",false},{"allow-flight",false},
    {"glide",false},{"vehicle",false},{"offline",false},{"dead",false},{"policy",false},{"replaced-data",false},{"retired/reconnect",false}});
@@ -139,13 +139,27 @@ public class TestClientNoFallNativeDispatch {
     Method finish=MovingListener.class.getDeclaredMethod("finishNativeLandingBeforeDeparture",Player.class,PlayerLocation.class,MovingData.class,MovingConfig.class,IPlayerData.class);
     finish.setAccessible(true);finish.invoke(listener,p,support,d,cc,pd);
    }
+   if(name.contains("hop-coalesced-zero")) {
+    when(support.isOnGround(anyDouble())).thenReturn(false);
+    when(p.getLocation()).thenReturn(new Location(world,16,81.0116,16));
+    Consumer<Object> first=task.get();first.accept(null);
+    assertEquals("The hop is not support",0,damage[0],0);
+    assertEquals(12,d.noFallContactFallDebt,0);
+    assertTrue(d.noFallNativeLandingTaskPending);
+    assertNotSame("Keep one later owner probe without another Bukkit move",first,task.get());
+    first.accept(null); // The old callback cannot retire/replay the new probe.
+    assertTrue(d.noFallNativeLandingTaskPending);
+    when(support.isOnGround(anyDouble())).thenReturn(true);
+    when(p.getLocation()).thenReturn(new Location(world,16,81,16));
+    if(name.contains("reset-after-hop")) {d.clearNoFallData();blocked=true;}
+   }
    task.get().accept(null);task.get().accept(null); // Replay must not submit a second landing.
    if(Arrays.asList("water","disabled","parent-disabled","allow-flight","vehicle","offline","dead","policy").contains(name)) {
     assertEquals("Invalidated contact cannot revive after the policy becomes active again",0,d.noFallContactFallDebt,0);
    }
    assertEquals(name,blocked?0:name.equals("NCP/correction-accepted-only")?4:9,damage[0],0);
    verify(access,times(wireGround||blocked?0:1)).dispatchNativeLanding(p);
-   folia.verify(()->Folia.runSyncDelayedTaskForEntity(eq(p),eq(plugin),any(),any(),eq(1L)),times(name.equals("retired/reconnect")?2:1));
+   folia.verify(()->Folia.runSyncDelayedTaskForEntity(eq(p),eq(plugin),any(),any(),eq(1L)),times(name.equals("retired/reconnect")||name.contains("hop-coalesced-zero")?2:1));
   }finally{ServerVersion.setMinecraftVersion(old);}
  }
 }
