@@ -152,7 +152,7 @@ import fr.neatmonster.nocheatplus.worlds.WorldFactoryArgument;
  * 
  * @see MovingEvent
  */
-public class MovingListener extends CheckListener implements TickListener, IRemoveData, IHaveCheckType, INeedConfig, JoinLeaveListener, IDisableListener {
+public class MovingListener extends CheckListener implements TickListener, IRemoveData, IHaveCheckType, INeedConfig, JoinLeaveListener, IDisableListener, fr.neatmonster.nocheatplus.components.registry.feature.IRegisterAsGenericInstance {
 
     private static final double WIND_CHARGE_IMPULSE_RADIUS = 1.2;
     private static final double WIND_CHARGE_MIN_VERTICAL_VELOCITY = 0.7;
@@ -2678,7 +2678,7 @@ catch (java.lang.Throwable thr) {}
             // would undo legitimate wind-charge mitigation (and other native rules).
             // Client-only support still cannot consume the descent or cause damage.
             if (!pLoc.isOnGround(0.00001) && !pLoc.isResetCond()
-                    && !entitySupportsFeet(player)) {
+                    && !entitySupportsFeet(player) && Double.isNaN(nativeSweptBlockContactY(player, data))) {
                 // Still airborne. Cancelling is required so a ground spoof cannot
                 // consume the fall, but the server zeroes fallDistance anyway.
                 // Put that distance back on the next tick.
@@ -2872,17 +2872,127 @@ catch (java.lang.Throwable thr) {}
         return false;
     }
 
+    /** A native sweep may contact a block, then retain the pre-collision
+     * placement after rejecting another packet. Require its actual collision,
+     * last accepted descending placement and overlapping owned collision shape;
+     * neither a wire ground bit nor a nearby block is sufficient. */
+    private double nativeSweptBlockContactY(final Player player, final MovingData data) {
+        return blockContactBelowAcceptedPosition(player, data, true, null);
+    }
+
+    private double blockContactBelowAcceptedPosition(final Player player, final MovingData data,
+            final boolean requireNativeCollision, final fr.neatmonster.nocheatplus.checks.net.model.DataPacketFlying processed) {
+        if (!Folia.isOwnedByCurrentRegion(player)
+                || requireNativeCollision && !mcAccess.getHandle().hasVerticalCollisionBelow(player)) return Double.NaN;
+        final PlayerMoveData last = data.playerMoves.getFirstPastMove();
+        final Location feet = player.getLocation();
+        if (last == null || !last.toIsValid || last.yDistance >= 0.0 || feet == null
+                || processed == null && (Math.abs(last.to.getX() - feet.getX()) > 1.0e-7
+                    || Math.abs(last.to.getY() - feet.getY()) > 1.0e-7
+                    || Math.abs(last.to.getZ() - feet.getZ()) > 1.0e-7)) return Double.NaN;
+        final double width = player.getBoundingBox().getWidthX() / 2.0;
+        if (!(width > 0.0) || !Double.isFinite(width)) return Double.NaN;
+        final double drop = Math.min(0.25, -last.yDistance);
+        double top = Double.NaN;
+        try {
+            for (int x = (int)Math.floor(feet.getX() - width); x <= (int)Math.floor(feet.getX() + width); x++) {
+                for (int z = (int)Math.floor(feet.getZ() - width); z <= (int)Math.floor(feet.getZ() + width); z++) {
+                    for (int y = (int)Math.floor(feet.getY() - drop - 1.0); y <= (int)Math.floor(feet.getY()); y++) {
+                        final Location at = new Location(feet.getWorld(), x, y, z);
+                        if (!Folia.isOwnedByCurrentRegion(at) || !feet.getWorld().isChunkLoaded(x >> 4, z >> 4)) continue;
+                        final var shape = feet.getWorld().getBlockAt(x, y, z).getCollisionShape();
+                        for (final var box : shape.getBoundingBoxes()) {
+                            final double surface = y + box.getMaxY();
+                            if (surface > feet.getY() + 1.0e-7 || feet.getY() - surface > drop + 1.0e-7
+                                    || box.getMaxY() <= box.getMinY() || box.getMaxX() <= box.getMinX() || box.getMaxZ() <= box.getMinZ()
+                                    || feet.getX() + width <= x + box.getMinX() || feet.getX() - width >= x + box.getMaxX()
+                                    || feet.getZ() + width <= z + box.getMinZ() || feet.getZ() - width >= z + box.getMaxZ()) continue;
+                            if (Double.isNaN(top) || surface > top) top = surface;
+                        }
+                    }
+                }
+            }
+        } catch (RuntimeException foreignOrUnavailableShape) { return Double.NaN; }
+        return top;
+    }
+
+    /** Final native placement can complete contact below Bukkit's move-event
+     * threshold. The receipt only selects a processed position; physical support
+     * and current owner policy decide whether a landing actually occurred. */
+    public void onNoFallNativePosition(final Player player, final IPlayerData pData,
+            final fr.neatmonster.nocheatplus.checks.net.model.DataPacketFlying processed) {
+        if (!Folia.isOwnedByCurrentRegion(player) || !player.isOnline() || player.isDead()
+                || processed == null || !processed.hasPos || processed.isCancelled()
+                || ServerVersion.compareMinecraftVersion("26.1") < 0) return;
+        final MovingData data = pData.getGenericInstance(MovingData.class);
+        if (player.isInsideVehicle() || player.isFlying()
+                || !pData.isCheckActive(CheckType.MOVING, player) || !noFall.isEnabled(player, pData)) {
+            data.clearNoFallData(); data.clearGlideDebt();
+            if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+            return;
+        }
+        final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+        final Location feet = player.getLocation();
+        if (cc.noFallDealDamage || cc.noFallSkipAllowFlight && player.getAllowFlight()
+                || Math.abs(processed.getX() - feet.getX()) > 1.0e-7
+                || Math.abs(processed.getY() - feet.getY()) > 1.0e-7
+                || Math.abs(processed.getZ() - feet.getZ()) > 1.0e-7
+                || Math.max(data.noFallFallDistance, NoFall.retainedNativeResetDebt(data)) <= 0f
+                || !mcAccess.getHandle().hasVerticalCollisionBelow(player)) return;
+        final PlayerMoveInfo info = aux.usePlayerMoveInfo();
+        try {
+            info.set(player, feet, null, 0.00001);
+            info.from.collectBlockFlags(0.00001);
+            if (info.from.isResetCond()) {
+                data.clearNoFallData(); data.clearGlideDebt();
+                if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+                return;
+            }
+            if (!Bridge1_9.isGlidingWithElytra(player)
+                    && !MovingUtil.shouldCheckSurvivalFly(player, info.from, info.to, data, cc, pData)) {
+                data.clearNoFallData(); data.clearGlideDebt();
+                if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+                return;
+            }
+            final double swept = blockContactBelowAcceptedPosition(player, data, true, processed);
+            if (!info.from.isOnGround(0.00001) && !entitySupportsFeet(player, false) && Double.isNaN(swept)) return;
+            if (mcAccess.getHandle().isIgnoringFallDamageFromCurrentImpulse(player)) {
+                data.clearNoFallData(); data.clearGlideDebt();
+                if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+                return;
+            }
+            // Native zero at this proven final support must not strand the
+            // accepted geometric descent. A missed contact followed by a real
+            // jump is one owed landing, not a cumulative charge for that jump.
+            final double contactY = Double.isNaN(swept) ? feet.getY() : swept;
+            final float debt = Math.max(NoFall.retainedNativeResetDebt(data),
+                    (float)Math.max(0.0, data.noFallMaxY - contactY));
+            if (processed.onGround && player.getFallDistance() <= 0f
+                    && NoFall.retainedNativeResetDebt(data) <= 0f && NoFall.getDamage(player, debt) < Magic.FALL_DAMAGE_MINIMUM) {
+                data.clearNoFallData(); data.clearGlideDebt();
+                if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+                return;
+            }
+            if (player.getFallDistance() <= 0f) data.noFallFallDistance = debt;
+            data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt, debt);
+            completeNativeLanding(player, contactY, data);
+        } finally { aux.returnPlayerMoveInfo(info); }
+    }
+
     /** Close a missing native contact before a queued jump can leave its support. */
     private void finishNativeLandingBeforeDeparture(final Player player, final PlayerLocation from,
             final MovingData data, final MovingConfig cc, final IPlayerData pData) {
         if (!data.noFallNativeLandingTaskPending
                 || data.noFallNativeLandingGeneration != data.noFallGeneration
-                || cc.noFallDealDamage || Math.max(player.getFallDistance(), NoFall.retainedNativeResetDebt(data)) <= 0f
-                || player.isInsideVehicle()
+                || cc.noFallDealDamage || player.isInsideVehicle()
                 || cc.noFallSkipAllowFlight && player.getAllowFlight()
-                || !noFall.isEnabled(player, pData) || from.isResetCond()
-                || !from.isOnGround(0.00001) && !entitySupportsFeet(player, false)) return;
-        completeNativeLanding(player, from.getY(), data);
+                || !noFall.isEnabled(player, pData) || from.isResetCond()) return;
+        final double swept = nativeSweptBlockContactY(player, data);
+        if (Math.max(player.getFallDistance(), NoFall.retainedNativeResetDebt(data)) <= 0f && Double.isNaN(swept)
+                || !from.isOnGround(0.00001) && !entitySupportsFeet(player, false) && Double.isNaN(swept)) return;
+        if (!Double.isNaN(swept)) data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt,
+                (float)NoFall.getApplicableFallHeight(player, swept, data));
+        completeNativeLanding(player, Double.isNaN(swept) ? from.getY() : swept, data);
     }
 
 
@@ -2934,7 +3044,8 @@ catch (java.lang.Throwable thr) {}
                     data.clearGlideDebt();
                     return;
                 }
-                if (!info.from.isOnGround(0.00001) && !entitySupportsFeet(player, false)) {
+                final double swept = nativeSweptBlockContactY(player, data);
+                if (!info.from.isOnGround(0.00001) && !entitySupportsFeet(player, false) && Double.isNaN(swept)) {
                     // A tiny post-contact hop can be below Bukkit's movement
                     // threshold in both directions. Its accepted false-ground
                     // contact receipt is still owed, even if this first probe
@@ -2942,9 +3053,19 @@ catch (java.lang.Throwable thr) {}
                     // owner probe until real support or a lifecycle/policy reset;
                     // ordinary airborne falls do not start a polling loop.
                     if (data.noFallContactFallDebt > 0f) queueNativeLanding(player, data, current, pData);
+                    else if (data.noFallNearGroundProbeTries < 4
+                            && !Double.isNaN(blockContactBelowAcceptedPosition(player, data, false, null))) {
+                        // The last small descent may be below Bukkit's gate.
+                        // At most four additional probes wait for native contact;
+                        // a nearby shape alone never dispatches or clears debt.
+                        data.noFallNearGroundProbeTries++;
+                        queueNativeLanding(player, data, current, pData);
+                    }
                     return;
                 }
-                completeNativeLanding(player, player.getLocation().getY(), data);
+                if (!Double.isNaN(swept)) data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt,
+                        (float)NoFall.getApplicableFallHeight(player, swept, data));
+                completeNativeLanding(player, Double.isNaN(swept) ? player.getLocation().getY() : swept, data);
             } finally {
                 aux.returnPlayerMoveInfo(info);
             }

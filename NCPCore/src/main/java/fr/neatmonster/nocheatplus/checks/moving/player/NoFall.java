@@ -737,6 +737,7 @@ public class NoFall extends Check {
                 : processedBoatStep != null ? processedBoatStep.getY() : from.getY();
         final double toY = to.getY();
         final double yDiff = toY - fromY;
+        if (yDiff < 0.0) data.noFallNearGroundProbeTries = 0;
         final double oldNFDist = data.noFallFallDistance;
         // Reset-cond is not touched by yOnGround.
         // TODO: Distinguish water depth vs. fall distance ?

@@ -44,19 +44,27 @@ public final class NoFallPacketObserver extends BaseAdapter {
         publish(net, receipt, event.isCancelled());
         if (net != null && net.beginNoFallRetirement()) {
             final var player = event.getPlayer();
-            final Object task = fr.neatmonster.nocheatplus.compat.Folia.runSyncDelayedTaskForEntity(player, getPlugin(), ignored -> {
-                try {
-                    if (!player.isOnline() || pData.getGenericInstance(NetData.class) != net) return;
-                    final var location = player.getLocation();
-                    // Final native placement, including moves below Bukkit's event
-                    // threshold, is an owner acknowledgment. Unmatched future
-                    // positions remain pending; no time/size eviction is used.
-                    net.acknowledgeNativeNoFallPosition(location.getX(), location.getY(), location.getZ());
-                    if (player.isDead()) net.clearFlyingQueue();
-                } finally { net.endNoFallRetirement(); }
-            }, net::endNoFallRetirement, 1L);
+            final Object task = fr.neatmonster.nocheatplus.compat.Folia.runSyncDelayedTaskForEntity(player, getPlugin(),
+                    ignored -> retireNativePosition(player, pData, net), net::endNoFallRetirement, 1L);
             if (task == null || task instanceof Integer && ((Integer) task) == -1) net.endNoFallRetirement();
         }
+    }
+
+    /** Entity-owner completion, including positions below Bukkit's event gate. */
+    public static void retireNativePosition(final org.bukkit.entity.Player player,
+            final IPlayerData pData, final NetData net) {
+        try {
+            if (!fr.neatmonster.nocheatplus.compat.Folia.isOwnedByCurrentRegion(player)
+                    || !player.isOnline() || pData.getGenericInstance(NetData.class) != net) return;
+            final var location = player.getLocation();
+            final var processed = net.acknowledgeNativeNoFallPosition(location.getX(), location.getY(), location.getZ());
+            if (processed != null) {
+                final var moving = fr.neatmonster.nocheatplus.NCPAPIProvider.getNoCheatPlusAPI()
+                        .getGenericInstance(fr.neatmonster.nocheatplus.checks.moving.MovingListener.class);
+                if (moving != null) moving.onNoFallNativePosition(player, pData, processed);
+            }
+            if (player.isDead()) net.clearFlyingQueue();
+        } finally { net.endNoFallRetirement(); }
     }
 
     /** Publication happens once, after the final outcome, never with a pending

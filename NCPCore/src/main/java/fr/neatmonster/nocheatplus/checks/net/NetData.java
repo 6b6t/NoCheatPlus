@@ -225,7 +225,7 @@ public class NetData extends ACheckData {
 
     /** Retire no-event traffic, keeping one processed native point as contact
      * evidence until the next Bukkit decision consumes it. */
-    public void acknowledgeNativeNoFallPosition(final double x, final double y, final double z) {
+    public DataPacketFlying acknowledgeNativeNoFallPosition(final double x, final double y, final double z) {
         lock.lock();
         try {
             long through = 0;
@@ -237,6 +237,7 @@ public class NetData extends ACheckData {
                 }
             }
             while (!noFallPositions.isEmpty() && noFallPositions.getFirst().getSequence() <= through) noFallPositions.removeFirst();
+            return through > 0 ? noFallNativePosition : null;
         } finally { lock.unlock(); }
     }
 

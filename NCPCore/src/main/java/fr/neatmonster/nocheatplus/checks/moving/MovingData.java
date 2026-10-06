@@ -736,6 +736,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     /** One owning-entity landing probe at a time; resets invalidate its generation. */
     public volatile boolean noFallNativeLandingTaskPending;
     public long noFallNativeLandingGeneration;
+    /** Finite owner retries while an accepted descent approaches an owned block shape. */
+    public int noFallNearGroundProbeTries;
     /** Each scheduled probe has a fixed token, separate from refreshed fall generations. */
     public volatile long noFallNativeLandingTaskToken;
 
@@ -762,6 +764,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         noFallSetBackFallDebt = 0f;
         noFallContactFallDebt = 0f;
         noFallBoatGroundStep = null;
+        noFallNearGroundProbeTries = 0;
         noFallFallDistance = 0;
         noFallMaxY = BlockProperties.getMinWorldY();
         noFallSkipAirCheck = false;
