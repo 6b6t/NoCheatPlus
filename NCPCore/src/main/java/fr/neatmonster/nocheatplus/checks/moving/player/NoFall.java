@@ -589,8 +589,8 @@ public class NoFall extends Check {
         }
         if (nativeLanding) {
             // The movement checks' step tolerance is not a completed contact.
-            fromOnGround = pFrom.isOnGround(0.00001);
-            toOnGround = pTo.isOnGround(0.00001);
+            fromOnGround = pFrom.isOnGround(0.00001) || pFrom.standsOnEntity(0.00001, 0, 0);
+            toOnGround = pTo.isOnGround(0.00001) || pTo.standsOnEntity(0.00001, 0, 0);
         }
         else if (yDiff < 0 && cc.yOnGround < cc.noFallyOnGround) {
             // In fact this is somewhat heuristic, but it seems to work well.

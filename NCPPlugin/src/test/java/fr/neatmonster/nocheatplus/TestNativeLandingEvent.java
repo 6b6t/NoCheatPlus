@@ -113,8 +113,14 @@ public class TestNativeLandingEvent {
                     when(player.getAllowFlight()).thenReturn(true);
                 }
                 delayed.get().accept(null);
-                if (callbackCase.equals("same-fall")) verify(player).setFallDistance(26.56f);
+                if (callbackCase.equals("same-fall") || callbackCase.equals("contact")) verify(player).setFallDistance(26.56f);
                 else verify(player, never()).setFallDistance(anyFloat());
+                if (callbackCase.equals("contact")) {
+                    verify(access).dispatchNativeLanding(player);
+                    assertEquals(0f, data.noFallCancelledAirFallDebt, 0);
+                    delayed.get().accept(null);
+                    verify(access, times(1)).dispatchNativeLanding(player);
+                } else verify(access, never()).dispatchNativeLanding(player);
             }
         } finally { ServerVersion.setMinecraftVersion(previous); }
     }
@@ -127,7 +133,7 @@ public class TestNativeLandingEvent {
     @Test public void delayedRestoreCannotFollowTeleport() throws Exception { event(false, false, true, 8, "teleport"); }
     @Test public void delayedRestoreCannotFollowPearlReset() throws Exception { event(false, false, true, 8, "pearl"); }
     @Test public void delayedRestoreCannotOverwriteWaterContact() throws Exception { event(false, false, true, 8, "water"); }
-    @Test public void delayedRestoreCannotOverwriteGroundContact() throws Exception { event(false, false, true, 8, "contact"); }
+    @Test public void cancelledAirFallReachesContactBeforeRestoreAndDispatchesExactlyOnce() throws Exception { event(false, false, true, 8, "contact"); }
     @Test public void delayedRestoreRechecksDisablement() throws Exception { event(false, false, true, 8, "disabled"); }
     @Test public void delayedRestoreRechecksSurvivalPolicy() throws Exception { event(false, false, true, 8, "survival-policy"); }
     @Test public void delayedRestoreRechecksAllowFlightPolicy() throws Exception { event(false, false, true, 8, "allowflight"); }

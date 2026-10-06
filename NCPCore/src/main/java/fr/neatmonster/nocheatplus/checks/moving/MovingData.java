@@ -726,11 +726,14 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     /** One owning-entity landing probe at a time; resets invalidate its generation. */
     public boolean noFallNativeLandingTaskPending;
     public long noFallNativeLandingGeneration;
+    /** Native distance erased by a FALL event this check cancelled while airborne. */
+    public float noFallCancelledAirFallDebt;
 
 
     /** Clear the fall check and invalidate callbacks for the previous descent. */
     public void clearNoFallData() {
         noFallGeneration++;
+        noFallCancelledAirFallDebt = 0f;
         noFallFallDistance = 0;
         noFallMaxY = BlockProperties.getMinWorldY();
         noFallSkipAirCheck = false;
@@ -1560,6 +1563,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
 
     public void useVerticalBounce(final Player player) {
         noFallGeneration++;
+        noFallCancelledAirFallDebt = 0f;
         // CHEATING: Ensure fall distance is reset.
         player.setFallDistance(0f);
         noFallMaxY = BlockProperties.getMinWorldY();
