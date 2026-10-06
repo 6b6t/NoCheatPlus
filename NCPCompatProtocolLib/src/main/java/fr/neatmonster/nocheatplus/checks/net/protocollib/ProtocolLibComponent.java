@@ -105,9 +105,9 @@ public class ProtocolLibComponent implements IDisableListener, INotifyReload, Jo
             if (nativeNoFall) {
                 // Observe movement for native landing receipts without enabling
                 // any net enforcement or unrelated packet hook.
-                register("fr.neatmonster.nocheatplus.checks.net.protocollib.MovingFlying", plugin);
+                register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketObserver", plugin);
                 NCPAPIProvider.getNoCheatPlusAPI().addFeatureTags("packet-listeners",
-                        java.util.Collections.singletonList("MovingFlying/NoFall-observation"));
+                        java.util.Collections.singletonList("NoFallPacketObserver"));
                 StaticLog.logInfo("NoFall movement observation active; net checks remain disabled.");
             }
             else StaticLog.logInfo("No packet level checks activated.");
@@ -130,7 +130,8 @@ public class ProtocolLibComponent implements IDisableListener, INotifyReload, Jo
         }
         final boolean netMovement = worldMan.isActiveAnywhere(CheckType.NET_FLYINGFREQUENCY)
                 || worldMan.isActiveAnywhere(CheckType.NET_MOVING);
-        if (netMovement || nativeNoFall) {
+        if (nativeNoFall) register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketObserver", plugin);
+        if (netMovement) {
             register("fr.neatmonster.nocheatplus.checks.net.protocollib.MovingFlying", plugin);
         }
         if (netMovement) register("fr.neatmonster.nocheatplus.checks.net.protocollib.OutgoingPosition", plugin);

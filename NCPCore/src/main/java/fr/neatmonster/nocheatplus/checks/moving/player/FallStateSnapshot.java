@@ -35,9 +35,12 @@ public final class FallStateSnapshot {
     public static void save(Player player, MovingData data, Location accepted) {
         // Legacy glide fields remain readable, but no pre-deploy debt is created.
         final boolean owed = data.noFallFallDistance > 0f || data.noFallGlideCarry > 0f
+                || NoFall.retainedNativeResetDebt(data) > 0f
                 || data.noFallCurrentLocOnWindChargeHit != null;
         if (!owed || !Double.isFinite(data.noFallMaxY) || !Float.isFinite(data.noFallFallDistance)
-                || !Float.isFinite(data.noFallGlideCarry)) {
+                || !Float.isFinite(data.noFallGlideCarry)
+                || !validDebt(data.noFallCancelledAirFallDebt) || !validDebt(data.noFallSetBackFallDebt)
+                || !validDebt(data.noFallContactFallDebt) || accepted.getWorld() == null) {
             clear(player);
             return;
         }
@@ -50,7 +53,11 @@ public final class FallStateSnapshot {
                                 ? Double.NaN : data.noFallCurrentLocOnWindChargeHit.getY()),
                         Double.doubleToRawLongBits(data.noFallGlideTicks),
                         Double.doubleToRawLongBits(data.noFallGlideCarry),
-                        Double.doubleToRawLongBits(data.noFallGlideEstablished ? 1.0 : 0.0)});
+                        Double.doubleToRawLongBits(data.noFallGlideEstablished ? 1.0 : 0.0),
+                        Double.doubleToRawLongBits(data.noFallCancelledAirFallDebt),
+                        Double.doubleToRawLongBits(data.noFallSetBackFallDebt),
+                        Double.doubleToRawLongBits(data.noFallContactFallDebt),
+                        Double.doubleToRawLongBits(accepted.getX()), Double.doubleToRawLongBits(accepted.getZ())});
     }
 
     public static void restore(Player player, MovingData data) {
@@ -71,15 +78,19 @@ public final class FallStateSnapshot {
         double[] state = bits == null ? null : java.util.stream.LongStream.of(bits).mapToDouble(Double::longBitsToDouble).toArray();
         Location current = player.getLocation();
         if (state == null) return;
-        final boolean glide = state.length == 7 && Double.isFinite(state[4]) && state[4] >= 0 && state[4] <= 20 * 60 * 30
+        final boolean explicit = state.length == 12;
+        final boolean glide = (state.length == 7 || explicit) && Double.isFinite(state[4]) && state[4] >= 0 && state[4] <= 20 * 60 * 30
                 && Double.isFinite(state[5]) && state[5] >= 0 && state[5] <= Float.MAX_VALUE
                 && (state[6] == 0.0 || state[6] == 1.0);
-        if ((state.length != 4 && !glide) || !Double.isFinite(state[0]) || !Double.isFinite(state[1])
+        if ((state.length != 4 && !glide)
+                || explicit && (!validDebt(state[7]) || !validDebt(state[8]) || !validDebt(state[9])
+                    || !Double.isFinite(state[10]) || !Double.isFinite(state[11])
+                    || Math.abs(state[10]) > 30_000_000 || Math.abs(state[11]) > 30_000_000) || !Double.isFinite(state[0]) || !Double.isFinite(state[1])
                 || !Double.isFinite(state[2]) || state[2] < 0 || state[2] > Float.MAX_VALUE || state[1] < state[0]
                 || Math.abs(state[0]) > 30_000_000 || Math.abs(state[1]) > 30_000_000
                 || (!Double.isNaN(state[3]) && (!Double.isFinite(state[3]) || Math.abs(state[3]) > 30_000_000))
                 || !current.getWorld().getKey().toString().equals(world)
-                || !preserveOrdinaryTeleport && Math.abs(current.getY() - state[0]) > 1.0e-5) {
+                || !preserveOrdinaryTeleport && placementChanged(current, state)) {
             clear(player);
             return;
         }
@@ -91,7 +102,7 @@ public final class FallStateSnapshot {
             clear(player);
             return;
         }
-        if (Math.abs(current.getY() - state[0]) > 1.0e-5) {
+        if (placementChanged(current, state)) {
             // Fox ordinary teleports arrive through join. Native entity data
             // owns retention/resets; the checkpoint must not resurrect old debt.
             data.clearWindChargeImpulse();
@@ -106,5 +117,20 @@ public final class FallStateSnapshot {
         data.noFallCurrentLocOnWindChargeHit = Double.isNaN(state[3]) ? null :
                 new Location(current.getWorld(), current.getX(), state[3], current.getZ());
         data.clearGlideDebt();
+        if (explicit) {
+            data.noFallCancelledAirFallDebt = Math.max(data.noFallCancelledAirFallDebt, (float) state[7]);
+            data.noFallSetBackFallDebt = Math.max(data.noFallSetBackFallDebt, (float) state[8]);
+            data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt, (float) state[9]);
+        }
+    }
+
+    private static boolean validDebt(double value) {
+        return Double.isFinite(value) && value >= 0 && value <= Float.MAX_VALUE;
+    }
+
+    private static boolean placementChanged(Location current, double[] state) {
+        return Math.abs(current.getY() - state[0]) > 1.0e-5
+                || state.length == 12 && (Math.abs(current.getX() - state[10]) > 1.0e-5
+                    || Math.abs(current.getZ() - state[11]) > 1.0e-5);
     }
 }

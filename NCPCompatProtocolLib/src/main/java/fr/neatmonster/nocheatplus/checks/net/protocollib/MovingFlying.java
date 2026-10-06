@@ -221,14 +221,7 @@ public class MovingFlying extends BaseAdapter {
         // TODO: Leniency options too (packet order inversion). -> current: flyingQueue is fetched.
         final IWorldData worldData = pData.getCurrentWorldDataSafe();
         if (worldData.isCheckActive(CheckType.NET)) data.lastKeepAliveTime = time;
-        if (!worldData.isCheckActive(CheckType.NET_FLYINGFREQUENCY)) {
-            if (ServerVersion.compareMinecraftVersion("26.1") >= 0
-                    && worldData.isCheckActive(CheckType.MOVING_NOFALL) && !event.isCancelled()) {
-                final DataPacketFlying observed = interpretPacket(event, time);
-                if (observed != null && !isInvalidContent(observed)) data.addFlyingQueue(observed);
-            }
-            return;
-        }
+        if (!worldData.isCheckActive(CheckType.NET_FLYINGFREQUENCY)) return;
 
         final NetConfig cc = pData.getGenericInstance(NetConfig.class);
         boolean cancel = false;

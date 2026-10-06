@@ -133,4 +133,45 @@ public class TestFallStateSnapshot {
         verify(f.player, never()).setFallDistance(anyFloat());
     }
 
+    @Test public void explicitDebtsRoundTripWithNativeZeroAndWithoutConnectionState() {
+        Fixture source=new Fixture();source.data.noFallMaxY=source.location.getY();
+        source.data.noFallCancelledAirFallDebt=11;source.data.noFallSetBackFallDebt=7;source.data.noFallContactFallDebt=12;
+        source.data.noFallMatchedPacketSequence=998;source.data.noFallNativeLandingTaskPending=true;
+        FallStateSnapshot.save(source.player,source.data,source.location);
+        Fixture target=new Fixture();target.serialized.putAll(source.serialized);
+        FallStateSnapshot.restore(target.player,target.data);FallStateSnapshot.restore(target.player,target.data);
+        assertEquals(11,target.data.noFallCancelledAirFallDebt,0);assertEquals(7,target.data.noFallSetBackFallDebt,0);
+        assertEquals(12,target.data.noFallContactFallDebt,0);assertEquals(0,target.data.noFallFallDistance,0);
+        assertEquals(0,target.data.noFallMatchedPacketSequence);assertFalse(target.data.noFallNativeLandingTaskPending);
+    }
+    @Test public void eachExplicitDebtAloneKeepsTheCheckpoint() {
+        for(int kind=0;kind<3;kind++) {
+            Fixture f=new Fixture();f.data.noFallMaxY=f.location.getY();
+            if(kind==0)f.data.noFallCancelledAirFallDebt=12;
+            if(kind==1)f.data.noFallSetBackFallDebt=12;
+            if(kind==2)f.data.noFallContactFallDebt=12;
+            FallStateSnapshot.save(f.player,f.data,f.location);f.data.clearNoFallData();
+            FallStateSnapshot.restore(f.player,f.data);
+            assertEquals(12,fr.neatmonster.nocheatplus.checks.moving.player.NoFall.retainedNativeResetDebt(f.data),0);
+        }
+    }
+    @Test public void invalidExplicitDebtCannotSurviveMigration() {
+        for(double invalid:new double[]{Double.NaN,Double.POSITIVE_INFINITY,-1,(double)Float.MAX_VALUE*2}) {
+            Fixture f=new Fixture();f.save();f.data.clearNoFallData();
+            long[] bits=(long[])f.serialized.get(new NamespacedKey("nocheatplus","fall_state_v2"));
+            bits[9]=Double.doubleToRawLongBits(invalid);FallStateSnapshot.restore(f.player,f.data);
+            assertTrue(f.serialized.isEmpty());assertEquals(0,f.data.noFallContactFallDebt,0);
+        }
+    }
+    @Test public void sameHeightHorizontalTeleportDiscardsExplicitDebt() {
+        Fixture f=new Fixture();f.save();f.data.clearNoFallData();f.location.setX(600);
+        FallStateSnapshot.restore(f.player,f.data);assertTrue(f.serialized.isEmpty());
+        assertEquals(0,f.data.noFallContactFallDebt,0);
+    }
+    @Test public void serverConfirmedGlideCannotReviveExplicitDebt() {
+        Fixture f=new Fixture();f.save();f.data.noFallContactFallDebt=12;
+        FallStateSnapshot.save(f.player,f.data,f.location);f.data.clearNoFallData();when(f.player.isGliding()).thenReturn(true);
+        when(f.player.getFallDistance()).thenReturn(1f);FallStateSnapshot.restore(f.player,f.data);
+        assertEquals(0,f.data.noFallContactFallDebt,0);assertEquals(1,f.data.noFallFallDistance,0);
+    }
 }

@@ -86,6 +86,11 @@ public class NetData extends ACheckData {
      */
     // TODO: Might extend to synchronize with moving events.
     private final LinkedList<DataPacketFlying> flyingQueue = new LinkedList<DataPacketFlying>();
+    /** Final positional receipts retained until the entity owner consumes or rejects them.
+     * Positionless traffic cannot evict them. Identical consecutive receipts coalesce. */
+    private final LinkedList<DataPacketFlying> noFallPositions = new LinkedList<>();
+    private long noFallSequence;
+
     /** Maximum amount of packets to store. */
     private final int flyingQueueMaxSize = 15;
     /**
@@ -144,7 +149,45 @@ public class NetData extends ACheckData {
     public void clearFlyingQueue() {
         lock.lock();
         flyingQueue.clear();
+        noFallPositions.clear();
         lock.unlock();
+    }
+
+    /** Called only after all packet enforcement, at ProtocolLib MONITOR. */
+    public void addNoFallPacket(final DataPacketFlying packet) {
+        if (packet == null || packet.isCancelled() || !packet.hasPos) return;
+        lock.lock();
+        try {
+            final DataPacketFlying last = noFallPositions.peekLast();
+            if (last != null && last.onGround == packet.onGround && last.isSamePos(packet)) return;
+            packet.setSequence(++noFallSequence);
+            noFallPositions.addLast(packet);
+        } finally { lock.unlock(); }
+    }
+
+    public DataPacketFlying[] copyNoFallPackets() {
+        lock.lock();
+        try { return noFallPositions.toArray(new DataPacketFlying[0]); }
+        finally { lock.unlock(); }
+    }
+
+    /** The owner's final Bukkit decision retires the requested endpoint and all
+     * earlier sub-event observations. Future received positions stay pending. */
+    public void acknowledgeNoFallPosition(final double x, final double y, final double z, final long matched) {
+        lock.lock();
+        try {
+            long through = matched;
+            for (DataPacketFlying packet : noFallPositions) {
+                if (Math.abs(packet.getX() - x) <= 1.0e-7 && Math.abs(packet.getY() - y) <= 1.0e-7
+                        && Math.abs(packet.getZ() - z) <= 1.0e-7) {
+                    through = Math.max(through, packet.getSequence());
+                    break;
+                }
+            }
+            while (!noFallPositions.isEmpty() && noFallPositions.getFirst().getSequence() <= through) {
+                noFallPositions.removeFirst();
+            }
+        } finally { lock.unlock(); }
     }
 
     /**

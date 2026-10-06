@@ -29,7 +29,7 @@ import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 @RunWith(Parameterized.class)
 public class TestClientNoFallNativeDispatch {
  @Parameterized.Parameters(name="{0}") public static Collection<Object[]> cases(){
-  return Arrays.asList(new Object[][]{{"Vanilla",true},{"LB/Hypixel/coalesced-zero",false},{"LB/Hypixel/hop-coalesced-zero",false},{"LB/Hypixel/reset-after-hop-coalesced-zero",false},{"LB/Hypixel/future-coalesced-zero",false},{"LB/Hypixel/cancelled-contact-zero",false},{"LB/Hypixel/true-contact-zero",false},{"LB/Hypixel/stale-contact-zero",false},{"NCP/correction-accepted-only",false},{"LB/NoGround",false},{"BleachHack/NoGround",false},
+  return Arrays.asList(new Object[][]{{"Vanilla",true},{"LB/Hypixel/coalesced-zero",false},{"LB/Hypixel/burst15-coalesced-zero",false},{"LB/Hypixel/burst4096-coalesced-zero",false},{"LB/Blink/position-backlog-coalesced-zero",false},{"migration/contact-coalesced-zero",false},{"LB/Hypixel/hop-coalesced-zero",false},{"LB/Hypixel/reset-after-hop-coalesced-zero",false},{"LB/Hypixel/future-coalesced-zero",false},{"LB/Hypixel/cancelled-contact-zero",false},{"LB/Hypixel/true-contact-zero",false},{"LB/Hypixel/stale-contact-zero",false},{"NCP/correction-accepted-only",false},{"LB/NoGround",false},{"BleachHack/NoGround",false},
    {"LB/Hypixel/false-contact",false},{"LB/Hypixel/immediate-jump",false},{"LB/Blink/false-contact-burst",false},{"native-zero",false},{"teleport",false},{"water",false},
    {"air",false},{"disabled",false},{"parent-disabled",false},{"allow-flight",false},
    {"glide",false},{"vehicle",false},{"offline",false},{"dead",false},{"policy",false},{"replaced-data",false},{"retired/reconnect",false}});
@@ -76,8 +76,21 @@ public class TestClientNoFallNativeDispatch {
     if(name.contains("cancelled-contact"))packet.setCancelled(true);
     if(name.contains("future-coalesced")) {
      DataPacketFlying future=new DataPacketFlying(true,16,81,16,System.currentTimeMillis());future.setSequence(2);
-     when(net.copyFlyingQueue()).thenReturn(new DataPacketFlying[]{future,packet});
-    } else when(net.copyFlyingQueue()).thenReturn(new DataPacketFlying[]{packet});
+     when(net.copyNoFallPackets()).thenReturn(new DataPacketFlying[]{future,packet});
+    } else when(net.copyNoFallPackets()).thenReturn(new DataPacketFlying[]{packet});
+    if(name.contains("burst") || name.contains("position-backlog")) {
+     var nc=mock(fr.neatmonster.nocheatplus.checks.net.NetConfig.class);
+     TestClientNoFallSequences.field(nc,fr.neatmonster.nocheatplus.checks.net.NetConfig.class,"flyingFrequencySeconds",1);
+     TestClientNoFallSequences.field(nc,fr.neatmonster.nocheatplus.checks.net.NetConfig.class,"flyingFrequencyRedundantSeconds",1);
+     TestClientNoFallSequences.field(nc,fr.neatmonster.nocheatplus.checks.net.NetConfig.class,"packetFrequencySeconds",1);
+     net=new NetData(nc);net.addNoFallPacket(packet);net.addFlyingQueue(packet);
+     for(int i=0;i<(name.contains("4096")?4096:64);i++) {
+      DataPacketFlying later=name.contains("position-backlog")?new DataPacketFlying(false,17+i,82,16,123):new DataPacketFlying(false,0f,0f,123);
+      net.addFlyingQueue(later);net.addNoFallPacket(later);
+     }
+     assertEquals(15,net.copyFlyingQueue().length);
+     assertSame(packet,net.copyNoFallPackets()[0]);
+    }
     when(pd.getGenericInstance(NetData.class)).thenReturn(net);
     if(name.contains("stale-contact"))d.noFallMatchedPacketSequence=1;
    }
@@ -153,13 +166,32 @@ public class TestClientNoFallNativeDispatch {
     when(p.getLocation()).thenReturn(new Location(world,16,81,16));
     if(name.contains("reset-after-hop")) {d.clearNoFallData();blocked=true;}
    }
+   if(name.startsWith("migration/")) {
+    // A distinct destination MovingData and zero native FD retain only the
+    // persistent contact proof. No connection sequence or source task migrates.
+    var pdc=mock(org.bukkit.persistence.PersistentDataContainer.class);
+    java.util.Map<NamespacedKey,Object> stored=new HashMap<>();
+    when(world.getKey()).thenReturn(NamespacedKey.minecraft("overworld"));
+    when(p.getPersistentDataContainer()).thenReturn(pdc);
+    doAnswer(c->{stored.put(c.getArgument(0),c.getArgument(2));return null;}).when(pdc).set(any(),any(),any());
+    when(pdc.get(any(),any())).thenAnswer(c->stored.get(c.getArgument(0)));
+    doAnswer(c->{stored.remove(c.getArgument(0));return null;}).when(pdc).remove(any());
+    fr.neatmonster.nocheatplus.checks.moving.player.FallStateSnapshot.save(p,d,p.getLocation());
+    MovingData destination=mock(MovingData.class,CALLS_REAL_METHODS);
+    when(pd.getGenericInstance(MovingData.class)).thenReturn(destination);
+    movement.when(()->MovingUtil.shouldCheckSurvivalFly(p,support,null,destination,cc,pd)).thenReturn(true);
+    Method join=MovingListener.class.getDeclaredMethod("restoreNoFallOnJoin",Player.class,MovingData.class,IPlayerData.class);
+    join.setAccessible(true);join.invoke(listener,p,destination,pd);
+    assertEquals(12,destination.noFallContactFallDebt,0);assertEquals(0,destination.noFallMatchedPacketSequence);
+    assertTrue(destination.noFallNativeLandingTaskPending);
+   }
    task.get().accept(null);task.get().accept(null); // Replay must not submit a second landing.
    if(Arrays.asList("water","disabled","parent-disabled","allow-flight","vehicle","offline","dead","policy").contains(name)) {
     assertEquals("Invalidated contact cannot revive after the policy becomes active again",0,d.noFallContactFallDebt,0);
    }
    assertEquals(name,blocked?0:name.equals("NCP/correction-accepted-only")?4:9,damage[0],0);
    verify(access,times(wireGround||blocked?0:1)).dispatchNativeLanding(p);
-   folia.verify(()->Folia.runSyncDelayedTaskForEntity(eq(p),eq(plugin),any(),any(),eq(1L)),times(name.equals("retired/reconnect")||name.contains("hop-coalesced-zero")?2:1));
+   folia.verify(()->Folia.runSyncDelayedTaskForEntity(eq(p),eq(plugin),any(),any(),eq(1L)),times(name.equals("retired/reconnect")||name.contains("hop-coalesced-zero")||name.startsWith("migration/")?2:1));
   }finally{ServerVersion.setMinecraftVersion(old);}
  }
 }

@@ -16,7 +16,6 @@ package fr.neatmonster.nocheatplus.checks.moving;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -177,7 +176,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     private final Passable passable = addCheck(new Passable());
     
     /** Store events by player name, in order to invalidate moving processing on higher priority level in case of teleports. */
-    private final Map<String, PlayerMoveEvent> processingEvents = new HashMap<String, PlayerMoveEvent>();
+    private final Map<String, PlayerMoveEvent> processingEvents = new ConcurrentHashMap<String, PlayerMoveEvent>();
 
     /** Player names with pending hover checks. */
     private final Set<String> hoverTicks = ConcurrentHashMap.newKeySet(30); // TODO: Rename
@@ -189,12 +188,8 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
 
     private volatile int hoverTicksStep = 5;
 
-    /** Location for temporary use with getLocation(useLoc). Always call setWorld(null) after use. Use LocUtil.clone before passing to other API. */
-    final Location useLoc = new Location(null, 0, 0, 0); // TODO: Put to use...
-    final Location useBedLeaveLoc = new Location(null, 0, 0, 0);
-    final Location useChangeWorldLoc = new Location(null, 0, 0, 0);
-    final Location useDeathLoc = new Location(null, 0, 0, 0);
-    final Location useToggleFlightLoc = new Location(null, 0, 0, 0);
+    /** Original endpoints survive check/setback mutation until the owner monitor. */
+    private final Map<PlayerMoveEvent, Location> requestedMovePositions = new ConcurrentHashMap<>();
 
     /** Auxiliary functionality. */
     private final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
@@ -518,7 +513,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
             // Check if the player has to be reset.
             // To "cancel" the event, we teleport the player.
             Location newTo = null;
-            final Location loc = player.getLocation(useBedLeaveLoc);
+            final Location loc = player.getLocation();
             final PlayerMoveInfo moveInfo = aux.usePlayerMoveInfo();
             moveInfo.set(player, loc, null, cc.yOnGround);
             final boolean sfCheck = MovingUtil.shouldCheckSurvivalFly(player, moveInfo.from, moveInfo.to, data, cc, pData);
@@ -537,7 +532,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                 noFall.checkDamage(player, y, data, pData);
             }
             // Cleanup
-            useBedLeaveLoc.setWorld(null);
+
             // Teleport.
             data.prepareSetBack(newTo); // Should be enough. 
             player.teleport(newTo, BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
@@ -594,14 +589,14 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
         data.clearMostMovingCheckData();
-        final Location loc = player.getLocation(useChangeWorldLoc);
+        final Location loc = player.getLocation();
         data.setSetBack(loc);
         if (cc.loadChunksOnWorldChange) MovingUtil.ensureChunksLoaded(player, loc, "world change", data, cc, pData);
         aux.resetPositionsAndMediumProperties(player, loc, data, cc);
         data.resetTrace(player, loc, TickTask.getTick(), mcAccess.getHandle(), cc);
         // Just in case.
         if (cc.enforceLocation) playersEnforce.add(player.getName());
-        useChangeWorldLoc.setWorld(null);
+
     }
     
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -695,6 +690,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
         final Player player = event.getPlayer();
         // Store the event for monitor level checks.
         processingEvents.put(player.getName(), event);
+        requestedMovePositions.put(event, event.getTo().clone());
         final IPlayerData pData = DataManager.getPlayerData(player);
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
@@ -1917,7 +1913,7 @@ catch (java.lang.Throwable thr) {}
 
 
     /**
-     * Monitor level PlayerMoveEvent. Uses useLoc.
+     * Monitor level PlayerMoveEvent. Each invocation owns its Location values.
      * @param event
      */
     @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled = false)
@@ -1928,7 +1924,15 @@ catch (java.lang.Throwable thr) {}
         final Player player = event.getPlayer();
         final IPlayerData pData = DataManager.getPlayerData(event.getPlayer());
         // This means moving data has been reset by a teleport.
-        if (processingEvents.remove(player.getName()) == null) return;
+        final Location requested = requestedMovePositions.remove(event);
+        if (!processingEvents.remove(player.getName(), event)) return;
+        final NetData netData = pData.getGenericInstance(NetData.class);
+        if (netData != null) {
+            final MovingData moving = pData.getGenericInstance(MovingData.class);
+            final Location endpoint = requested == null ? event.getTo() : requested;
+            netData.acknowledgeNoFallPosition(endpoint.getX(), endpoint.getY(), endpoint.getZ(),
+                    moving == null ? 0L : moving.noFallMatchedPacketSequence);
+        }
         if (player.isDead() || player.isSleeping()) return;
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         // Feed combined check.
@@ -1941,9 +1945,9 @@ catch (java.lang.Throwable thr) {}
         final MovingConfig mCc = pData.getGenericInstance(MovingConfig.class);
 
         if (!event.isCancelled()) {
-            final Location pLoc = player.getLocation(useLoc);
+            final Location pLoc = player.getLocation();
             onMoveMonitorNotCancelled(player, TrigUtil.isSamePosAndLook(pLoc, from) ? from : pLoc, event.getTo(), now, tick, data, mData, mCc, pData);
-            useLoc.setWorld(null);
+
             if (Folia.isFoliaServer()) {
                 // A short glide or an airborne mount is still the same fall.
                 // Dropping the checkpoint at a worker handoff was the cancel.
@@ -2012,10 +2016,9 @@ catch (java.lang.Throwable thr) {}
 
 
     /**
-     * Uses useLoc if in vehicle.
      * @param player
-     * @param from Might use useLoc, but will reset it, if in vehicle.
-     * @param to Do not use useLoc for this.
+     * @param from Invocation-local reference position.
+     * @param to Accepted destination.
      * @param now
      * @param tick
      * @param data
@@ -2056,9 +2059,9 @@ catch (java.lang.Throwable thr) {}
         // TODO: maybe even not count vehicles at all ?
         if (player.isInsideVehicle()) {
             // TODO: refine (!).
-            final Location ref = player.getVehicle().getLocation(useLoc);
+            final Location ref = player.getVehicle().getLocation();
             aux.resetPositionsAndMediumProperties(player, ref, mData, mCc); // TODO: Consider using to and intercept cheat attempts in another way.
-            useLoc.setWorld(null);
+
             mData.updateTrace(player, to, tick, mcAccess.getHandle()); // TODO: Can you become invincible by sending special moves?
         }
         else if (!from.getWorld().getName().equals(toWorldName)) {
@@ -2151,11 +2154,11 @@ catch (java.lang.Throwable thr) {}
         //final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
         data.clearMostMovingCheckData();
         data.clearWindChargeImpulse();
-        data.setSetBack(player.getLocation(useDeathLoc)); // TODO: Monitor this change (!).
+        data.setSetBack(player.getLocation()); // TODO: Monitor this change (!).
         data.isUsingItem = false;
         // Log location.
-        if (pData.isDebugActive(checkType)) debug(player, "Death: " + player.getLocation(useDeathLoc));
-        useDeathLoc.setWorld(null);
+        if (pData.isDebugActive(checkType)) debug(player, "Death: " + player.getLocation());
+
     }
 
 
@@ -2170,7 +2173,8 @@ catch (java.lang.Throwable thr) {}
 
         final Player player = event.getPlayer();
         // Prevent further moving processing for nested events.
-        processingEvents.remove(player.getName());
+        final PlayerMoveEvent interrupted = processingEvents.remove(player.getName());
+        if (interrupted != null) requestedMovePositions.remove(interrupted);
         // Various early return conditions.
         if (event.isCancelled()) return;
 
@@ -3040,11 +3044,16 @@ catch (java.lang.Throwable thr) {}
         data.resetUntrackedPosition(location);
         dataOnJoin(player, location, false, data,
                 pData.getGenericInstance(MovingConfig.class), pData.isDebugActive(checkType));
-        if (Folia.isFoliaServer()) {
-            if (noFall.isEnabled(player, pData)) FallStateSnapshot.restore(player, data,
-                    !pData.getGenericInstance(MovingConfig.class).noFallTpReset);
-            else FallStateSnapshot.clear(player);
-        }
+        if (Folia.isFoliaServer()) restoreNoFallOnJoin(player, data, pData);
+    }
+
+    private void restoreNoFallOnJoin(final Player player, final MovingData data, final IPlayerData pData) {
+        if (noFall.isEnabled(player, pData)) {
+            final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+            FallStateSnapshot.restore(player, data, !cc.noFallTpReset);
+            // Destination-owned tasks and sequences are local to this join.
+            queueNativeLanding(player, data, cc, pData);
+        } else FallStateSnapshot.clear(player);
     }
 
 
@@ -3054,7 +3063,7 @@ catch (java.lang.Throwable thr) {}
      * <li>data.clearFlyData()</li>
      * <li>data.setSetBack(...)</li>
      * @param player
-     * @param loc Can be useLoc (!).
+     * @param loc Join position.
      * @param isRespawn
      * @param data
      * @param cc
@@ -3240,17 +3249,17 @@ catch (java.lang.Throwable thr) {}
         final MovingData data = pData.getGenericInstance(MovingData.class);
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
         final PlayerMoveInfo moveInfo = aux.usePlayerMoveInfo();
-        final Location loc = player.getLocation(useToggleFlightLoc);
+        final Location loc = player.getLocation();
         moveInfo.set(player, loc, null, cc.yOnGround);
         // TODO: data.isVelocityJumpPhase() might be too harsh, but prevents too easy abuse.
         if (!MovingUtil.shouldCheckSurvivalFly(player, moveInfo.from, moveInfo.to, data, cc, pData) 
             || data.isVelocityJumpPhase() || BlockProperties.isOnGroundOrResetCond(player, loc, cc.yOnGround)) {
-            useToggleFlightLoc.setWorld(null);
+
             aux.returnPlayerMoveInfo(moveInfo);
             return;
         }
         aux.returnPlayerMoveInfo(moveInfo);
-        useToggleFlightLoc.setWorld(null);
+
         // TODO: Confine to minimum activation ticks.
         data.addVelocity(player, cc, 0.0, 0.3, 0.0);
     }

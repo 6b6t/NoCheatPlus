@@ -490,7 +490,7 @@ public class NoFall extends Check {
         final NetData net = pData.getGenericInstance(NetData.class);
         if (net == null) return null;
         DataPacketFlying match = null;
-        for (final DataPacketFlying packet : net.copyFlyingQueue()) {
+        for (final DataPacketFlying packet : net.copyNoFallPackets()) {
             if (packet.isCancelled() || !packet.hasPos
                     || !Double.isFinite(packet.getX()) || !Double.isFinite(packet.getY()) || !Double.isFinite(packet.getZ())
                     || packet.getSequence() <= data.noFallMatchedPacketSequence

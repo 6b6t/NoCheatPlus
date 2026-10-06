@@ -65,7 +65,7 @@ public class TestNoFallMissedBoatContact {
        :new DataPacketFlying(!name.equals("denied-ground"),16,contactY,16,System.currentTimeMillis());
    contact.setSequence(name.equals("future")?3:1);if(name.equals("cancelled"))contact.setCancelled(true);
    DataPacketFlying current=new DataPacketFlying(false,16,targetY,16,System.currentTimeMillis());current.setSequence(2);
-   when(net.copyFlyingQueue()).thenReturn(name.equals("no-current")?new DataPacketFlying[]{contact}:new DataPacketFlying[]{current,contact});
+   when(net.copyNoFallPackets()).thenReturn(name.equals("no-current")?new DataPacketFlying[]{contact}:new DataPacketFlying[]{current,contact});
    if(name.equals("stale"))d.noFallMatchedPacketSequence=1;
    d.noFallMaxY=name.contains("owed-large")?contactY+12:89.30075494462712;
    d.noFallFallDistance=name.contains("owed-large")?12:1.6742046f;
@@ -84,7 +84,7 @@ public class TestNoFallMissedBoatContact {
     // Native movement applies only its actual departure, not the stale Bukkit origin.
     distance[0]+=(float)Math.max(0,contactY-targetY);position[0]=new Location(world,16,targetY,16);
     DataPacketFlying landing=new DataPacketFlying(true,16,81.5625,16,System.currentTimeMillis());landing.setSequence(4);
-    when(net.copyFlyingQueue()).thenReturn(new DataPacketFlying[]{landing});
+    when(net.copyNoFallPackets()).thenReturn(new DataPacketFlying[]{landing});
     TestClientNoFallSequences.move(nf,p,pd,cc,d,trace,targetY,81.5625,true,false);
     distance[0]+=(float)(targetY-81.5625);
     assertEquals("The old geometric debt must not inflate native 3 to 4",3,NoFall.getDamage(distance[0]),0);

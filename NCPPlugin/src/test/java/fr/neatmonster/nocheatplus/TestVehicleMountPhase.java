@@ -21,8 +21,8 @@ public class TestVehicleMountPhase {
   when(vehicle.getLocation(any(Location.class))).thenAnswer(x->{Location l=x.getArgument(0);l.setWorld(world);l.setY(87.3);return l;});
   when(player.getLocation(any(Location.class))).thenAnswer(x->{Location l=x.getArgument(0);l.setWorld(world);l.setY(88.5);return l;});
   TestClientNoFallSequences.field(checks,VehicleChecks.class,"aux",aux);
-  TestClientNoFallSequences.field(checks,VehicleChecks.class,"useLocVehicleEnter",new Location(null,0,0,0));
-  TestClientNoFallSequences.field(checks,VehicleChecks.class,"useLocEnter",new Location(null,0,0,0));
+  when(vehicle.getLocation()).thenReturn(new Location(world,0,87.3,0));
+  when(player.getLocation()).thenReturn(new Location(world,0,88.5,0));
   DefaultSetBackStorage backs=mock(DefaultSetBackStorage.class);TestClientNoFallSequences.field(d,MovingData.class,"vehicleSetBacks",backs);
   d.sfJumpPhase=14;d.isVehicleSetBack=correction;
   Method m=VehicleChecks.class.getDeclaredMethod("dataOnVehicleEnter",Player.class,Entity.class,MovingData.class,IPlayerData.class);m.setAccessible(true);m.invoke(checks,player,vehicle,d,pd);
