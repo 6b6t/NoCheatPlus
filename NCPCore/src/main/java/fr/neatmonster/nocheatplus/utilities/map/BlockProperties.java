@@ -4202,7 +4202,9 @@ public class BlockProperties {
         // Might collide.
         final double[] bounds = node.getBounds(access, x, y, z);
         if (bounds == null) {
-            return AlmostBoolean.YES;
+            // Unknown shape: assume ground. But a carpet without bounds has an empty collision shape, like the upper
+            // part of a pale moss carpet (bottom=false). Ground there would let players stand on air.
+            return (flags & BlockFlags.F_CARPET) != 0 ? AlmostBoolean.MAYBE : AlmostBoolean.YES;
         }
 
         if (!collidesBlock(access, minX, minY, minZ, maxX, maxY, maxZ, x, y, z, node, nodeAbove, flags)) {
