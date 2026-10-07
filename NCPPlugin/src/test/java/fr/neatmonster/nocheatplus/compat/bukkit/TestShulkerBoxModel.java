@@ -9,18 +9,22 @@ import static org.mockito.Mockito.when;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Collections;
 
 import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
+import org.bukkit.block.ShulkerBox;
+import org.bukkit.block.data.Directional;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.entity.HumanEntity;
 import org.bukkit.util.BoundingBox;
 import org.junit.Test;
 
 import fr.neatmonster.nocheatplus.compat.bukkit.model.BukkitShulkerBox;
 
 /**
- * The shulker box shape is the box plus the lid as far as it is really out (the block's bounding box), also while
- * the lid opens or closes. Fully open and closed are as before.
+ * Upward lids retain the staged viewer model; sideways/downward lids follow physical bounds.
  */
 public class TestShulkerBoxModel {
 
@@ -60,46 +64,79 @@ public class TestShulkerBoxModel {
     }
 
     private static double[] shape(final BoundingBox box) {
+        return shape(box, BlockFace.NORTH, false);
+    }
+
+    private static double[] shape(final BoundingBox box, final BlockFace face, final boolean viewed) {
         final World world = mock(World.class);
         final Block block = mock(Block.class);
         when(world.getBlockAt(10, 64, 20)).thenReturn(block);
+        final Directional data = mock(Directional.class);
+        when(block.getBlockData()).thenReturn(data);
+        when(data.getFacing()).thenReturn(face);
         when(block.getBoundingBox()).thenReturn(box);
+        if (face == BlockFace.UP) {
+            final ShulkerBox state = mock(ShulkerBox.class);
+            final Inventory inventory = mock(Inventory.class);
+            when(block.getState()).thenReturn(state);
+            when(state.getInventory()).thenReturn(inventory);
+            when(inventory.getViewers()).thenReturn(viewed
+                    ? Collections.singletonList(mock(HumanEntity.class)) : Collections.emptyList());
+        }
         final double[] shape = new BukkitShulkerBox().getShape(null, world, 10, 64, 20);
-        // The real shape comes from the bounding box; the viewers (block state) aren't looked at.
-        verify(block, never()).getState();
+        if (face == BlockFace.UP) {
+            verify(block, never()).getBoundingBox();
+        } else {
+            verify(block, never()).getState();
+        }
         return shape;
     }
 
     @Test
     public void closedIsAFullBlock() {
         for (final BlockFace face : FACES) {
-            assertArrayEquals(face.name(), new double[] {0, 0, 0, 1, 1, 1}, shape(vanillaBox(10, 64, 20, face, 0.0)), 0.0);
+            assertArrayEquals(face.name(), new double[] {0, 0, 0, 1, 1, 1}, shape(vanillaBox(10, 64, 20, face, 0.0), face, false), 0.0);
         }
     }
 
     @Test
     public void fullyOpenIsTheOpenShapeAsBefore() {
         // Same shapes as the old viewer-based model returned for an open box.
-        assertArrayEquals(new double[] {0, 0, 0, 1, 1.5, 1}, shape(vanillaBox(10, 64, 20, BlockFace.UP, 0.5)), 1e-9);
-        assertArrayEquals(new double[] {0, -0.5, 0, 1, 1, 1}, shape(vanillaBox(10, 64, 20, BlockFace.DOWN, 0.5)), 1e-9);
-        assertArrayEquals(new double[] {0, 0, -0.5, 1, 1, 1}, shape(vanillaBox(10, 64, 20, BlockFace.NORTH, 0.5)), 1e-9);
-        assertArrayEquals(new double[] {0, 0, 0, 1, 1, 1.5}, shape(vanillaBox(10, 64, 20, BlockFace.SOUTH, 0.5)), 1e-9);
-        assertArrayEquals(new double[] {-0.5, 0, 0, 1, 1, 1}, shape(vanillaBox(10, 64, 20, BlockFace.WEST, 0.5)), 1e-9);
-        assertArrayEquals(new double[] {0, 0, 0, 1.5, 1, 1}, shape(vanillaBox(10, 64, 20, BlockFace.EAST, 0.5)), 1e-9);
+        assertArrayEquals(new double[] {0, 0, 0, 1, 1.5, 1}, shape(vanillaBox(10, 64, 20, BlockFace.UP, 0.5), BlockFace.UP, true), 1e-9);
+        assertArrayEquals(new double[] {0, -0.5, 0, 1, 1, 1}, shape(vanillaBox(10, 64, 20, BlockFace.DOWN, 0.5), BlockFace.DOWN, true), 1e-9);
+        assertArrayEquals(new double[] {0, 0, -0.5, 1, 1, 1}, shape(vanillaBox(10, 64, 20, BlockFace.NORTH, 0.5), BlockFace.NORTH, true), 1e-9);
+        assertArrayEquals(new double[] {0, 0, 0, 1, 1, 1.5}, shape(vanillaBox(10, 64, 20, BlockFace.SOUTH, 0.5), BlockFace.SOUTH, true), 1e-9);
+        assertArrayEquals(new double[] {-0.5, 0, 0, 1, 1, 1}, shape(vanillaBox(10, 64, 20, BlockFace.WEST, 0.5), BlockFace.WEST, true), 1e-9);
+        assertArrayEquals(new double[] {0, 0, 0, 1.5, 1, 1}, shape(vanillaBox(10, 64, 20, BlockFace.EAST, 0.5), BlockFace.EAST, true), 1e-9);
     }
 
     @Test
     public void partialOpeningAndClosingFollowTheRealLid() {
-        // Every server tick of an open and a close, all six orientations: the lid exactly as far as it is out,
+        // Every server tick of an open and a close, sideways/downward: the lid exactly as far as it is out,
         // never the fully open shape.
         final List<Double> lids = animation();
         assertEquals(18, lids.size());
         for (final BlockFace face : FACES) {
+            if (face == BlockFace.UP) continue;
             for (int i = 0; i < lids.size(); i++) {
                 final double lid = lids.get(i);
                 final String what = face + (i < 9 ? " opening" : " closing") + " lid " + lid;
-                assertArrayEquals(what, expected(face, lid), shape(vanillaBox(10, 64, 20, face, lid)), 1e-6);
+                assertArrayEquals(what, expected(face, lid), shape(vanillaBox(10, 64, 20, face, lid), face, false), 1e-6);
             }
+        }
+    }
+
+    @Test
+    public void upwardOpeningAndClosingRetainStagedViewerBehavior() {
+        final List<Double> lids = animation();
+        lids.add(0.0);
+        lids.add(0.5);
+        for (final double lid : lids) {
+            final BoundingBox box = vanillaBox(10, 64, 20, BlockFace.UP, lid);
+            // Viewer present: full height immediately, even when the physical lid has barely opened.
+            assertArrayEquals(expected(BlockFace.UP, 0.5), shape(box, BlockFace.UP, true), 0.0);
+            // Last viewer gone: closed immediately, including every remaining closing-animation tick.
+            assertArrayEquals(expected(BlockFace.UP, 0.0), shape(box, BlockFace.UP, false), 0.0);
         }
     }
 

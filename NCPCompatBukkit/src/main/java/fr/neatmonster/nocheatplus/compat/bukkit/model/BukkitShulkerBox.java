@@ -40,23 +40,22 @@ public class BukkitShulkerBox implements BukkitShapeModel {
             final World world, final int x, final int y, final int z) {
 
         final Block block = world.getBlockAt(x, y, z);
-        if (Bridge1_13.hasBoundingBox()) {
-            // The block's shape is the box plus the lid as far as it is out right now, also while it opens or
-            // closes (vanilla ShulkerBoxBlock.getShape). Ground and collision follow only that real lid.
+        BlockFace face = BlockFace.UP;
+        final BlockData blockData = block.getBlockData();
+        if (blockData instanceof Directional) {
+            face = ((Directional) blockData).getFacing();
+        }
+        if (face != BlockFace.UP && Bridge1_13.hasBoundingBox()) {
+            // Sideways and downward lids follow their physical opening/closing bounds.
             return lidShape(block.getBoundingBox(), x, y, z);
         }
-        // Servers without the bounding box API: as before, the fully open shape while someone views the box.
+        // Upward lids retain staged v4 viewer-based behavior, as does the legacy API fallback.
         final BlockState state = block.getState();
         if (!(state instanceof ShulkerBox)) {
             return FULL_BLOCK;
         }
         if (((ShulkerBox) state).getInventory().getViewers().isEmpty()) {
             return FULL_BLOCK;
-        }
-        BlockFace face = BlockFace.UP;
-        final BlockData blockData = block.getBlockData();
-        if (blockData instanceof Directional) {
-            face = ((Directional) blockData).getFacing();
         }
         switch (face) {
             case DOWN:
