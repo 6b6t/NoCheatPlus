@@ -1079,7 +1079,7 @@ catch (java.lang.Throwable thr) {}
             data.clearNoFallData();
             data.clearGlideDebt();
         } else if (!Bridge1_9.isGlidingWithElytra(player)) {
-            noFall.stopGlide(player, data);
+            NoFall.stopGlide(player, data, thisMove.yDistance);
         }
     
 
