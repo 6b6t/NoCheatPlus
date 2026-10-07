@@ -1079,7 +1079,10 @@ catch (java.lang.Throwable thr) {}
             data.clearNoFallData();
             data.clearGlideDebt();
         } else if (!Bridge1_9.isGlidingWithElytra(player)) {
-            NoFall.stopGlide(player, data, thisMove.yDistance);
+            NoFall.beginMove(thisMove, data, pData);
+            // A move that ends on support (block or entity top) was cut short there.
+            NoFall.stopGlide(player, data, thisMove.yDistance, thisMove.to.onGround
+                    || pTo.isOnGround(0.00001) || pTo.standsOnEntityContact(0.00001, 0, 0));
         }
     
 
@@ -2980,6 +2983,16 @@ catch (java.lang.Throwable thr) {}
                 }
             }
         } catch (RuntimeException foreignOrUnavailableShape) { return Double.NaN; }
+        if (requireNativeCollision && !Double.isNaN(top)
+                && (data.noFallGlideEstablished || Bridge1_9.isGlidingWithElytra(player))) {
+            // While gliding the server simulates the glide itself every tick
+            // (tickPlayer: travel, then the position is restored); near the
+            // ground that simulation collides, not the client. Native then
+            // applies its glide limit at the next tick. Not a landing: keep it
+            // as evidence for the client's next move (NoFall reversal check).
+            NoFall.onGlideShadowContact(data);
+            return Double.NaN;
+        }
         return top;
     }
 
@@ -3032,6 +3045,7 @@ catch (java.lang.Throwable thr) {}
             // accepted geometric descent. A missed contact followed by a real
             // jump is one owed landing, not a cumulative charge for that jump.
             final double contactY = Double.isNaN(swept) ? feet.getY() : swept;
+            NoFall.onGlideContact(player, data, contactY, Double.NaN);
             final float debt = Math.max(NoFall.retainedNativeResetDebt(data),
                     (float)Math.max(0.0, data.noFallMaxY - contactY));
             if (processed.onGround && player.getFallDistance() <= 0f
@@ -3146,6 +3160,9 @@ catch (java.lang.Throwable thr) {}
                     return;
                 }
                 final double contactY = Double.isNaN(swept) ? player.getLocation().getY() : swept;
+                // A glide landing: native's glide limit, if it applied since the
+                // last move, consumed the descent before this contact.
+                NoFall.onGlideContact(player, data, contactY, Double.NaN);
                 if (!Double.isNaN(swept)) data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt,
                         (float)NoFall.getApplicableFallHeight(player, swept, data));
                 else if (player.getFallDistance() <= 0f && NoFall.retainedNativeResetDebt(data) <= 0f) {
@@ -3211,6 +3228,7 @@ catch (java.lang.Throwable thr) {}
         // Callers prove support. A pending confirmation is settled first: a
         // consumed landing is not charged again, an unconsumed one is owed here.
         NoFall.resolveHandoff(player, data, true);
+        NoFall.onGlideContact(player, data, y, Double.NaN);
         final float nativeDistance = player.getFallDistance();
         final float cancelledDebt = NoFall.retainedNativeResetDebt(data);
         final float distance = Math.max(Math.max(nativeDistance, cancelledDebt),

@@ -246,6 +246,13 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public boolean noFallGlideEstablished = false;
     public int noFallGlideAccountingTick = Integer.MIN_VALUE;
     public boolean noFallGlideLimitPending;
+    /** Native distance was at least one at the last accounted glide move and
+     * stayed above one after its packet (no upward reset): only the native glide
+     * limit can make it exactly one before the next move. */
+    public boolean noFallGlideNativeAbove;
+    /** The server's own glide simulation met a surface just below the accepted
+     * position since the last accounted move (not the client's contact). */
+    public boolean noFallGlideShadowContact;
 
     /** Drop native-glide transition state and any legacy snapshot debt. */
     public void clearGlideDebt() {
@@ -254,7 +261,16 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         noFallGlideEstablished = false;
         noFallGlideAccountingTick = Integer.MIN_VALUE;
         noFallGlideLimitPending = false;
+        noFallGlideNativeAbove = false;
+        noFallGlideShadowContact = false;
     }
+
+    /** Received position packets the move being processed spans (0: unknown). */
+    public int noFallMovePackets;
+    /** The last move NoFall matched to a received packet: received packets it
+     * spanned (0: unknown) and its endpoint. */
+    public int noFallLastMovePackets;
+    public double noFallLastMoveX = Double.NaN, noFallLastMoveY = Double.NaN, noFallLastMoveZ = Double.NaN;
 
     // *----------Data of the SurvivalFly check----------*
     /** Default lift-off envelope, used after resetting. <br> TODO: Test, might be better ground. */
@@ -624,6 +640,9 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      */
     public void onPlayerLeave() {
         noFallMatchedPacketSequence = 0L;
+        noFallMovePackets = 0;
+        noFallLastMovePackets = 0;
+        noFallLastMoveX = noFallLastMoveY = noFallLastMoveZ = Double.NaN;
         invalidateNativeLandingTask();
         noFallGeneration++;
         noFallCancelledAirFallDebt = 0f;
