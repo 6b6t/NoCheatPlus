@@ -19,6 +19,7 @@ import fr.neatmonster.nocheatplus.checks.moving.player.NoFall;
 import fr.neatmonster.nocheatplus.compat.Bridge1_9;
 import fr.neatmonster.nocheatplus.compat.versions.ServerVersion;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
+import fr.neatmonster.nocheatplus.checks.moving.velocity.SimpleAxisVelocity;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.SimpleEntry;
 
 /**
@@ -42,7 +43,8 @@ public class TestNoFallGlideReversal {
             // point (11.85 = 8) plus nothing of the last 0.15 block: 8 or 9, never 0.
             {"vanilla-landing", 9, 9}, {"native-race-landing", 9, 9},
             {"LB/PacketJump-jitter", 8, 9}, {"LB/SpoofLanding-jitter", 8, 9}, {"LB/SpoofLanding-glide-stop", 8, 9},
-            {"legit-pull-up", 0, 0}, {"rocket-reversal", 0, 0}, {"knockback-reversal", 0, 0}, {"checkpoint-restore", 0, 0},
+            {"legit-pull-up", 0, 0}, {"rocket-reversal", 0, 0}, {"knockback-reversal", 0, 0}, {"knockback-queued", 0, 0},
+            {"checkpoint-restore", 0, 0},
         });
     }
 
@@ -101,6 +103,13 @@ public class TestNoFallGlideReversal {
             nf = mock(NoFall.class, CALLS_REAL_METHODS); cc = mock(MovingConfig.class); pd = mock(IPlayerData.class);
             trace = mock(MoveTrace.class); TestClientNoFallSequences.field(d, MovingData.class, "playerMoves", trace);
             d.clearWindChargeImpulse(); // field initialisers do not run on this mock
+            // As on the server: the previous landing's fly-check transition
+            // (MovingListener.workaroundFlyCheckTransition) queued its own entries,
+            // still valid during this dive (20 moves / 140 ticks; f7M-dbg-pj-1 r1).
+            SimpleAxisVelocity axis = new SimpleAxisVelocity();
+            axis.add(new SimpleEntry(0, -1.25, 20)); axis.add(new SimpleEntry(0, 0.0, 20));
+            if (name.equals("knockback-queued")) axis.add(new SimpleEntry(0, 0.4, 20));
+            TestClientNoFallSequences.field(d, MovingData.class, "verVel", axis);
             bridge.when(() -> Bridge1_9.isGlidingWithElytra(p)).thenAnswer(c -> gliding[0]);
             when(p.getLocation()).thenAnswer(c -> new Location(w, 16, pos[0], 16));
             when(p.getFallDistance()).thenAnswer(c -> fd[0]);
@@ -168,6 +177,7 @@ public class TestNoFallGlideReversal {
                 case "legit-pull-up":
                 case "rocket-reversal":
                 case "knockback-reversal":
+                case "knockback-queued":
                 case "checkpoint-restore": {
                     double[] path;
                     if (name.equals("legit-pull-up")) {
