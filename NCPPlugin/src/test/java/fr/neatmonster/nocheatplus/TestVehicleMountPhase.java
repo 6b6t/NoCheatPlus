@@ -24,6 +24,8 @@ public class TestVehicleMountPhase {
   when(vehicle.getLocation()).thenReturn(new Location(world,0,87.3,0));
   when(player.getLocation()).thenReturn(new Location(world,0,88.5,0));
   DefaultSetBackStorage backs=mock(DefaultSetBackStorage.class);TestClientNoFallSequences.field(d,MovingData.class,"vehicleSetBacks",backs);
+  // Elytra v3 ends its unequip window on vehicle enter; a constructor-less mock needs that (final) state.
+  TestClientNoFallSequences.field(d,MovingData.class,"elytraResidual",new ElytraResidual.State());
   d.sfJumpPhase=14;d.isVehicleSetBack=correction;
   Method m=VehicleChecks.class.getDeclaredMethod("dataOnVehicleEnter",Player.class,Entity.class,MovingData.class,IPlayerData.class);m.setAccessible(true);m.invoke(checks,player,vehicle,d,pd);
   assertEquals(phase,d.sfJumpPhase);verify(aux).resetVehiclePositions(eq(vehicle),any(Location.class),eq(d),eq(cc));

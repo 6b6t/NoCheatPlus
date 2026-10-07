@@ -33,6 +33,7 @@ import fr.neatmonster.nocheatplus.checks.Check;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.ViolationData;
 import fr.neatmonster.nocheatplus.checks.combined.Improbable;
+import fr.neatmonster.nocheatplus.checks.moving.ElytraResidual;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LostGround;
@@ -445,6 +446,25 @@ public class SurvivalFly extends Check {
                 vAllowedDistance = blockMoveResult[0];
                 vDistanceAboveLimit = blockMoveResult[1];
             }
+        }
+
+
+
+        // Elytra unequip: the client may still glide until it gets the equipment
+        // change, then coasts with air drag and gravity. Inside that window the
+        // move is accepted; ground, liquid, climbable or any move outside the
+        // window ends it and the move is judged as a normal survival move. So does an
+        // elytra back in the chest slot, gliding or not.
+        if (ElytraResidual.allow(data.elytraResidual, hDistance, yDistance, to.getPitch(),
+                fromOnGround || toOnGround, from.isResetCond() || to.isResetCond(),
+                data.elytraResidual.open && Bridge1_9.isWearingElytra(player))) {
+            hDistanceAboveLimit = 0.0;
+            vDistanceAboveLimit = 0.0;
+            context.tags.remove("hspeed");
+            context.tags.remove("vdistrel");
+            context.tags.add("elytra_residual");
+            // Same as an accepted CreativeFly glide: the last allowed position is the set back.
+            data.setSetBack(to);
         }
 
 

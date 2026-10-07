@@ -212,6 +212,12 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public int fireworksBoostDuration = 0;
     /** This firework boost tick needs to be checked. Aimed at solving vanilla bugs when boosting with elytra. */
     public int fireworksBoostTickNeedCheck = 0;
+    /**
+     * Short window after an elytra is unequipped mid-glide (see {@link ElytraResidual}).
+     * In memory only. clearFlyData, onSetBack, prepareSetBack and onPlayerLeave
+     * close it but keep the re-arm count.
+     */
+    public final ElytraResidual.State elytraResidual = new ElytraResidual.State();
     /** Expire at this tick. */
     public int fireworksBoostTickExpire = 0;
 
@@ -441,6 +447,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         momentumTick = 0;
         liqtick = 0;
         insideBubbleStreamCount = 0;
+        ElytraResidual.end(elytraResidual);
     }
 
 
@@ -453,6 +460,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * @param setBack
      */
     public void onSetBack(final PlayerLocation setBack) {
+        // A correction must not keep residual glide credit.
+        ElytraResidual.end(elytraResidual);
         // Reset positions (a teleport should follow, though).
         this.morePacketsSetback = null;
         clearAccounting(); // Might be more safe to do this.
@@ -493,6 +502,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Move event: Mildly reset some data, prepare setting a new to-Location.
      */
     public void prepareSetBack(final Location loc) {
+        // A correction must not keep residual glide credit.
+        ElytraResidual.end(elytraResidual);
         playerMoves.invalidate();
         vehicleMoves.invalidate();
         clearAccounting();
@@ -618,6 +629,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         noFallCancelledAirFallDebt = 0f;
         noFallSetBackFallDebt = 0f;
         noFallContactFallDebt = 0f;
+        // Player data outlives a logout: no residual glide credit into the next session.
+        ElytraResidual.end(elytraResidual);
         resetSetBackTeleport();
         removeAllPlayerSpeedModifiers();
         trace.reset();
@@ -645,6 +658,9 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Invalidate all past moves data (player).
      */
     private void resetPlayerPositions() {
+        // Every reset of the player's move history (teleport, set back, vehicle, join)
+        // also ends residual glide credit; its last move no longer applies.
+        ElytraResidual.end(elytraResidual);
         playerMoves.invalidate();
         sfZeroVdistRepeat = 0;
         sfDirty = false;
