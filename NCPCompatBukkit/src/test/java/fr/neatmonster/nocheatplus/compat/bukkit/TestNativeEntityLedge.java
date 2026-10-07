@@ -21,6 +21,10 @@ import fr.neatmonster.nocheatplus.compat.versions.ServerVersion;
 public class TestNativeEntityLedge {
     static final double TOP = 64.5625;
 
+    @org.junit.BeforeClass public static void initializeLegacyClassifier() {
+        TestNativeEntityOwnership.initializeLegacyClassifier();
+    }
+
     @Test public void noLedgeBesideRaftsOrBoats() {
         String old = ServerVersion.getMinecraftVersion(); ServerVersion.setMinecraftVersion("26.2");
         try (var folia = mockStatic(Folia.class); var nat = mockStatic(NativeLandingAccess.class)) {
