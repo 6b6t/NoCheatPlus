@@ -45,6 +45,11 @@ public class TestNoFallHandoffSettlement {
         return Arrays.asList(new Object[][] {
             // P1 #1: landing processed by native, then an immediate jump, both task orders.
             {"immunity/probe-then-jump", 0}, {"immunity/jump-then-probe", 0},
+            // No event and no reason for a silent landing: not processed, still owed.
+            {"silent-without-cooldown/jump-then-probe", 8},
+            // Reverted, then our own untracked-move correction puts the player back on the contact
+            // before any settlement (lab f6C-lat-pj r4, 80+-40 ms relay): native zero there is no proof.
+            {"reverted/setback-to-contact", 8},
             {"fall-event/jump-then-probe", 8}, {"cancelled-event/jump-then-probe", 0},
             {"reverted/jump-then-probe", 8}, {"reverted/probe-then-land", 8},
             {"moved-contact/jump-then-probe", 8}, {"teleported/jump-then-probe", 0},
@@ -70,6 +75,7 @@ public class TestNoFallHandoffSettlement {
     PlayerLocation support = mock(PlayerLocation.class); World world = mock(World.class);
     Map<NamespacedKey, Object> pdc = new HashMap<>();
     float[] fd = {0}; double[] x = {16.5}, y = {ARC}; boolean[] ground = {false}, owned = {true}, gliding = {false};
+    int[] cooldown = {0}; double[] lastHurt = {0};
     int[] tick = {100}; double damage = 0; int dispatched = 0;
     AtomicReference<Consumer<Object>> task = new AtomicReference<>(); AtomicReference<Runnable> retired = new AtomicReference<>();
     Method queue, finish, join;
@@ -85,6 +91,9 @@ public class TestNoFallHandoffSettlement {
         when(p.getLocation()).thenAnswer(c -> new Location(world, x[0], y[0], 16.5));
         when(p.getVelocity()).thenAnswer(c -> new org.bukkit.util.Vector(0, gliding[0] ? -0.155 : -0.0784, 0));
         when(p.getTicksLived()).thenAnswer(c -> tick[0]);
+        when(p.getNoDamageTicks()).thenAnswer(c -> cooldown[0]);
+        when(p.getMaximumNoDamageTicks()).thenReturn(20);
+        when(p.getLastDamage()).thenAnswer(c -> lastHurt[0]);
         when(p.getBoundingBox()).thenAnswer(c -> new org.bukkit.util.BoundingBox(x[0] - 0.3, y[0], 16.2, x[0] + 0.3, y[0] + 1.8, 16.8));
         when(world.getKey()).thenReturn(NamespacedKey.minecraft("overworld"));
         PersistentDataContainer container = mock(PersistentDataContainer.class);
@@ -195,8 +204,13 @@ public class TestNoFallHandoffSettlement {
 
             // Gliding descent; a spoofed ground state erased native distance.
             d.noFallMaxY = TOP; d.noFallFallDistance = 11.408991f; fd[0] = 0f; y[0] = ARC;
+            if (name.startsWith("immunity") || name.contains("consumed")) {
+                // Hit just before (e.g. by 9): LivingEntity.hurtServer skips the FALL event of an 8.
+                cooldown[0] = 19; lastHurt[0] = 9;
+            }
             final boolean reverted = name.contains("reverted") || name.startsWith("moved-contact");
             final String landing = name.startsWith("fall-event") ? "event" : name.startsWith("cancelled-event") ? "cancelled" : "immune";
+            // silent-without-cooldown: modelled as 'immune' (no event, FD reset) although nothing can make it silent.
             // The landing packet: NCP restores the accepted distance for native processing.
             PlayerMoveData m = new PlayerMoveData(); m.from.setLocation("world", x[0], ARC, 16.5, 0, 0);
             m.to.setLocation("world", x[0], PAD, 16.5, 0, 0); m.toIsValid = true; m.yDistance = PAD - ARC; m.to.onGround = true;
@@ -214,6 +228,7 @@ public class TestNoFallHandoffSettlement {
                 // the arc); the next tick's glide limit capped native distance.
                 y[0] = ARC; ground[0] = false; fd[0] = name.endsWith("fd1") ? 1f : 0f;
                 if (name.startsWith("moved-contact")) { y[0] = PAD; x[0] += 2.0; ground[0] = true; fd[0] = 0f; }
+                if (name.endsWith("setback-to-contact")) { y[0] = PAD; ground[0] = true; fd[0] = 0f; }
             } else {
                 y[0] = ARC; nativeMove(ARC, PAD, true, landing);
                 if (name.startsWith("teleported")) {
@@ -270,6 +285,9 @@ public class TestNoFallHandoffSettlement {
                     move(y[0], y[0] + 0.42, true, false, null); probe();
                     move(y[0], y[0] - 0.42, false, true, "event"); probe(); probe();
                 }
+            } else if (name.endsWith("setback-to-contact")) {
+                probe(); // On the contact, native zero, no event: still owed and charged here.
+                move(PAD, 81.42, true, false, null); move(81.42, PAD, false, true, "event"); probe(); probe();
             } else if (name.endsWith("probe-then-land")) {
                 probe();
                 move(ARC, PAD, false, true, "event"); probe(); probe();

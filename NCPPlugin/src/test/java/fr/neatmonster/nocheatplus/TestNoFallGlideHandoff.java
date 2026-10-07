@@ -85,6 +85,11 @@ public class TestNoFallGlideHandoff {
    }
    // Gliding descent from 92.5626; the server jump at the +1e-9 packet reset native FD.
    d.noFallMaxY=92.5626270431092;d.noFallFallDistance=11.408991f;fd[0]=0f;at[0]=new Location(world,16,top,16);
+   if(name.equals("native-consumed-control")){
+    // Fix-6: only a landing native can process silently is consumed by native zero.
+    // Damage cooldown (hit by 9 just before): hurtServer skips the FALL event of an 8.
+    when(p.getNoDamageTicks()).thenReturn(19);when(p.getMaximumNoDamageTicks()).thenReturn(20);when(p.getLastDamage()).thenReturn(9.0);
+   }
    TestClientNoFallSequences.move(nf,p,pd,cc,d,trace,top,81.0,true,false);
    assertEquals("The landing packet gets the accepted distance",11.4089,fd[0],1e-3);
    queue.invoke(listener,p,d,cc,pd);

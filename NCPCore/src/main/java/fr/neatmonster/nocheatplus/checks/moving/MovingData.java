@@ -782,9 +782,13 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      */
     public float noFallHandoffDistance;
     public double noFallHandoffX, noFallHandoffY, noFallHandoffZ;
+    /** Native may process this landing without a FALL event (damage cooldown,
+     * invulnerability, zero native damage); otherwise only its event consumes it. */
+    public boolean noFallHandoffSilent;
 
     public void clearNoFallHandoff() {
         noFallHandoffDistance = 0f;
+        noFallHandoffSilent = false;
     }
 
     /** Clear the fall check and invalidate callbacks for the previous descent. */

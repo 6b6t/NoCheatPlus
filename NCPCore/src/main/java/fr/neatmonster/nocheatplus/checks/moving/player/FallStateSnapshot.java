@@ -76,7 +76,8 @@ public final class FallStateSnapshot {
                         Double.doubleToRawLongBits(handoff ? data.noFallHandoffDistance : 0.0),
                         Double.doubleToRawLongBits(handoff ? data.noFallHandoffX : 0.0),
                         Double.doubleToRawLongBits(handoff ? data.noFallHandoffY : 0.0),
-                        Double.doubleToRawLongBits(handoff ? data.noFallHandoffZ : 0.0)});
+                        Double.doubleToRawLongBits(handoff ? data.noFallHandoffZ : 0.0),
+                        Double.doubleToRawLongBits(handoff && data.noFallHandoffSilent ? 1.0 : 0.0)});
     }
 
     public static void restore(Player player, MovingData data) {
@@ -97,9 +98,10 @@ public final class FallStateSnapshot {
         double[] state = bits == null ? null : java.util.stream.LongStream.of(bits).mapToDouble(Double::longBitsToDouble).toArray();
         Location current = player.getLocation();
         if (state == null) return;
-        // v5 = v4 plus the pending landing confirmation (distance and contact).
-        final boolean v5 = state.length == 18 && state[12] == 5.0 && validDebt(state[14])
-                && validCoordinate(state[15]) && validCoordinate(state[16]) && validCoordinate(state[17]);
+        // v5 = v4 plus the pending landing confirmation (distance, contact, may native process it silently).
+        final boolean v5 = state.length == 19 && state[12] == 5.0 && validDebt(state[14])
+                && validCoordinate(state[15]) && validCoordinate(state[16]) && validCoordinate(state[17])
+                && (state[18] == 0.0 || state[18] == 1.0);
         final boolean limit = (state.length == 14 && state[12] == 4.0 || v5) && (state[13] == 0.0 || state[13] == 1.0);
         final boolean migration = limit || state.length == 13 && state[12] == 3.0;
         final boolean explicit = state.length == 12 || migration;
@@ -162,6 +164,7 @@ public final class FallStateSnapshot {
             data.noFallHandoffX = state[15];
             data.noFallHandoffY = state[16];
             data.noFallHandoffZ = state[17];
+            data.noFallHandoffSilent = state[18] == 1.0;
         }
     }
 
