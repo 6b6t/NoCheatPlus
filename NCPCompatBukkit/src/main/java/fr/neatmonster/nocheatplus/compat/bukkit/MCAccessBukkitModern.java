@@ -366,7 +366,12 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         }
 
         // Shulker boxes.
+        // The model follows the real lid (also while it opens or closes). XZ100 would cut off the lid of sideways
+        // ones; shulker boxes have no HEIGHT100, so the direction checks never saw them as full blocks anyway.
+        // No F_GROUND_HEIGHT (PR #3 had it): with it, feet anywhere inside the shape count as ground, also flush
+        // against the side of a closed box (spider on shulker walls).
         for (final Material mat : MaterialUtil.SHULKER_BOXES) {
+            BlockFlags.removeFlags(mat, BlockFlags.F_XZ100);
             addModel(mat, MODEL_SHULKER_BOX);
         }
 
