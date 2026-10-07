@@ -3006,6 +3006,13 @@ catch (java.lang.Throwable thr) {}
     /** Close a missing native contact before a queued jump can leave its support. */
     private void finishNativeLandingBeforeDeparture(final Player player, final PlayerLocation from,
             final MovingData data, final MovingConfig cc, final IPlayerData pData) {
+        if (data.noFallHandoffDistance > 0f) {
+            // This move can arrive before the owner probe (packet burst).
+            // Native has processed the restored landing packet by now: settle
+            // the pending confirmation first, so a landing native consumed
+            // without a FALL event (damage immunity) is never charged again.
+            NoFall.resolveHandoff(player, data, supportedAtCurrentPosition(player, data));
+        }
         if (!data.noFallNativeLandingTaskPending
                 || data.noFallNativeLandingGeneration != data.noFallGeneration
                 || cc.noFallDealDamage || player.isInsideVehicle()
@@ -3030,7 +3037,7 @@ catch (java.lang.Throwable thr) {}
             final MovingConfig cc, final IPlayerData pData) {
         if (cc.noFallDealDamage || ServerVersion.compareMinecraftVersion("26.1") < 0
                 || Math.max(Math.max(player.getFallDistance(), data.noFallFallDistance),
-                        NoFall.retainedNativeResetDebt(data)) <= 0f
+                        Math.max(NoFall.retainedNativeResetDebt(data), data.noFallHandoffDistance)) <= 0f
                 || Bukkit.getServer() == null) return;
         data.noFallNativeLandingGeneration = data.noFallGeneration;
         if (data.noFallNativeLandingTaskPending) return;
@@ -3073,16 +3080,10 @@ catch (java.lang.Throwable thr) {}
                 }
                 final double swept = nativeSweptBlockContactY(player, data);
                 final boolean supported = info.from.isOnGround(0.00001) || entitySupportsFeet(player, false) || !Double.isNaN(swept);
-                if (data.noFallHandoffDistance > 0f) {
-                    // First probe after a restored landing: only a native zero at
-                    // that same support proves it was processed. A reverted landing
-                    // (still airborne, or distance never reset) remains owed.
-                    final float handoff = data.noFallHandoffDistance;
-                    final boolean consumed = supported && player.getFallDistance() <= 0f
-                            && Math.abs(player.getLocation().getY() - data.noFallHandoffY) <= 1.0e-7;
-                    data.noFallHandoffDistance = 0f;
-                    if (!consumed) data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt, handoff);
-                }
+                // First probe after a restored landing: only a native zero at
+                // that same support proves it was processed. A reverted landing
+                // (still airborne, or distance never reset) remains owed.
+                NoFall.resolveHandoff(player, data, supported);
                 if (!supported) {
                     // A tiny post-contact hop can be below Bukkit's movement
                     // threshold in both directions. Its accepted false-ground
@@ -3133,7 +3134,40 @@ catch (java.lang.Throwable thr) {}
         if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
     }
 
+    /** The owner probe's support test, at the player's current position. */
+    private boolean supportedAtCurrentPosition(final Player player, final MovingData data) {
+        final PlayerMoveInfo info = aux.usePlayerMoveInfo();
+        try {
+            info.set(player, player.getLocation(), null, 0.00001);
+            info.from.collectBlockFlags(0.00001);
+            return info.from.isOnGround(0.00001) || entitySupportsFeet(player, false)
+                    || !Double.isNaN(nativeSweptBlockContactY(player, data));
+        } finally {
+            aux.returnPlayerMoveInfo(info);
+        }
+    }
+
+    /** A worker departure retires the owner probe. Settle a pending landing
+     * confirmation with this owner's final native state, and refresh only an
+     * existing checkpoint (a reset checkpoint must stay reset). If settling is
+     * not possible here, the checkpoint carries it to the next owner. */
+    private void settleNoFallHandoffOnLeave(final Player player, final MovingData data) {
+        if (!(data.noFallHandoffDistance > 0f)) return;
+        try {
+            if (!Folia.isOwnedByCurrentRegion(player)) return;
+            NoFall.resolveHandoff(player, data, supportedAtCurrentPosition(player, data));
+            if (Folia.isFoliaServer() && FallStateSnapshot.exists(player)) {
+                FallStateSnapshot.save(player, data, player.getLocation());
+            }
+        } catch (RuntimeException unavailable) {
+            // Keep whatever the checkpoint holds.
+        }
+    }
+
     private void completeNativeLanding(final Player player, final double y, final MovingData data) {
+        // Callers prove support. A pending confirmation is settled first: a
+        // consumed landing is not charged again, an unconsumed one is owed here.
+        NoFall.resolveHandoff(player, data, true);
         final float nativeDistance = player.getFallDistance();
         final float cancelledDebt = NoFall.retainedNativeResetDebt(data);
         final float distance = Math.max(Math.max(nativeDistance, cancelledDebt),
@@ -3398,6 +3432,7 @@ catch (java.lang.Throwable thr) {}
         }
         // Adjust data.
         survivalFly.setReallySneaking(player, false);
+        settleNoFallHandoffOnLeave(player, data);
         noFall.onLeave(player, data, pData);
         // TODO: Add a method for ordinary presence-change resetting (use in join + leave).
         data.onPlayerLeave();

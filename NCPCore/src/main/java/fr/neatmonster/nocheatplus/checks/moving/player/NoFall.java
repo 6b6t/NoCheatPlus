@@ -388,7 +388,9 @@ public class NoFall extends Check {
         // Debt kept for a native reset this check caused (cancelled airborne
         // FALL event, own set-back, denied contact) is owed at the first
         // contact, also when the move that reaches it starts on that support.
-        final float landingDistance = Math.max(Math.max(retainedNativeResetDebt(data), data.noFallHandoffDistance),
+        // A pending landing confirmation is not owed descent: the movement
+        // listener settles it (resolveHandoff) before this check runs.
+        final float landingDistance = Math.max(retainedNativeResetDebt(data),
                 Math.max(data.noFallFallDistance, (float) (data.noFallMaxY - minY)));
         float noFallFallDistance = landingDistance;
         if (ServerVersion.compareMinecraftVersion("26.1") >= 0) {
@@ -411,16 +413,22 @@ public class NoFall extends Check {
                 restored = true;
             }
         }
-        data.clearNoFallData();
+        data.clearNoFallDescent();
         data.clearGlideDebt();
         if (restored && ServerVersion.compareMinecraftVersion("26.1") >= 0
                 && getDamage(player, landingDistance) >= Magic.FALL_DAMAGE_MINIMUM) {
             // Native distance was reset by something this check did not accept.
             // Restoring it is only a request: native can still revert this
-            // landing packet (tiny upward packet before the contact). The next
-            // owner probe confirms it; a FALL event clears it.
+            // landing packet (tiny upward packet before the contact). The first
+            // owner observation after native processing settles it
+            // (resolveHandoff); a FALL event clears it.
+            final PlayerMoveData move = data.playerMoves.getCurrentMove();
+            final Location at = move != null && move.toIsValid ? null : player.getLocation();
+            final boolean fromContact = at == null && move.to.getY() > move.from.getY();
             data.noFallHandoffDistance = landingDistance;
+            data.noFallHandoffX = at != null ? at.getX() : fromContact ? move.from.getX() : move.to.getX();
             data.noFallHandoffY = minY;
+            data.noFallHandoffZ = at != null ? at.getZ() : fromContact ? move.from.getZ() : move.to.getZ();
         }
         // Force damage on event fire, no need air checking!
         // TODO: Later on use deal damage and override on ground at packet level
@@ -464,11 +472,13 @@ public class NoFall extends Check {
         // Our own set-back removed the downward speed, so the glide limit it
         // then triggers cannot forgive the accepted descent before it.
         final float setBackDebt = data.noFallSetBackFallDebt;
+        // A pending landing confirmation (clearNoFallDescent keeps it) belongs
+        // to a contact before this glide; neither deploy nor limit settles it.
         if (!data.noFallGlideEstablished) {
             // A real deployment starts with native distance. Never resurrect
             // descent from before deployment. Distance native lost to our own
             // cancellation is not resurrected descent; the limit still applies.
-            data.clearNoFallData();
+            data.clearNoFallDescent();
             data.clearGlideDebt();
             data.noFallFallDistance = nativeDistance;
             data.noFallCancelledAirFallDebt = cancelledDebt;
@@ -479,7 +489,7 @@ public class NoFall extends Check {
         final int tick = player.getTicksLived();
         if (tick != data.noFallGlideAccountingTick && data.noFallGlideLimitPending) {
             final float limited = Math.min(1f, Math.max(data.noFallFallDistance, nativeDistance));
-            data.clearNoFallData();
+            data.clearNoFallDescent();
             data.noFallFallDistance = limited;
         } else data.noFallFallDistance = Math.max(data.noFallFallDistance, nativeDistance);
         data.noFallGlideAccountingTick = tick;
@@ -515,7 +525,7 @@ public class NoFall extends Check {
         final float retained = limited ? Math.min(1f, data.noFallFallDistance) : data.noFallFallDistance;
         final float distance = tracked ? Math.max(retained, player.getFallDistance())
                 : Math.max(0f, player.getFallDistance());
-        data.clearNoFallData();
+        data.clearNoFallDescent();
         data.clearGlideDebt();
         data.noFallFallDistance = distance;
         data.noFallMaxY = player.getLocation().getY() + distance;
@@ -533,6 +543,31 @@ public class NoFall extends Check {
         data.noFallFallDistance = distance;
         data.noFallMaxY = target.getY() + distance;
         data.noFallSetBackFallDebt = distance;
+    }
+
+    /**
+     * Settle a restored landing (see adjustFallDistance) before anything uses
+     * it as owed descent. Native zero while the player is still on that same
+     * supported contact proves native processed it, with or without a FALL
+     * event (damage immunity skips the event: LivingEntity.hurtServer). A
+     * reverted landing (still airborne, distance never reset, moved away) is
+     * owed at the next real contact.
+     */
+    public static void resolveHandoff(final Player player, final MovingData data, final boolean supported) {
+        final float handoff = data.noFallHandoffDistance;
+        if (!(handoff > 0f)) return;
+        final Location at = player.getLocation();
+        final boolean consumed = supported && player.getFallDistance() <= 0f
+                && isHandoffContact(data, at.getX(), at.getY(), at.getZ());
+        data.clearNoFallHandoff();
+        if (!consumed) data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt, handoff);
+    }
+
+    /** Same contact: the exact processed height, and no further away than one
+     * sub-event packet (Bukkit fires no move event below 1/16 block). */
+    public static boolean isHandoffContact(final MovingData data, final double x, final double y, final double z) {
+        return Math.abs(y - data.noFallHandoffY) <= 1.0e-7
+                && Math.abs(x - data.noFallHandoffX) <= 0.0625 && Math.abs(z - data.noFallHandoffZ) <= 0.0625;
     }
 
     public static float retainedNativeResetDebt(final MovingData data) {

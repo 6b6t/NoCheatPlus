@@ -757,14 +757,29 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public fr.neatmonster.nocheatplus.checks.net.model.DataPacketFlying noFallBoatGroundStep;
 
 
-    /** Damaging landing restored for native processing, awaiting owner confirmation. */
+    /**
+     * Damaging landing restored for native processing, awaiting proof that
+     * native processed it. Not owed descent by itself: NoFall.resolveHandoff
+     * settles it (consumed, or owed as contact debt) before anything charges
+     * it. Kept through glide transitions and worker checkpoints with its
+     * contact position; only that settlement or an authoritative reset ends it.
+     */
     public float noFallHandoffDistance;
-    public double noFallHandoffY;
+    public double noFallHandoffX, noFallHandoffY, noFallHandoffZ;
+
+    public void clearNoFallHandoff() {
+        noFallHandoffDistance = 0f;
+    }
 
     /** Clear the fall check and invalidate callbacks for the previous descent. */
     public void clearNoFallData() {
+        clearNoFallHandoff();
+        clearNoFallDescent();
+    }
+
+    /** Rebase descent accounting without settling a pending landing confirmation. */
+    public void clearNoFallDescent() {
         noFallGeneration++;
-        noFallHandoffDistance = 0f;
         noFallCancelledAirFallDebt = 0f;
         noFallSetBackFallDebt = 0f;
         noFallContactFallDebt = 0f;

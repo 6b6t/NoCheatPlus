@@ -38,8 +38,13 @@ public final class FallStateSnapshot {
 
     public static void save(Player player, MovingData data, Location accepted) {
         // Legacy glide fields remain readable, but no pre-deploy debt is created.
+        // A pending landing confirmation is part of the fall until settled:
+        // the next owner settles it from its own native state (NoFall.resolveHandoff).
+        final boolean handoff = data.noFallHandoffDistance > 0f && validDebt(data.noFallHandoffDistance)
+                && validCoordinate(data.noFallHandoffX) && validCoordinate(data.noFallHandoffY)
+                && validCoordinate(data.noFallHandoffZ);
         final boolean owed = data.noFallFallDistance > 0f || data.noFallGlideCarry > 0f
-                || NoFall.retainedNativeResetDebt(data) > 0f
+                || NoFall.retainedNativeResetDebt(data) > 0f || handoff
                 || data.noFallCurrentLocOnWindChargeHit != null;
         if (!owed || !Double.isFinite(data.noFallMaxY) || !Float.isFinite(data.noFallFallDistance)
                 || !Float.isFinite(data.noFallGlideCarry)
@@ -52,7 +57,11 @@ public final class FallStateSnapshot {
         container.set(WORLD, PersistentDataType.STRING, accepted.getWorld().getKey().toString());
         container.set(STATE, PersistentDataType.LONG_ARRAY,
                 new long[] {Double.doubleToRawLongBits(accepted.getY()),
-                        Double.doubleToRawLongBits(data.noFallMaxY), Double.doubleToRawLongBits(data.noFallFallDistance),
+                        // A departure above the tracked maximum (a reverted landing
+                        // back on its arc) starts its descent there; restore rejects
+                        // a maximum below the saved position.
+                        Double.doubleToRawLongBits(Math.max(data.noFallMaxY, accepted.getY())),
+                        Double.doubleToRawLongBits(data.noFallFallDistance),
                         Double.doubleToRawLongBits(data.noFallCurrentLocOnWindChargeHit == null
                                 ? Double.NaN : data.noFallCurrentLocOnWindChargeHit.getY()),
                         Double.doubleToRawLongBits(data.noFallGlideTicks),
@@ -62,8 +71,12 @@ public final class FallStateSnapshot {
                         Double.doubleToRawLongBits(data.noFallSetBackFallDebt),
                         Double.doubleToRawLongBits(data.noFallContactFallDebt),
                         Double.doubleToRawLongBits(accepted.getX()), Double.doubleToRawLongBits(accepted.getZ()),
-                        Double.doubleToRawLongBits(4.0),
-                        Double.doubleToRawLongBits(data.noFallGlideLimitPending ? 1.0 : 0.0)});
+                        Double.doubleToRawLongBits(5.0),
+                        Double.doubleToRawLongBits(data.noFallGlideLimitPending ? 1.0 : 0.0),
+                        Double.doubleToRawLongBits(handoff ? data.noFallHandoffDistance : 0.0),
+                        Double.doubleToRawLongBits(handoff ? data.noFallHandoffX : 0.0),
+                        Double.doubleToRawLongBits(handoff ? data.noFallHandoffY : 0.0),
+                        Double.doubleToRawLongBits(handoff ? data.noFallHandoffZ : 0.0)});
     }
 
     public static void restore(Player player, MovingData data) {
@@ -84,7 +97,10 @@ public final class FallStateSnapshot {
         double[] state = bits == null ? null : java.util.stream.LongStream.of(bits).mapToDouble(Double::longBitsToDouble).toArray();
         Location current = player.getLocation();
         if (state == null) return;
-        final boolean limit = state.length == 14 && state[12] == 4.0 && (state[13] == 0.0 || state[13] == 1.0);
+        // v5 = v4 plus the pending landing confirmation (distance and contact).
+        final boolean v5 = state.length == 18 && state[12] == 5.0 && validDebt(state[14])
+                && validCoordinate(state[15]) && validCoordinate(state[16]) && validCoordinate(state[17]);
+        final boolean limit = (state.length == 14 && state[12] == 4.0 || v5) && (state[13] == 0.0 || state[13] == 1.0);
         final boolean migration = limit || state.length == 13 && state[12] == 3.0;
         final boolean explicit = state.length == 12 || migration;
         final boolean glide = (state.length == 7 || explicit) && Double.isFinite(state[4]) && state[4] >= 0 && state[4] <= 20 * 60 * 30
@@ -139,10 +155,22 @@ public final class FallStateSnapshot {
             data.noFallSetBackFallDebt = Math.max(data.noFallSetBackFallDebt, (float) state[8]);
             data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt, (float) state[9]);
         }
+        if (v5 && state[14] > 0.0 && state[14] > data.noFallHandoffDistance) {
+            // Still unconfirmed: the contact keeps its own position, so the next
+            // owner settles it against that contact, not against its arrival.
+            data.noFallHandoffDistance = (float) state[14];
+            data.noFallHandoffX = state[15];
+            data.noFallHandoffY = state[16];
+            data.noFallHandoffZ = state[17];
+        }
     }
 
     private static boolean validDebt(double value) {
         return Double.isFinite(value) && value >= 0 && value <= Float.MAX_VALUE;
+    }
+
+    private static boolean validCoordinate(double value) {
+        return Double.isFinite(value) && Math.abs(value) <= 30_000_000;
     }
 
     private static boolean placementChanged(Location current, double[] state) {
