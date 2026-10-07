@@ -134,6 +134,9 @@ public class TestNoFallRetainedDebt {
     // and NCP sets the player back to 82.19 with zero vertical speed.
     d.noFallMaxY=93.0;d.noFallFallDistance=11.58f;fd[0]=11.58f;y[0]=81.42;
     d.noFallSetBackFallDebt=11.58f;
+    // The cancelled move is SpoofLanding's jump after the dive: NoFall.checkDamage
+    // marks that debt as an impossible glide reversal (FIX-8: kept in full).
+    d.noFallSetBackReversal=true;
     y[0]=start;NoFall.afterSetBack(p,new Location(world,16,start,16),d);
    } else if(c.equals("dive-pull-up")){
     // Control: a real dive to FD 10.6 (no set-back), then pulling up; vanilla limits it.

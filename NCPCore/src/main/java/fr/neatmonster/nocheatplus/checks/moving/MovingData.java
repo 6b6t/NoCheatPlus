@@ -768,6 +768,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public float noFallCancelledAirFallDebt;
     /** Accepted descent erased by a tracked NCP correction, never its rejected endpoint. */
     public float noFallSetBackFallDebt;
+    /** That set-back debt came from an impossible glide reversal (NoFall#checkDamage). */
+    public boolean noFallSetBackReversal;
     /** Accepted physical contact whose matching received packet denied ground. */
     public float noFallContactFallDebt;
     /** Last received movement sequence matched to an accepted position. */

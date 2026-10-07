@@ -531,6 +531,10 @@ public class NoFall extends Check {
         if (limit) {
             data.clearNoFallDescent();
             data.noFallFallDistance = Math.min(1f, accumulated);
+            // A FALL event this check cancelled while airborne was a contact
+            // the client claimed and vanilla would have charged on the spot
+            // (LiquidBounce Verus, REVIEW-LAB-7 #1): the limit cannot forgive it.
+            data.noFallCancelledAirFallDebt = cancelledDebt;
         } else data.noFallFallDistance = accumulated;
         recordGlideAccounting(player, data, tick, nativeDistance, yDistance);
         data.noFallFallDistance += (float) Math.max(0.0, -yDistance);
@@ -585,6 +589,7 @@ public class NoFall extends Check {
         final boolean limit = nativeGlideLimitApplied(player, data, nativeDistance);
         float contactDebt = data.noFallContactFallDebt;
         final float setBackDebt = data.noFallSetBackFallDebt;
+        final float cancelledDebt = data.noFallCancelledAirFallDebt;
         final float accumulated = Math.max(data.noFallFallDistance, nativeDistance);
         if ((limit || data.noFallGlideShadowContact) && accumulated > 1f
                 && getDamage(player, accumulated) >= Magic.FALL_DAMAGE_MINIMUM
@@ -597,6 +602,7 @@ public class NoFall extends Check {
             data.noFallMaxY = fromY + data.noFallFallDistance;
             data.noFallContactFallDebt = contactDebt;
             data.noFallSetBackFallDebt = setBackDebt;
+            data.noFallCancelledAirFallDebt = cancelledDebt;
             // Consumed: a second contact callback for the same tick must not repeat it.
             data.noFallGlideAccountingTick = player.getTicksLived();
             data.noFallGlideLimitPending = false;
@@ -651,7 +657,8 @@ public class NoFall extends Check {
                 && isImplausibleGlideReversal(player, data, yDistance, landed)) {
             contactDebt = Math.max(contactDebt, data.noFallFallDistance);
         }
-        final float cancelledDebt = limited ? 0f : data.noFallCancelledAirFallDebt;
+        // A cancelled airborne FALL stays owed through the limit (see onGlidingMove).
+        final float cancelledDebt = data.noFallCancelledAirFallDebt;
         final float retained = limited ? Math.min(1f, data.noFallFallDistance) : data.noFallFallDistance;
         final float distance = tracked ? Math.max(retained, player.getFallDistance())
                 : Math.max(0f, player.getFallDistance());
@@ -759,15 +766,37 @@ public class NoFall extends Check {
                 ? receivedPacketSpan(move.to, data, pData) : 0;
     }
 
-    /** Re-anchor only accepted descent after our own corrective placement. */
+    /**
+     * Re-anchor only accepted descent after our own corrective placement, and
+     * never charge more than the physical fall (REVIEW-LAB-7 #2, #3). The
+     * correction puts the player at target; the fall goes on from there. What
+     * stays owed is the accepted descent above the target: the drop from the
+     * top of this fall (tracked maximum, or the last accepted position plus the
+     * owed distance) down to the target, never more than was owed before.
+     * Native distance survives the correction teleport, so it is written too:
+     * otherwise a correction up to the start of a fall pays that fall twice
+     * (short glide: FD 6.594 kept at y 93, then the whole 12 again).
+     */
     public static void afterSetBack(final Player player, final Location target, final MovingData data) {
-        if (data.noFallSetBackFallDebt <= 0f) return;
-        // The correction's drop is not accepted movement. Starting the old
-        // maximum-Y calculation at its destination would charge that drop.
-        final float distance = Math.max(data.noFallSetBackFallDebt, player.getFallDistance());
+        final float nativeDistance = Math.max(0f, player.getFallDistance());
+        final boolean tracked = data.noFallMaxY > BlockProperties.getMinWorldY();
+        if (data.noFallSetBackFallDebt <= 0f && !(tracked && nativeDistance > 0f)) return;
+        final float owed = Math.max(data.noFallSetBackFallDebt,
+                Math.max(nativeDistance, tracked ? Math.max(0f, data.noFallFallDistance) : 0f));
+        double top = tracked ? data.noFallMaxY : Double.NEGATIVE_INFINITY;
+        final PlayerMoveData move = data.playerMoves == null ? null : data.playerMoves.getCurrentMove();
+        if (move != null && move.toIsValid) top = Math.max(top, move.from.getY() + owed);
+        // Debt from an impossible glide reversal (no legit client makes one) is
+        // the cheat's own descent and stays owed in full, as in round 7.
+        final boolean reversal = data.noFallSetBackReversal;
+        data.noFallSetBackReversal = false;
+        final float distance = Double.isFinite(top) && !reversal
+                ? Math.min(owed, (float) Math.max(0.0, top - target.getY())) : owed;
         data.noFallFallDistance = distance;
         data.noFallMaxY = target.getY() + distance;
         data.noFallSetBackFallDebt = distance;
+        // Lower only: owed descent above native distance stays retained debt.
+        if (nativeDistance > distance + 1.0e-6f) player.setFallDistance(distance);
     }
 
     /**
@@ -1352,7 +1381,9 @@ public class NoFall extends Check {
             if (getDamage(player, (float) getApplicableFallHeight(player, player.getLocation().getY(), data))
                         < Magic.FALL_DAMAGE_MINIMUM
                     || !isImplausibleGlideReversal(player, data, move.yDistance, move.to.onGround)) return;
+            data.noFallSetBackReversal = true;
         }
+        else data.noFallSetBackReversal = false;
         if (!cc.noFallDealDamage && ServerVersion.compareMinecraftVersion("26.1") >= 0) {
             // A rejected move/correction is not a landing. Keep its descent for
             // native contact instead of consuming it through immediate damage.
