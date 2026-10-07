@@ -429,6 +429,7 @@ public class NoFall extends Check {
             data.noFallHandoffX = at != null ? at.getX() : fromContact ? move.from.getX() : move.to.getX();
             data.noFallHandoffY = minY;
             data.noFallHandoffZ = at != null ? at.getZ() : fromContact ? move.from.getZ() : move.to.getZ();
+            data.noFallHandoffSilent = nativeLandingMayBeSilent(player, data, landingDistance);
         }
         // Force damage on event fire, no need air checking!
         // TODO: Later on use deal damage and override on ground at packet level
@@ -436,6 +437,28 @@ public class NoFall extends Check {
         data.noFallSkipAirCheck = true;
     }
 
+
+    /**
+     * Whether native can process this restored landing without a FALL event.
+     * LivingEntity.hurtServer returns before the event while the damage cooldown
+     * blocks it (invulnerableTime > 10 and damage <= lastHurt), for an
+     * invulnerable or dead player; causeFallDamage sends nothing at zero damage
+     * (landing block, current impulse). Native processes the landing in this
+     * same packet, so this state is the one native uses. Any other processed
+     * landing fires the event, which consumes the confirmation itself.
+     */
+    private boolean nativeLandingMayBeSilent(final Player player, final MovingData data, final float distance) {
+        if (player.isInvulnerable() || player.isDead()) return true;
+        if (mcAccess != null && mcAccess.getHandle().isIgnoringFallDamageFromCurrentImpulse(player)) return true;
+        double damage = getDamage(player, distance);
+        try {
+            damage = calcReducedDamageByBlock(player, data, damage);
+        } catch (RuntimeException unavailable) {
+            // Unreduced is the stricter value: fewer landings count as silent.
+        }
+        if (damage < Magic.FALL_DAMAGE_MINIMUM) return true;
+        return player.getNoDamageTicks() > player.getMaximumNoDamageTicks() / 2 && damage <= player.getLastDamage();
+    }
 
     /**
      * A boat, minecart, or other collision box under the feet. Vanilla still
@@ -557,7 +580,12 @@ public class NoFall extends Check {
         final float handoff = data.noFallHandoffDistance;
         if (!(handoff > 0f)) return;
         final Location at = player.getLocation();
-        final boolean consumed = supported && player.getFallDistance() <= 0f
+        // A landing native can process silently (damage cooldown, ...) is
+        // consumed by native zero on that contact. Any other one is consumed
+        // only by its FALL event: native zero there means it was reverted or
+        // never processed (a tiny upward packet resets distance, and our own
+        // untracked-move correction can put the player back on the contact).
+        final boolean consumed = supported && data.noFallHandoffSilent && player.getFallDistance() <= 0f
                 && isHandoffContact(data, at.getX(), at.getY(), at.getZ());
         data.clearNoFallHandoff();
         if (!consumed) data.noFallContactFallDebt = Math.max(data.noFallContactFallDebt, handoff);
