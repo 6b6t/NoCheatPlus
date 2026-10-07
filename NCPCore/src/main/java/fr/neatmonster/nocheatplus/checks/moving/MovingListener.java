@@ -2573,6 +2573,8 @@ catch (java.lang.Throwable thr) {}
             MovingUtil.ensureChunksLoaded(player, teleported, "teleport", data, cc, pData);
         }
         data.onSetBack(moveInfo.from);
+        // As MovingUtil.confirmSetBack (Folia): never more than the physical fall.
+        NoFall.afterSetBack(player, teleported, data);
         aux.returnPlayerMoveInfo(moveInfo);
         // Reset stuff.
         Combined.resetYawRate(player, teleported.getYaw(), System.currentTimeMillis(), true, pData); // TODO: Not sure.
