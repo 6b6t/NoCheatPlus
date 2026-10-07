@@ -94,14 +94,16 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
     }
 
     /**
-     * The live rule, unchanged: the first boat or shulker within 0.1 beside the
+     * The legacy geometry: the first owned boat or shulker within 0.1 beside the
      * player decides (feet from 0.1 below to 0.7 above its top). Rafts are not
      * in it.
      */
     private boolean standsOnEntityLive(final Entity entity) {
+        if (!fr.neatmonster.nocheatplus.compat.Folia.isOwnedByCurrentRegion(entity)) return false;
         try{
             // TODO: Probably check vehicle ids too before doing this ?
             for (final Entity vehicle : entity.getNearbyEntities(0.1, 2.0, 0.1)){
+                if (!fr.neatmonster.nocheatplus.compat.Folia.isOwnedByCurrentRegion(vehicle)) continue;
                 final EntityType type = vehicle.getType();
                 if (!MaterialUtil.isBoat(type) && type != EntityType.SHULKER){ //  && !(vehicle instanceof Minecart)) 
                     continue; 
