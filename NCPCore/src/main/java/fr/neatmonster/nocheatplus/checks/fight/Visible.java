@@ -29,7 +29,6 @@ import fr.neatmonster.nocheatplus.utilities.collision.CollisionUtil.RichAxisData
 import fr.neatmonster.nocheatplus.utilities.ds.map.BlockCoord;
 import fr.neatmonster.nocheatplus.utilities.location.TrigUtil;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
-import fr.neatmonster.nocheatplus.utilities.map.WrapBlockCache;
 import java.util.HashSet;
 import java.util.Set;
 import org.bukkit.Location;
@@ -43,13 +42,17 @@ import org.bukkit.util.Vector;
  * @author xaw3ep
  */
 public class Visible extends Check{
-    private final InteractAxisTracing rayTracing = new InteractAxisTracing();
-    private final WrapBlockCache wrapBlockCache;
-    
+
+    /** Max steps per trace. */
+    private static final int MAX_STEPS = 30;
+
+    /*
+     * No per-call state in fields: every region thread runs this check on the same instance. The block cache and
+     * the ray tracing are created per call (they were shared fields, a data race between region threads).
+     */
+
     public Visible() {
         super(CheckType.FIGHT_VISIBLE);
-        wrapBlockCache = new WrapBlockCache();
-        rayTracing.setMaxSteps(30);
     }
 
     public boolean check(final Player player, final Location loc, 
@@ -87,8 +90,10 @@ public class Visible extends Check{
         final BlockCoord eCollidingBox = new BlockCoord(Location.locToBlock(dmaxX), Location.locToBlock(dmaxY), Location.locToBlock(dmaxZ));
         if (CollisionUtil.isInsideAABBIncludeEdges(eyeX, eyeY, eyeZ, dminX, dminY, dminZ, dmaxX, dmaxY, dmaxZ)) return cancel;
         
-        final BlockCache blockCache = this.wrapBlockCache.getBlockCache();
+        final BlockCache blockCache = mcAccess.getBlockCache();
         blockCache.setAccess(loc.getWorld());
+        final InteractAxisTracing rayTracing = new InteractAxisTracing();
+        rayTracing.setMaxSteps(MAX_STEPS);
         rayTracing.setBlockCache(blockCache);
         rayTracing.set(dLoc.getX(), dLoc.getY(), dLoc.getZ(), eyeX, eyeY, eyeZ);
         rayTracing.loop();

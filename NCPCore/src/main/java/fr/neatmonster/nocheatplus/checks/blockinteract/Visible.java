@@ -40,13 +40,15 @@ import fr.neatmonster.nocheatplus.utilities.collision.CollisionUtil.RichAxisData
 import fr.neatmonster.nocheatplus.utilities.collision.InteractAxisTracing;
 import fr.neatmonster.nocheatplus.utilities.ds.map.BlockCoord;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
-import fr.neatmonster.nocheatplus.utilities.map.WrapBlockCache;
 import fr.neatmonster.nocheatplus.utilities.location.TrigUtil;
 
 public class Visible extends Check {
 
+    /** Not used (its call in check is commented out). Per call if ever used: it keeps per-call state. */
     private final class RayChecker extends FlyingQueueLookBlockChecker {
 
+        private final InteractAxisTracing rayTracing;
+        private final Location useLoc = new Location(null, 0, 0, 0);
         private BlockFace face;
         private List<String> tags;
         private boolean debug;
@@ -61,7 +63,7 @@ public class Visible extends Check {
             useLoc.setYaw(yaw);
             final Vector direction = useLoc.getDirection(); // TODO: Better.
             tags.clear();
-            if (checkRayTracing(x, y, z, direction.getX(), direction.getY(), direction.getZ(), blockX, blockY, blockZ, face, tags, debug)) {
+            if (checkRayTracing(rayTracing, x, y, z, direction.getX(), direction.getY(), direction.getZ(), blockX, blockY, blockZ, face, tags, debug)) {
                 // Collision still.
                 if (debug) {
                     debug(player, "pitch=" + pitch + ",yaw=" + yaw + " tags=" + StringUtil.join(tags, "+"));
@@ -69,6 +71,10 @@ public class Visible extends Check {
                 return false;
             }
             return true;
+        }
+
+        RayChecker(final InteractAxisTracing rayTracing) {
+            this.rayTracing = rayTracing;
         }
 
         public boolean checkFlyingQueue(double x, double y, double z, float oldYaw, float oldPitch, int blockX,
@@ -95,21 +101,16 @@ public class Visible extends Check {
         }
     }
 
-    private final WrapBlockCache wrapBlockCache;
+    /** Max steps per trace. */
+    private static final int MAX_STEPS = 30; // TODO: Configurable ?
 
-    private final InteractAxisTracing rayTracing = new InteractAxisTracing();
-
-    private final RayChecker checker = new RayChecker();
-
-    private final List<String> tags = new ArrayList<String>();
-
-    /** For temporary use, no nested use, setWorld(null) after use, etc. */
-    private final Location useLoc = new Location(null, 0, 0, 0);
+    /*
+     * No per-call state in fields: every region thread runs this check on the same instance. The block cache, the
+     * ray tracing and the tags are created per call (they were shared fields, a data race between region threads).
+     */
 
     public Visible() {
         super(CheckType.BLOCKINTERACT_VISIBLE);
-        wrapBlockCache = new WrapBlockCache();
-        rayTracing.setMaxSteps(30); // TODO: Configurable ?
     }
 
     public boolean check(final Player player, final Location loc, final double eyeHeight, final Block block, 
@@ -127,7 +128,7 @@ public class Visible extends Check {
         final double eyeZ = loc.getZ();
         final boolean debug = pData.isDebugActive(type);
 
-        tags.clear();
+        final List<String> tags = new ArrayList<String>();
         if (TrigUtil.isSameBlock(blockX, blockY, blockZ, eyeX, eyeY, eyeZ)) {
             // Player is interacting with the block their head is in.
             // TODO: Should the reachable-face-check be done here too (if it is added at all)?
@@ -136,10 +137,12 @@ public class Visible extends Check {
         else {
             // Ray-tracing.
             // Initialize.
-            final BlockCache blockCache = this.wrapBlockCache.getBlockCache();
+            final BlockCache blockCache = this.mcAccess.getHandle().getBlockCache();
             blockCache.setAccess(loc.getWorld());
+            final InteractAxisTracing rayTracing = new InteractAxisTracing();
+            rayTracing.setMaxSteps(MAX_STEPS);
             rayTracing.setBlockCache(blockCache);
-            //collides = !checker.checkFlyingQueue(eyeX, eyeY, eyeZ, loc.getYaw(), loc.getPitch(), 
+            //collides = !new RayChecker(rayTracing).checkFlyingQueue(eyeX, eyeY, eyeZ, loc.getYaw(), loc.getPitch(), 
             //        blockX, blockY, blockZ, flyingHandle, face, tags, debug, player);
             rayTracing.set(blockX, blockY, blockZ, eyeX, eyeY, eyeZ);
             rayTracing.loop();
@@ -182,8 +185,6 @@ public class Visible extends Check {
                 collides = false;
             }
             
-            checker.cleanup();
-            useLoc.setWorld(null);
             //Cleanup.
             rayTracing.cleanup();
             blockCache.cleanup();
@@ -212,7 +213,7 @@ public class Visible extends Check {
         return cancel;
     }
 
-    private boolean checkRayTracing(final double eyeX, final double eyeY, final double eyeZ, final double dirX, final double dirY, final double dirZ, final int blockX, final int blockY, 
+    private boolean checkRayTracing(final InteractAxisTracing rayTracing, final double eyeX, final double eyeY, final double eyeZ, final double dirX, final double dirY, final double dirZ, final int blockX, final int blockY, 
                                     final int blockZ, final BlockFace face, final List<String> tags, final boolean debug) {
         // Block of eyes.
         final int eyeBlockX = Location.locToBlock(eyeX);
