@@ -129,6 +129,30 @@ public class TestNoFallSetBackPhysical {
     }
 
     /**
+     * f8bT-lat-mount-a on-2 (REVIEW-LAB-7 #3): after a boat dismount the
+     * accepted descent is 0.84 (not damaging, so no set-back debt); the
+     * correction to the boat top 89.4992 resets native distance; the fall from
+     * there is 7.94. Before: NoFall restored 0.84 + 7.94 = 8.78 (5, native 4).
+     */
+    @Test public void nonDamagingDescentIsNotAddedToTheFallFromTheTarget() throws Exception {
+        String old = ServerVersion.getMinecraftVersion(); ServerVersion.setMinecraftVersion("26.2");
+        try (var bridge = mockStatic(Bridge1_9.class); var b13 = TestNoFallGlideReversal.slowFalling()) {
+            setUp(bridge);
+            pos[0] = 89.4992; move(89.4992, 89.4992, true);
+            double y = 89.4992, v = 0;
+            while (y > 88.66) { v = (v - 0.08) * 0.98; double to = Math.max(88.6592, y + v); move(y, to, false); y = to; }
+            assertEquals(0.84, d.noFallFallDistance, 0.01);
+            PlayerMoveData m = moveData(88.6592, 88.5808, false);
+            when(trace.getCurrentMove()).thenReturn(m); when(trace.getFirstPastMove()).thenReturn(last);
+            fd[0] = 0f; pos[0] = 89.4992; // the correction teleport reset native distance here
+            NoFall.afterSetBack(p, new Location(null, 16, 89.4992, 16), d);
+            last = null;
+            fall(89.4992, 81.56);
+            assertEquals("the physical fall from the target", 7.94, fd[0], 0.01);
+        } finally { ServerVersion.setMinecraftVersion(old); }
+    }
+
+    /**
      * Cheat side: SpoofLanding's rejected jump after the dive is set back to its
      * pre-jump position (81.15, far below the top 93): the dive stays owed.
      */

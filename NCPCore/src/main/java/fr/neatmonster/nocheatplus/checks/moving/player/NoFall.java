@@ -780,7 +780,12 @@ public class NoFall extends Check {
     public static void afterSetBack(final Player player, final Location target, final MovingData data) {
         final float nativeDistance = Math.max(0f, player.getFallDistance());
         final boolean tracked = data.noFallMaxY > BlockProperties.getMinWorldY();
-        if (data.noFallSetBackFallDebt <= 0f && !(tracked && nativeDistance > 0f)) return;
+        // Also when only this check's own tracked descent is left (a
+        // non-damaging fall: no set-back debt, native reset by the teleport):
+        // otherwise it is added to the fall from the target again
+        // (REVIEW-LAB-7 #3, boat r7C-lat-mount-c on-6; f8bT-lat-mount-a on-2).
+        if (data.noFallSetBackFallDebt <= 0f
+                && !(tracked && (nativeDistance > 0f || data.noFallFallDistance > 0f))) return;
         final float owed = Math.max(data.noFallSetBackFallDebt,
                 Math.max(nativeDistance, tracked ? Math.max(0f, data.noFallFallDistance) : 0f));
         double top = tracked ? data.noFallMaxY : Double.NEGATIVE_INFINITY;
