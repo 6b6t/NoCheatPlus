@@ -1069,7 +1069,7 @@ public class TestElytraSwapEnvelope {
      * is merged under elytra v3 on fix/pvp-nofall-v4-elytra. There the rule
      * applies to what the elytra merge adds on top of that NoFall tip.
      */
-    private static final String NOFALL_V4 = "8efb2bead4aed838bdc140c94f6fba936ae576e1";
+    private static final String NOFALL_V4 = "0b3d322883b1b3f6a5110abeb193b190e14e7059";
 
     private static String diffBase(final File root) {
         try {
