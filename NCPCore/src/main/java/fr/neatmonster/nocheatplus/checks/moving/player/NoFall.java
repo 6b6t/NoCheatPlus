@@ -520,26 +520,96 @@ public class NoFall extends Check {
         // the next packet descent. Ground spoofing can erase native distance,
         // but cannot invent that velocity-based reset or repeat it per packet.
         final int tick = player.getTicksLived();
-        if (tick != data.noFallGlideAccountingTick && data.noFallGlideLimitPending) {
-            final float accumulated = Math.max(data.noFallFallDistance, nativeDistance);
-            final float limited = Math.min(1f, accumulated);
-            if (acceptedMove && accumulated > limited
-                    && getDamage(player, accumulated) >= Magic.FALL_DAMAGE_MINIMUM
-                    && isImplausibleGlideReversal(player, data, yDistance)) {
-                // Not a pull-up: the forgiven descent is owed at the next contact.
-                contactDebt = Math.max(contactDebt, accumulated);
-            }
+        final boolean limit = nativeGlideLimitApplied(player, data, nativeDistance);
+        final float accumulated = Math.max(data.noFallFallDistance, nativeDistance);
+        if (acceptedMove && (limit || data.noFallGlideShadowContact) && accumulated > 1f
+                && getDamage(player, accumulated) >= Magic.FALL_DAMAGE_MINIMUM
+                && isImplausibleGlideReversal(player, data, yDistance, false)) {
+            // Not a pull-up: the forgiven descent is owed at the next contact.
+            contactDebt = Math.max(contactDebt, accumulated);
+        }
+        if (limit) {
             data.clearNoFallDescent();
-            data.noFallFallDistance = limited;
-        } else data.noFallFallDistance = Math.max(data.noFallFallDistance, nativeDistance);
-        data.noFallGlideAccountingTick = tick;
-        data.noFallGlideLimitPending = player.getVelocity().getY() > -0.5;
+            data.noFallFallDistance = Math.min(1f, accumulated);
+        } else data.noFallFallDistance = accumulated;
+        recordGlideAccounting(player, data, tick, nativeDistance, yDistance);
         data.noFallFallDistance += (float) Math.max(0.0, -yDistance);
         data.noFallMaxY = player.getLocation().getY() + yDistance + data.noFallFallDistance;
         data.noFallGlideEstablished = true;
         data.noFallContactFallDebt = contactDebt;
         data.noFallSetBackFallDebt = setBackDebt;
     }
+
+    /**
+     * Native LivingEntity#updateFallFlying caps distance at exactly one, once
+     * per server tick, when the server's own velocity is above -0.5. That
+     * velocity is the server's glide simulation of the player from the last
+     * received position (tickPlayer: travel, then the position is restored);
+     * it reaches zero when that simulation meets the ground. The limit applied
+     * since the last accounted move if a native tick passed and either the
+     * velocity seen at that move was above -0.5, or native distance went from
+     * above one to exactly one (the simulation met the ground at a tick with no
+     * packet). Resets go to zero; only this limit leaves exactly one.
+     */
+    static boolean nativeGlideLimitApplied(final Player player, final MovingData data, final float nativeDistance) {
+        if (player.getTicksLived() == data.noFallGlideAccountingTick) return false;
+        return data.noFallGlideLimitPending
+                || data.noFallGlideNativeAbove && Math.abs(nativeDistance - 1f) <= 1.0e-6f;
+    }
+
+    private static void recordGlideAccounting(final Player player, final MovingData data, final int tick,
+            final float nativeDistance, final double yDistance) {
+        data.noFallGlideAccountingTick = tick;
+        data.noFallGlideLimitPending = player.getVelocity().getY() > -0.5;
+        // Native adds this packet's descent after the event; an upward packet
+        // resets it. Only from at least one, still above one, is exactly one later
+        // the limit's own value (a reset needs an exact refill to get there).
+        data.noFallGlideNativeAbove = nativeDistance >= 1f - 1.0e-6f && yDistance <= 0.0
+                && nativeDistance - yDistance > 1.0 + 1.0e-6;
+        data.noFallGlideShadowContact = false;
+    }
+
+    /**
+     * A contact that ends an established glide: on the touchdown move
+     * (yDistance, from fromY) or at an owner callback (yDistance NaN, fromY the
+     * contact). The native limit applies before native processes this landing,
+     * as on any glide move: vanilla charges only what is left after it. Debt
+     * that proves a suppressed or unprocessed contact (cancelled FALL, own
+     * set-back, denied ground, impossible reversal) stays owed. A descending
+     * touchdown is cut short by the collision and is never judged a reversal.
+     */
+    public static void onGlideContact(final Player player, final MovingData data, final double fromY,
+            final double yDistance) {
+        if (!data.noFallGlideEstablished) return;
+        final float nativeDistance = Math.max(0f, player.getFallDistance());
+        final boolean limit = nativeGlideLimitApplied(player, data, nativeDistance);
+        float contactDebt = data.noFallContactFallDebt;
+        final float setBackDebt = data.noFallSetBackFallDebt;
+        final float accumulated = Math.max(data.noFallFallDistance, nativeDistance);
+        if ((limit || data.noFallGlideShadowContact) && accumulated > 1f
+                && getDamage(player, accumulated) >= Magic.FALL_DAMAGE_MINIMUM
+                && isImplausibleGlideReversal(player, data, yDistance, true)) {
+            contactDebt = Math.max(contactDebt, accumulated);
+        }
+        if (limit) {
+            data.clearNoFallDescent();
+            data.noFallFallDistance = Math.min(1f, accumulated);
+            data.noFallMaxY = fromY + data.noFallFallDistance;
+            data.noFallContactFallDebt = contactDebt;
+            data.noFallSetBackFallDebt = setBackDebt;
+            // Consumed: a second contact callback for the same tick must not repeat it.
+            data.noFallGlideAccountingTick = player.getTicksLived();
+            data.noFallGlideLimitPending = false;
+            data.noFallGlideNativeAbove = false;
+        } else data.noFallContactFallDebt = contactDebt;
+        data.noFallGlideShadowContact = false;
+    }
+
+    /** The server's glide simulation met a surface below the accepted position. */
+    public static void onGlideShadowContact(final MovingData data) {
+        if (data.noFallGlideEstablished) data.noFallGlideShadowContact = true;
+    }
+
 
     /** The server starts a jump only from its own ground state. A gliding
      * player reaching that state with damaging descent has met the ground, and
@@ -555,23 +625,30 @@ public class NoFall extends Check {
         }
     }
 
+    /** The server ended the glide (or a checkpoint restore did). */
     public static void stopGlide(final Player player, final MovingData data) {
-        stopGlide(player, data, Double.NaN);
+        stopGlide(player, data, Double.NaN, false);
+    }
+
+    public static void stopGlide(final Player player, final MovingData data, final double yDistance) {
+        stopGlide(player, data, yDistance, false);
     }
 
     /**
      * @param yDistance the accepted move that ends the glide; NaN outside move
      *            processing (checkpoint restore), where no pull-up can be judged.
+     * @param landed that move ends on support (a descent there is a collision).
      */
-    public static void stopGlide(final Player player, final MovingData data, final double yDistance) {
+    public static void stopGlide(final Player player, final MovingData data, final double yDistance,
+            final boolean landed) {
         if (!data.noFallGlideEstablished && data.noFallGlideTicks == 0 && data.noFallGlideCarry == 0f) return;
         final boolean tracked = data.noFallGlideEstablished;
         float contactDebt = data.noFallContactFallDebt;
         final float setBackDebt = data.noFallSetBackFallDebt;
-        final boolean limited = tracked && data.noFallGlideLimitPending && player.getTicksLived() != data.noFallGlideAccountingTick;
-        if (limited && data.noFallFallDistance > 1f
+        final boolean limited = tracked && nativeGlideLimitApplied(player, data, Math.max(0f, player.getFallDistance()));
+        if ((limited || tracked && data.noFallGlideShadowContact) && data.noFallFallDistance > 1f
                 && getDamage(player, data.noFallFallDistance) >= Magic.FALL_DAMAGE_MINIMUM
-                && isImplausibleGlideReversal(player, data, yDistance)) {
+                && isImplausibleGlideReversal(player, data, yDistance, landed)) {
             contactDebt = Math.max(contactDebt, data.noFallFallDistance);
         }
         final float cancelledDebt = limited ? 0f : data.noFallCancelledAirFallDebt;
@@ -587,31 +664,54 @@ public class NoFall extends Check {
         data.noFallCancelledAirFallDebt = cancelledDebt;
     }
 
-    /**
-     * Largest one-tick vertical speed gain of vanilla elytra physics without an
-     * impulse: lift (0.1 of the descent) plus climb (0.128 of the horizontal
-     * speed) stays below about 0.5 blocks per tick even at terminal speed.
-     */
-    private static final double MAX_GLIDE_VERTICAL_GAIN = 0.6;
+    /** Vanilla glide constants (LivingEntity#updateFallFlyingMovement; the drags are floats). */
+    private static final double GLIDE_GRAVITY = 0.08, GLIDE_LIFT = 0.1, GLIDE_CLIMB = 0.04 * 3.2,
+            GLIDE_VERTICAL_DRAG = (double) 0.98f, GLIDE_HORIZONTAL_DRAG = (double) 0.99f;
+    /** Rounding above the vanilla bound. */
+    private static final double GLIDE_REVERSAL_MARGIN = 0.01;
+    /** Longer moves are not judged (timing too uncertain). */
+    private static final int MAX_JUDGED_MOVE_PACKETS = 4;
 
     /**
      * The native glide limit reads the server's own velocity. Under packet
      * bunching that velocity can already show the ground collision of a damaging
      * dive whose landing the client then hides (LiquidBounce PacketJump's +1e-9
      * split move; SpoofLanding's jump after an absorbed landing packet). The
-     * accepted moves must also allow a pull-up: a vertical speed gain beyond glide
-     * physics, with no rocket, velocity entry, wind charge or riptide, is not one.
+     * accepted moves must also allow a pull-up: a move higher than vanilla glide
+     * physics can reach from the last move, over the client ticks it spans, with
+     * no rocket, velocity entry, wind charge or riptide, is not one.
+     * <p>
+     * Bound, per tick, from LivingEntity#updateFallFlyingMovement for any pitch
+     * (each term at its own maximum): vy' = 0.98 (vy - 0.25 g + 0.1 max(0, g - vy)
+     * + 0.128 h), never below vy (the first air tick after a glide repeats the
+     * last velocity), and h' = 0.99 (h + 0.1 max(0, g - vy)); g = 0.08, h the
+     * horizontal speed (the climb term converts it). The last move must be one
+     * received position packet (one client tick); this move spans the received
+     * packets since it, and may reach the highest partial sum over 1..span ticks.
+     * Unknown timing, slow falling and levitation defer to native accounting
+     * (no debt).
+     *
+     * @param landed the move ends on support: a descent there is a collision.
      */
-    static boolean isImplausibleGlideReversal(final Player player, final MovingData data, final double yDistance) {
+    static boolean isImplausibleGlideReversal(final Player player, final MovingData data, final double yDistance,
+            final boolean landed) {
         if (!Double.isFinite(yDistance) || data.playerMoves == null) return false;
+        if (landed && yDistance <= 0.0) return false;
         final PlayerMoveData last = data.playerMoves.getFirstPastMove();
-        if (last == null || !last.toIsValid || !(yDistance - last.yDistance > MAX_GLIDE_VERTICAL_GAIN)) return false;
+        final PlayerMoveData current = data.playerMoves.getCurrentMove();
+        if (last == null || !last.toIsValid || current == null
+                || !Double.isFinite(last.yDistance) || !Double.isFinite(last.hDistance)) return false;
         // Only consecutive accepted moves: a teleport, worker join or reset
         // starts elsewhere and leaves an older move behind.
-        final PlayerMoveData current = data.playerMoves.getCurrentMove();
-        if (current == null || Math.abs(current.from.getX() - last.to.getX()) > 1.0e-6
+        if (Math.abs(current.from.getX() - last.to.getX()) > 1.0e-6
                 || Math.abs(current.from.getY() - last.to.getY()) > 1.0e-6
                 || Math.abs(current.from.getZ() - last.to.getZ()) > 1.0e-6) return false;
+        // Timing: one client tick for the last move, known span for this one.
+        final int ticks = data.noFallMovePackets;
+        if (ticks <= 0 || ticks > MAX_JUDGED_MOVE_PACKETS || data.noFallLastMovePackets != 1
+                || !(Math.abs(data.noFallLastMoveX - last.to.getX()) <= 1.0e-9)
+                || !(Math.abs(data.noFallLastMoveY - last.to.getY()) <= 1.0e-9)
+                || !(Math.abs(data.noFallLastMoveZ - last.to.getZ()) <= 1.0e-9)) return false;
         // Only velocity that can lift the player explains the gain. The fly-check
         // transition workaround queues the landing's descent and zero itself.
         if (last.verVelUsed != null && last.verVelUsed.value > 0.0
@@ -620,10 +720,43 @@ public class NoFall extends Check {
                 || data.windChargeImpulseEntityTick != Integer.MIN_VALUE
                 || data.windChargeImpulseSource != null || data.nativeWindChargeSource != null) return false;
         try {
-            return !player.isRiptiding();
+            if (player.isRiptiding()
+                    || Bridge1_13.getSlowfallingAmplifier(player) != Double.NEGATIVE_INFINITY
+                    || Bridge1_9.getLevitationAmplifier(player) != Double.NEGATIVE_INFINITY) return false;
         } catch (RuntimeException | LinkageError unavailable) {
             return false;
         }
+        // Highest reach after 1..ticks ticks: a received packet that is not a
+        // physics tick (a teleport confirmation) can only make the bound looser.
+        double vy = last.yDistance, h = last.hDistance, sum = 0.0, reach = Double.NEGATIVE_INFINITY;
+        for (int i = 0; i < ticks; i++) {
+            final double lift = GLIDE_LIFT * Math.max(0.0, GLIDE_GRAVITY - vy);
+            final double next = Math.max(vy,
+                    GLIDE_VERTICAL_DRAG * (vy - 0.25 * GLIDE_GRAVITY + lift + GLIDE_CLIMB * h));
+            h = GLIDE_HORIZONTAL_DRAG * (h + lift);
+            vy = next;
+            sum += vy;
+            reach = Math.max(reach, sum);
+        }
+        return yDistance > reach + GLIDE_REVERSAL_MARGIN;
+    }
+
+    /**
+     * Received position packets from the last matched accepted move to this
+     * endpoint (0: unknown). One per client tick for a moving client.
+     */
+    public static int receivedPacketSpan(final LocationData to, final MovingData data, final IPlayerData pData) {
+        if (to == null || pData == null || data.noFallMatchedPacketSequence <= 0L) return 0;
+        final DataPacketFlying match = findReceivedPosition(to.getX(), to.getY(), to.getZ(), data, pData);
+        if (match == null) return 0;
+        final long span = match.getSequence() - data.noFallMatchedPacketSequence;
+        return span > 0L && span <= 64L ? (int) span : 0;
+    }
+
+    /** Before any NoFall hook of this move: its received packet span. */
+    public static void beginMove(final PlayerMoveData move, final MovingData data, final IPlayerData pData) {
+        data.noFallMovePackets = move != null && move.toIsValid && ServerVersion.compareMinecraftVersion("26.1") >= 0
+                ? receivedPacketSpan(move.to, data, pData) : 0;
     }
 
     /** Re-anchor only accepted descent after our own corrective placement. */
@@ -1006,6 +1139,7 @@ public class NoFall extends Check {
             toOnGround = to.onGround;
         }
 
+        beginMove(thisMove, data, pData);
         if (Bridge1_9.isGlidingWithElytra(player) && !toOnGround && !fromReset && !toReset) {
             onGlidingMove(player, data, yDiff, true);
         }
@@ -1019,6 +1153,12 @@ public class NoFall extends Check {
                 ? Math.max(pendingContact, Math.max(player.getFallDistance(),
                     Math.max(data.noFallFallDistance + (float) Math.max(0.0, -yDiff),
                         (float) Math.max(0.0, data.noFallMaxY - toY)))) : 0f;
+        if (nativeLanding && toOnGround && !fromOnGround && !fromReset && !toReset) {
+            // Touchdown of an established glide: native applies its glide limit
+            // before it processes this landing (the receipt above keeps a denied
+            // contact owed in full).
+            onGlideContact(player, data, fromY, yDiff);
+        }
 
         // TODO: early returns (...) 
 
@@ -1107,6 +1247,14 @@ public class NoFall extends Check {
 
         if (ServerVersion.compareMinecraftVersion("26.1") >= 0 && (toOnGround || toReset)) {
             data.clearWindChargeImpulse();
+        }
+
+        if (nativeLanding) {
+            // Timing for the next move's reversal judgement: this move's received span.
+            data.noFallLastMovePackets = acceptedPacket != null ? data.noFallMovePackets : 0;
+            data.noFallLastMoveX = to.getX();
+            data.noFallLastMoveY = to.getY();
+            data.noFallLastMoveZ = to.getZ();
         }
 
         if (debug) {
@@ -1199,10 +1347,11 @@ public class NoFall extends Check {
             // onGlidingMove): then its descent is kept like any rejected move's.
             final PlayerMoveData move = data.playerMoves == null ? null : data.playerMoves.getCurrentMove();
             if (cc.noFallDealDamage || ServerVersion.compareMinecraftVersion("26.1") < 0
-                    || move == null || !move.toIsValid
-                    || getDamage(player, (float) getApplicableFallHeight(player, player.getLocation().getY(), data))
+                    || move == null || !move.toIsValid) return;
+            beginMove(move, data, pData);
+            if (getDamage(player, (float) getApplicableFallHeight(player, player.getLocation().getY(), data))
                         < Magic.FALL_DAMAGE_MINIMUM
-                    || !isImplausibleGlideReversal(player, data, move.yDistance)) return;
+                    || !isImplausibleGlideReversal(player, data, move.yDistance, move.to.onGround)) return;
         }
         if (!cc.noFallDealDamage && ServerVersion.compareMinecraftVersion("26.1") >= 0) {
             // A rejected move/correction is not a landing. Keep its descent for

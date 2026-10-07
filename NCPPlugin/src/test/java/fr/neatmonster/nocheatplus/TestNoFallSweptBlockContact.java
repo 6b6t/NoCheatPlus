@@ -29,7 +29,7 @@ import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 public class TestNoFallSweptBlockContact {
  @Parameterized.Parameters(name="{0}")public static Collection<Object[]> cases(){return Arrays.asList(new Object[][]{
   {"native-sweep"},{"explicit-debt"},{"native-zero"},{"collision-after-owner-delay"},{"no-collision"},{"foreign-player"},{"foreign-block"},
-  {"unloaded"},{"lateral"},{"gap"},{"different-native-point"},{"jump"},{"shorter-descent"},{"consumed"}});}
+  {"unloaded"},{"lateral"},{"gap"},{"different-native-point"},{"jump"},{"shorter-descent"},{"consumed"},{"glide-shadow"}});}
  final String mode;public TestNoFallSweptBlockContact(String mode){this.mode=mode;}
  @Test public void nativeSweepCompletesTheLandingBeforeTheJumpCanResetIt()throws Exception{
   String old=ServerVersion.getMinecraftVersion();ServerVersion.setMinecraftVersion("26.2");
@@ -55,12 +55,15 @@ public class TestNoFallSweptBlockContact {
    float[] fd={mode.equals("native-zero")?0:11.408991f};double[] damage={0};when(p.getFallDistance()).thenAnswer(c->fd[0]);doAnswer(c->{fd[0]=c.getArgument(0);return null;}).when(p).setFallDistance(anyFloat());
    when(access.dispatchNativeLanding(p)).thenAnswer(c->{damage[0]+=Math.max(0,NoFall.getDamage(fd[0]));fd[0]=0;return true;});
    d.noFallMaxY=92.5626274;d.noFallFallDistance=11.408991f;if(mode.equals("explicit-debt"))d.noFallContactFallDebt=12;if(mode.equals("consumed")){d.clearNoFallData();fd[0]=0;}
+   // Gliding: the native collision is the server's own glide simulation, not a landing (FIX-8).
+   if(mode.equals("glide-shadow"))d.noFallGlideEstablished=true;
    AtomicReference<Consumer<Object>> task=new AtomicReference<>();folia.when(()->Folia.runSyncDelayedTaskForEntity(eq(p),eq(plugin),any(),any(),eq(1L))).thenAnswer(c->{task.set(c.getArgument(2));return new Object();});
    var queue=MovingListener.class.getDeclaredMethod("queueNativeLanding",Player.class,MovingData.class,MovingConfig.class,IPlayerData.class);queue.setAccessible(true);queue.invoke(listener,p,d,cc,pd);if(task.get()!=null)task.get().accept(null);
    if(mode.equals("collision-after-owner-delay")) {when(access.hasVerticalCollisionBelow(p)).thenReturn(true);fd[0]=0;task.get().accept(null);}
    if(mode.equals("no-collision")) {for(int i=0;i<8;i++){if(d.noFallNativeLandingTaskPending)task.get().accept(null);}assertFalse(d.noFallNativeLandingTaskPending);}
    boolean dispatch=mode.equals("native-sweep")||mode.equals("explicit-debt")||mode.equals("native-zero")||mode.equals("collision-after-owner-delay");assertEquals(mode,dispatch?(mode.equals("explicit-debt")?9:8):0,damage[0],0);
    if(dispatch){assertEquals(0,d.noFallFallDistance,0);verify(access).dispatchNativeLanding(p);}else verify(access,never()).dispatchNativeLanding(any());
+   if(mode.equals("glide-shadow")){assertTrue("shadow contact kept as evidence",d.noFallGlideShadowContact);assertEquals(11.408991f,d.noFallFallDistance,1e-6f);}
    if(mode.equals("foreign-block")||mode.equals("unloaded"))verify(world,never()).getBlockAt(anyInt(),anyInt(),anyInt());
   }finally{ServerVersion.setMinecraftVersion(old);}
  }
