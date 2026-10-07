@@ -2870,6 +2870,8 @@ catch (java.lang.Throwable thr) {}
         try {
             final Location feet = player.getLocation();
             final double halfWidth = player.getBoundingBox().getWidthX() / 2.0;
+            // A lagging client lands on the boat top it displays, older than the server's.
+            final int latencyTicks = nativeCollision ? NoFall.boatContactLatencyTicks(player) : 0;
             for (final Entity entity : player.getNearbyEntities(1.5, 8.0, 1.5)) {
                 if (!Folia.isOwnedByCurrentRegion(entity) || !entity.isValid()
                         || entity.getUniqueId().equals(player.getUniqueId())
@@ -2878,9 +2880,9 @@ catch (java.lang.Throwable thr) {}
                 if (NoFall.boxSupportsFeet(feet.getX(), feet.getY(), feet.getZ(), halfWidth,
                         box.getMinX(), box.getMinY(), box.getMinZ(),
                         box.getMaxX(), box.getMaxY(), box.getMaxZ())) return true;
-                if (nativeCollision && mcAccess.getHandle().hasSweptBoatSupport(entity,
+                if (nativeCollision && NoFall.hasSweptBoatSupport(mcAccess.getHandle(), entity,
                         feet.getX() - halfWidth, feet.getY(), feet.getZ() - halfWidth,
-                        feet.getX() + halfWidth, feet.getZ() + halfWidth)) return true;
+                        feet.getX() + halfWidth, feet.getZ() + halfWidth, latencyTicks)) return true;
                 // A moving solid entity may already have moved away from the
                 // native swept collision. Only that native collision can justify
                 // the old boat vertical margin; a nearby hit box alone cannot.

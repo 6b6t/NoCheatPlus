@@ -158,6 +158,12 @@ public interface MCAccess extends IGetBlockCache, IEntityAccessDimensions {
     default boolean hasSweptBoatSupport(Entity entity, double minX, double feetY, double minZ,
             double maxX, double maxZ) { return false; }
 
+    /** As above, also accepting boxes up to latencyTicks older (the client's round trip). */
+    default boolean hasSweptBoatSupport(Entity entity, double minX, double feetY, double minZ,
+            double maxX, double maxZ, int latencyTicks) {
+        return hasSweptBoatSupport(entity, minX, feetY, minZ, maxX, maxZ);
+    }
+
     /** Authoritative native wind context; packet movement cannot create it. */
     default boolean isIgnoringFallDamageFromCurrentImpulse(Player player) { return false; }
 
