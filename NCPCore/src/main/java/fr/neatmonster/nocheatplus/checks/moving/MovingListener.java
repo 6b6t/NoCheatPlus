@@ -3266,6 +3266,14 @@ catch (java.lang.Throwable thr) {}
     }
 
     private void restoreNoFallOnJoin(final Player player, final MovingData data, final IPlayerData pData) {
+        // A return to a worker can reuse its MovingData from the earlier stay
+        // (same world: dataOnJoin keeps it), with the descent the player had
+        // when leaving mid-air. The checkpoint is the only carrier of an
+        // unfinished fall across workers; a fall completed elsewhere must not
+        // be charged again from these leftovers.
+        data.clearNoFallData();
+        data.clearGlideDebt();
+        data.noFallCurrentLocOnWindChargeHit = null;
         if (noFall.isEnabled(player, pData)) {
             final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
             FallStateSnapshot.restore(player, data, !cc.noFallTpReset);
