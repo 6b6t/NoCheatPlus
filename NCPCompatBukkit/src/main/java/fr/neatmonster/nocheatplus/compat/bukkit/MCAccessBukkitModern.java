@@ -658,6 +658,12 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
     }
 
     @Override
+    public boolean hasSweptBoatSupport(org.bukkit.entity.Entity entity, double minX, double feetY,
+            double minZ, double maxX, double maxZ, int latencyTicks) {
+        return NativeLandingAccess.supportsSweptBoat(entity, minX, feetY, minZ, maxX, maxZ, latencyTicks);
+    }
+
+    @Override
     public boolean isIgnoringFallDamageFromCurrentImpulse(Player player) {
         return NativeLandingAccess.hasNativeImpulse(player);
     }

@@ -62,13 +62,23 @@ final class NativeLandingAccess {
                 && Math.abs(a.getMaxZ() - b.getMaxZ()) <= 0.0000001;
     }
 
+    /** Most native ticks a caller may add for its client's latency (one second). */
+    static final int MAX_LATENCY_TICKS = 20;
+
     static boolean supportsSweptBoat(Entity entity, double minX, double feetY, double minZ,
             double maxX, double maxZ) {
-        return recordAndFind(entity, minX, feetY, minZ, maxX, maxZ, true);
+        return supportsSweptBoat(entity, minX, feetY, minZ, maxX, maxZ, 0);
+    }
+
+    /** As above, but the client may display boxes up to latencyTicks older. */
+    static boolean supportsSweptBoat(Entity entity, double minX, double feetY, double minZ,
+            double maxX, double maxZ, int latencyTicks) {
+        return recordAndFind(entity, minX, feetY, minZ, maxX, maxZ, true,
+                Math.max(0, Math.min(MAX_LATENCY_TICKS, latencyTicks)));
     }
 
     private static boolean recordAndFind(Entity entity, double minX, double feetY, double minZ,
-            double maxX, double maxZ, boolean queried) {
+            double maxX, double maxZ, boolean queried, int latencyTicks) {
         if (!(entity instanceof org.bukkit.entity.Boat) || !Folia.isOwnedByCurrentRegion(entity)) return false;
         try {
             final Object nativeEntity = handle(entity);
@@ -84,8 +94,13 @@ final class NativeLandingAccess {
             final int interval = (Integer) UPDATE_INTERVAL.get(type.getClass()).invoke(type);
             if (interval < 1 || interval > 20) return false;
             // Vanilla boats interpolate three ticks after each tracked update.
-            // Retain only the real boxes that the client can still be displaying.
+            // Search only the real boxes that the client can still be displaying:
+            // that window, plus the caller's round trip (a lagging client lands on
+            // an older displayed top, and vanilla accepts its ground packet).
+            // Retain enough for the largest latency a later query may add.
             final int window = interval + 3;
+            final int search = window + latencyTicks;
+            final int retain = window + MAX_LATENCY_TICKS;
             final java.util.UUID world = current.getWorld() == null ? null : current.getWorld().getUID();
             final org.bukkit.util.BoundingBox previous = box.clone().shift(dx, dy, dz);
             final BoatHistory history;
@@ -98,18 +113,23 @@ final class NativeLandingAccess {
                     history.frames.clear();
                 }
                 history.world = world;
-                history.window = window;
-                if (queried) history.lastQueryTick = tick;
+                if (queried) {
+                    // Keep sampling for as long as the widest recent query can look back.
+                    history.window = tick - history.lastQueryTick > history.window
+                            ? search : Math.max(history.window, search);
+                    history.lastQueryTick = tick;
+                }
                 // Native teleports reset old position; do not keep the abandoned path.
                 for (BoatFrame frame : history.frames) {
                     if (frame.tick == tick - 1 && !sameBox(frame.box, previous)) {
                         history.frames.clear(); break;
                     }
                 }
-                history.frames.removeIf(frame -> frame.tick < tick - window || frame.tick >= tick - 1);
+                history.frames.removeIf(frame -> frame.tick < tick - retain || frame.tick >= tick - 1);
                 history.frames.add(new BoatFrame(tick - 1, previous));
                 history.frames.add(new BoatFrame(tick, box.clone()));
                 for (int i = 1; i < history.frames.size(); i++) {
+                    if (history.frames.get(i - 1).tick < tick - search) continue;
                     final org.bukkit.util.BoundingBox old = history.frames.get(i - 1).box;
                     final org.bukkit.util.BoundingBox now = history.frames.get(i).box;
                     final double descent = old.getMaxY() - now.getMaxY();
@@ -168,7 +188,7 @@ final class NativeLandingAccess {
                 // position packets. A weak reference and short idle expiry keep the
                 // history from retaining an abandoned entity or scheduling forever.
                 try {
-                    recordAndFind(boat, 0, Double.NaN, 0, 0, 0, false);
+                    recordAndFind(boat, 0, Double.NaN, 0, 0, 0, false, 0);
                     trackNext(reference, history, plugin, token);
                 } catch (RuntimeException error) {
                     stopTracking(history, token); throw error;

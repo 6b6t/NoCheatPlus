@@ -51,6 +51,7 @@ import fr.neatmonster.nocheatplus.compat.Bridge1_9;
 import fr.neatmonster.nocheatplus.compat.BridgeEnchant;
 import fr.neatmonster.nocheatplus.compat.BridgeHealth;
 import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
+import fr.neatmonster.nocheatplus.compat.MCAccess;
 import fr.neatmonster.nocheatplus.compat.versions.ServerVersion;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
@@ -489,8 +490,17 @@ public class NoFall extends Check {
      * These handlers only rebase check state; they never write native distance.
      */
     public static void onGlidingMove(final Player player, final MovingData data, final double yDistance) {
+        onGlidingMove(player, data, yDistance, false);
+    }
+
+    /**
+     * @param acceptedMove yDistance is the current accepted move (NoFall.check),
+     *            not a checkpoint restore; only then can it be judged a pull-up.
+     */
+    public static void onGlidingMove(final Player player, final MovingData data, final double yDistance,
+            final boolean acceptedMove) {
         final float nativeDistance = Math.max(0f, player.getFallDistance());
-        final float contactDebt = data.noFallContactFallDebt;
+        float contactDebt = data.noFallContactFallDebt;
         final float cancelledDebt = data.noFallCancelledAirFallDebt;
         // Our own set-back removed the downward speed, so the glide limit it
         // then triggers cannot forgive the accepted descent before it.
@@ -511,7 +521,14 @@ public class NoFall extends Check {
         // but cannot invent that velocity-based reset or repeat it per packet.
         final int tick = player.getTicksLived();
         if (tick != data.noFallGlideAccountingTick && data.noFallGlideLimitPending) {
-            final float limited = Math.min(1f, Math.max(data.noFallFallDistance, nativeDistance));
+            final float accumulated = Math.max(data.noFallFallDistance, nativeDistance);
+            final float limited = Math.min(1f, accumulated);
+            if (acceptedMove && accumulated > limited
+                    && getDamage(player, accumulated) >= Magic.FALL_DAMAGE_MINIMUM
+                    && isImplausibleGlideReversal(player, data, yDistance)) {
+                // Not a pull-up: the forgiven descent is owed at the next contact.
+                contactDebt = Math.max(contactDebt, accumulated);
+            }
             data.clearNoFallDescent();
             data.noFallFallDistance = limited;
         } else data.noFallFallDistance = Math.max(data.noFallFallDistance, nativeDistance);
@@ -539,11 +556,24 @@ public class NoFall extends Check {
     }
 
     public static void stopGlide(final Player player, final MovingData data) {
+        stopGlide(player, data, Double.NaN);
+    }
+
+    /**
+     * @param yDistance the accepted move that ends the glide; NaN outside move
+     *            processing (checkpoint restore), where no pull-up can be judged.
+     */
+    public static void stopGlide(final Player player, final MovingData data, final double yDistance) {
         if (!data.noFallGlideEstablished && data.noFallGlideTicks == 0 && data.noFallGlideCarry == 0f) return;
         final boolean tracked = data.noFallGlideEstablished;
-        final float contactDebt = data.noFallContactFallDebt;
+        float contactDebt = data.noFallContactFallDebt;
         final float setBackDebt = data.noFallSetBackFallDebt;
         final boolean limited = tracked && data.noFallGlideLimitPending && player.getTicksLived() != data.noFallGlideAccountingTick;
+        if (limited && data.noFallFallDistance > 1f
+                && getDamage(player, data.noFallFallDistance) >= Magic.FALL_DAMAGE_MINIMUM
+                && isImplausibleGlideReversal(player, data, yDistance)) {
+            contactDebt = Math.max(contactDebt, data.noFallFallDistance);
+        }
         final float cancelledDebt = limited ? 0f : data.noFallCancelledAirFallDebt;
         final float retained = limited ? Math.min(1f, data.noFallFallDistance) : data.noFallFallDistance;
         final float distance = tracked ? Math.max(retained, player.getFallDistance())
@@ -555,6 +585,42 @@ public class NoFall extends Check {
         data.noFallContactFallDebt = contactDebt;
         data.noFallSetBackFallDebt = setBackDebt;
         data.noFallCancelledAirFallDebt = cancelledDebt;
+    }
+
+    /**
+     * Largest one-tick vertical speed gain of vanilla elytra physics without an
+     * impulse: lift (0.1 of the descent) plus climb (0.128 of the horizontal
+     * speed) stays below about 0.5 blocks per tick even at terminal speed.
+     */
+    private static final double MAX_GLIDE_VERTICAL_GAIN = 0.6;
+
+    /**
+     * The native glide limit reads the server's own velocity. Under packet
+     * bunching that velocity can already show the ground collision of a damaging
+     * dive whose landing the client then hides (LiquidBounce PacketJump's +1e-9
+     * split move; SpoofLanding's jump after an absorbed landing packet). The
+     * accepted moves must also allow a pull-up: a vertical speed gain beyond glide
+     * physics, with no rocket, velocity entry, wind charge or riptide, is not one.
+     */
+    static boolean isImplausibleGlideReversal(final Player player, final MovingData data, final double yDistance) {
+        if (!Double.isFinite(yDistance) || data.playerMoves == null) return false;
+        final PlayerMoveData last = data.playerMoves.getFirstPastMove();
+        if (last == null || !last.toIsValid || !(yDistance - last.yDistance > MAX_GLIDE_VERTICAL_GAIN)) return false;
+        // Only consecutive accepted moves: a teleport, worker join or reset
+        // starts elsewhere and leaves an older move behind.
+        final PlayerMoveData current = data.playerMoves.getCurrentMove();
+        if (current == null || Math.abs(current.from.getX() - last.to.getX()) > 1.0e-6
+                || Math.abs(current.from.getY() - last.to.getY()) > 1.0e-6
+                || Math.abs(current.from.getZ() - last.to.getZ()) > 1.0e-6) return false;
+        if (last.verVelUsed != null || current.verVelUsed != null
+                || data.fireworksBoostDuration > 0 || data.hasVerticalVelocityContext()
+                || data.windChargeImpulseEntityTick != Integer.MIN_VALUE
+                || data.windChargeImpulseSource != null || data.nativeWindChargeSource != null) return false;
+        try {
+            return !player.isRiptiding();
+        } catch (RuntimeException | LinkageError unavailable) {
+            return false;
+        }
     }
 
     /** Re-anchor only accepted descent after our own corrective placement. */
@@ -700,13 +766,14 @@ public class NoFall extends Check {
         if (mcAccess == null || player.isInsideVehicle() || !Folia.isOwnedByCurrentRegion(player)) return false;
         final double halfWidth = player.getBoundingBox().getWidthX() / 2.0;
         if (!(halfWidth > 0.0) || !Double.isFinite(halfWidth)) return false;
+        final int latencyTicks = boatContactLatencyTicks(player);
         boolean supported = false;
         try {
             for (final Entity boat : player.getNearbyEntities(1.5, 8.0, 1.5)) {
                 if (!Folia.isOwnedByCurrentRegion(boat) || !boat.isValid() || !MaterialUtil.isBoat(boat.getType())
                         || !mcAccess.getHandle().canCollideWith(player, boat)) continue;
-                if (mcAccess.getHandle().hasSweptBoatSupport(boat, to.getX() - halfWidth, to.getY(),
-                        to.getZ() - halfWidth, to.getX() + halfWidth, to.getZ() + halfWidth)) supported = true;
+                if (hasSweptBoatSupport(mcAccess.getHandle(), boat, to.getX() - halfWidth, to.getY(),
+                        to.getZ() - halfWidth, to.getX() + halfWidth, to.getZ() + halfWidth, latencyTicks)) supported = true;
             }
         } catch (RuntimeException foreignEntity) {
             return false;
@@ -714,6 +781,33 @@ public class NoFall extends Check {
         if (!supported) return false;
         final DataPacketFlying received = findReceivedPosition(to.getX(), to.getY(), to.getZ(), data, pData);
         return received != null && received.onGround;
+    }
+
+    /** At most one second of client latency widens a boat-top contact window. */
+    private static final int MAX_BOAT_CONTACT_LATENCY_TICKS = 20;
+
+    /**
+     * Native ticks a client's displayed boat can lag beyond vanilla
+     * interpolation: one round trip (the server's keep-alive average) and half
+     * again for jitter. Such a client lands on that older top, and vanilla
+     * accepts its ground packet and charges the landing there.
+     */
+    public static int boatContactLatencyTicks(final Player player) {
+        final int ping;
+        try {
+            ping = player.getPing();
+        } catch (RuntimeException | LinkageError unavailable) {
+            return 0;
+        }
+        if (ping <= 0) return 0;
+        return (int) Math.min(MAX_BOAT_CONTACT_LATENCY_TICKS, Math.ceil(ping * 1.5 / 50.0));
+    }
+
+    /** Swept boat support, widened by latencyTicks only when there is latency. */
+    public static boolean hasSweptBoatSupport(final MCAccess access, final Entity boat, final double minX,
+            final double feetY, final double minZ, final double maxX, final double maxZ, final int latencyTicks) {
+        return latencyTicks > 0 ? access.hasSweptBoatSupport(boat, minX, feetY, minZ, maxX, maxZ, latencyTicks)
+                : access.hasSweptBoatSupport(boat, minX, feetY, minZ, maxX, maxZ);
     }
 
     /** A descending true-ground step can follow a falling boat without a
@@ -910,7 +1004,7 @@ public class NoFall extends Check {
         }
 
         if (Bridge1_9.isGlidingWithElytra(player) && !toOnGround && !fromReset && !toReset) {
-            onGlidingMove(player, data, yDiff);
+            onGlidingMove(player, data, yDiff, true);
         }
 
         // Keep an explicit receipt only when both accepted geometry and its
@@ -1096,7 +1190,17 @@ public class NoFall extends Check {
     public void checkDamage(final Player player,  final double y, 
             final MovingData data, final IPlayerData pData) {
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
-        if (Bridge1_9.isGlidingWithElytra(player)) return;
+        if (Bridge1_9.isGlidingWithElytra(player)) {
+            // A gliding player's rejected move keeps native glide accounting,
+            // unless it is an impossible reversal out of a damaging dive (see
+            // onGlidingMove): then its descent is kept like any rejected move's.
+            final PlayerMoveData move = data.playerMoves == null ? null : data.playerMoves.getCurrentMove();
+            if (cc.noFallDealDamage || ServerVersion.compareMinecraftVersion("26.1") < 0
+                    || move == null || !move.toIsValid
+                    || getDamage(player, (float) getApplicableFallHeight(player, player.getLocation().getY(), data))
+                        < Magic.FALL_DAMAGE_MINIMUM
+                    || !isImplausibleGlideReversal(player, data, move.yDistance)) return;
+        }
         if (!cc.noFallDealDamage && ServerVersion.compareMinecraftVersion("26.1") >= 0) {
             // A rejected move/correction is not a landing. Keep its descent for
             // native contact instead of consuming it through immediate damage.
