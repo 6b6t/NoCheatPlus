@@ -612,8 +612,11 @@ public class NoFall extends Check {
         if (current == null || Math.abs(current.from.getX() - last.to.getX()) > 1.0e-6
                 || Math.abs(current.from.getY() - last.to.getY()) > 1.0e-6
                 || Math.abs(current.from.getZ() - last.to.getZ()) > 1.0e-6) return false;
-        if (last.verVelUsed != null || current.verVelUsed != null
-                || data.fireworksBoostDuration > 0 || data.hasVerticalVelocityContext()
+        // Only velocity that can lift the player explains the gain. The fly-check
+        // transition workaround queues the landing's descent and zero itself.
+        if (last.verVelUsed != null && last.verVelUsed.value > 0.0
+                || current.verVelUsed != null && current.verVelUsed.value > 0.0
+                || data.fireworksBoostDuration > 0 || data.hasUpwardVerticalVelocity()
                 || data.windChargeImpulseEntityTick != Integer.MIN_VALUE
                 || data.windChargeImpulseSource != null || data.nativeWindChargeSource != null) return false;
         try {

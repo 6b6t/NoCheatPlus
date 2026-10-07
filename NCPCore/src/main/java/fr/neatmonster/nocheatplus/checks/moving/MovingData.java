@@ -1340,9 +1340,13 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         return verVel.hasQueued();
     }
 
-    /** Queued vertical velocity (knockback, explosions); false without a tracker. */
-    public boolean hasVerticalVelocityContext() {
-        return verVel != null && verVel.hasQueued();
+    /**
+     * Queued upward vertical velocity (knockback, explosions). The entries the
+     * fly-check transition workaround adds itself (the last descent, zero) do
+     * not count. False without a tracker.
+     */
+    public boolean hasUpwardVerticalVelocity() {
+        return verVel != null && verVel.hasQueuedAbove(0.0);
     }
 
 
