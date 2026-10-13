@@ -149,7 +149,9 @@ public class LostGround {
             final double setBackYMargin = data.liftOffEnvelope.getMaxJumpHeight(data.jumpAmplifier) - setBackYDistance;
             if (setBackYMargin >= 0.0) {
                 // Half block step up (definitive).
-                if (to.isOnGround() && setBackYMargin >= yDistance && hDistance <= thisMove.hAllowedDistanceBase * 2.2) {
+                // The current horizontal allowance is calculated after lost-ground checks.
+                if (to.isOnGround() && setBackYMargin >= yDistance
+                    && hDistance <= Math.max(thisMove.walkSpeed, lastMove.hAllowedDistanceBase) * 2.2) {
                     if (lastMove.yDistance < 0.0 || yDistance <= cc.sfStepHeight && from.isOnGround(cc.sfStepHeight - yDistance)) {
                         return applyLostGround(player, from, true, thisMove, data, "step", tags);
                     }
