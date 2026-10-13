@@ -25,6 +25,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffectType;
 import org.bukkit.World;
+import org.bukkit.util.Vector;
 import org.bukkit.block.Block;
 
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
@@ -2710,8 +2711,22 @@ public class SurvivalFly extends Check {
         // Some resetting is done in MovingListener.
         if (executeActions(vd).willCancel()) {
             data.sfVLMoveCount = data.getPlayerMoveCount();
+            final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
+            // Correct to checked airborne movement without moving the jump-height anchor.
+            if (lastMove.toIsValid && lastMove.flyCheck == CheckType.MOVING_SURVIVALFLY
+                && lastMove.to.extraPropertiesValid && !lastMove.to.onGroundOrResetCond
+                && data.hasSetBack()
+                && from.getWorldName().equals(lastMove.to.getWorldName())
+                && TrigUtil.isSamePos(from, lastMove.to)) {
+                data.setSurvivalFlyCorrection(from);
+            }
             // Set back + view direction of to (more smooth).
-            return MovingUtil.getApplicableSetBackLocation(player, to.getYaw(), to.getPitch(), to, data, cc);
+            final Location correction = MovingUtil.getApplicableSetBackLocation(player, to.getYaw(), to.getPitch(), from, data, cc);
+            if (correction != null) {
+                player.setVelocity(new Vector());
+                data.removeAllVelocity();
+            }
+            return correction;
         }
         else {
             data.sfVLMoveCount = data.getPlayerMoveCount();

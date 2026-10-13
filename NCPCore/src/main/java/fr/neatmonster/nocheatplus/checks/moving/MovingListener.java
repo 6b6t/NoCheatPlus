@@ -2775,6 +2775,11 @@ catch (java.lang.Throwable thr) {}
         }
         // Process velocity.
         final Vector velocity = event.getVelocity();
+        // A stop must clear queued launch velocity, including delayed events.
+        if (velocity.getX() == 0.0 && velocity.getY() == 0.0 && velocity.getZ() == 0.0) {
+            data.removeAllVelocity();
+            return;
+        }
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
         data.addVelocity(player, cc, velocity.getX(), velocity.getY(), velocity.getZ());
     }
