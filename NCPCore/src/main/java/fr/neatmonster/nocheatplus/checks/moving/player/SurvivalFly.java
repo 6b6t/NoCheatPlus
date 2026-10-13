@@ -2710,6 +2710,15 @@ public class SurvivalFly extends Check {
         // Some resetting is done in MovingListener.
         if (executeActions(vd).willCancel()) {
             data.sfVLMoveCount = data.getPlayerMoveCount();
+            final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
+            // A rejected flight attempt must not rewind an accepted fall to its take-off point.
+            if (lastMove.toIsValid && lastMove.flyCheck == CheckType.MOVING_SURVIVALFLY
+                && lastMove.yDistance < 0.0 && Magic.inAir(lastMove)
+                && data.hasSetBack() && from.getY() < data.getSetBackY()
+                && from.getWorldName().equals(lastMove.to.getWorldName())
+                && TrigUtil.isSamePos(from, lastMove.to)) {
+                data.setSetBack(from);
+            }
             // Set back + view direction of to (more smooth).
             return MovingUtil.getApplicableSetBackLocation(player, to.getYaw(), to.getPitch(), to, data, cc);
         }
