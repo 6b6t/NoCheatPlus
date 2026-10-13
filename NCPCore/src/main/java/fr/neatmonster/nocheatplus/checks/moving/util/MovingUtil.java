@@ -87,7 +87,7 @@ public class MovingUtil {
         } else {
             final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
             final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
-            final float sourceFallDistance = data.noFallFallDistance;
+            final float sourceFallDistance = NoFall.distanceForTeleport(player, data);
             final boolean preserveNoFall = !cc.noFallTpReset && pData.isCheckActive(CheckType.MOVING_NOFALL, player);
             data.clearFlyData();
             data.clearPlayerMorePacketsData();
@@ -96,7 +96,7 @@ public class MovingUtil {
             data.setSetBack(current);
             aux.resetPositionsAndMediumProperties(player, current, data, cc);
             // Fox placements do not fire Bukkit's cancellable teleport event.
-            // Carry accepted descent under the live reset policy, not a damage debt.
+            // Respect native retention/resets; stale check debt is not a new descent.
             NoFall.afterTeleport(player, data, to, sourceFallDistance, preserveNoFall);
             data.resetTeleported();
             Combined.resetYawRate(player, current.getYaw(), System.currentTimeMillis(), true, pData);
@@ -179,6 +179,7 @@ public class MovingUtil {
             ensureChunksLoaded(player, target, "teleport", data, cc, pData);
         }
         data.onSetBack(moveInfo.from);
+        NoFall.afterSetBack(player, target, data);
         aux.returnPlayerMoveInfo(moveInfo);
         Combined.resetYawRate(player, target.getYaw(), System.currentTimeMillis(), true, pData);
         data.resetTeleported();
@@ -267,6 +268,7 @@ public class MovingUtil {
                                                          BlockFlags.F_STICKY)
         ) {
             data.clearNoFallData();
+            data.clearGlideDebt();
         }
         return isFlagCollected;
     }

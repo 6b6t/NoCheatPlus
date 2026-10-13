@@ -1064,11 +1064,29 @@ public class TestElytraSwapEnvelope {
         }
     }
 
+    /**
+     * NoFall v4 (its own PersistentDataContainer checkpoint and owner callbacks)
+     * is merged under elytra v3 on fix/pvp-nofall-v4-elytra. There the rule
+     * applies to what the elytra merge adds on top of that NoFall tip.
+     */
+    private static final String NOFALL_V4 = "ad69bc216c496047a620b2f66eebddaa1035d878";
+
+    private static String diffBase(final File root) {
+        try {
+            final Process process = new ProcessBuilder("git", "-C", root.getPath(), "merge-base", "--is-ancestor", NOFALL_V4, "HEAD")
+                    .redirectErrorStream(true).start();
+            return process.waitFor() == 0 ? NOFALL_V4 : BASE;
+        }
+        catch (final IOException | InterruptedException e) {
+            return BASE;
+        }
+    }
+
     /** Added main-source lines since {@link #BASE}, or null without git or the base commit. */
     private static List<String> addedLinesSinceBase(final File root) throws IOException, InterruptedException {
         final Process process;
         try {
-            process = new ProcessBuilder("git", "-C", root.getPath(), "diff", "--unified=0", BASE, "--",
+            process = new ProcessBuilder("git", "-C", root.getPath(), "diff", "--unified=0", diffBase(root), "--",
                     "NCPCore/src/main", "NCPCompatBukkit/src/main", "NCPPlugin/src/main")
                     .redirectErrorStream(true).start();
         }

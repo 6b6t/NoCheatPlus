@@ -99,8 +99,20 @@ public class ProtocolLibComponent implements IDisableListener, INotifyReload, Jo
 
     private void register(Plugin plugin) {
         final IWorldDataManager worldMan = NCPAPIProvider.getNoCheatPlusAPI().getWorldDataManager();
+        final boolean nativeNoFall = ServerVersion.compareMinecraftVersion("26.1") >= 0
+                && worldMan.isActiveAnywhere(CheckType.MOVING_NOFALL);
         if (!worldMan.isActiveAnywhere(CheckType.NET)) {
-            StaticLog.logInfo("No packet level checks activated.");
+            if (nativeNoFall) {
+                // Observe native receipts and bound only their outstanding admission.
+                // The configured NET checks remain disabled.
+                register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallTeleportObserver", plugin);
+                register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketGate", plugin);
+                register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketObserver", plugin);
+                NCPAPIProvider.getNoCheatPlusAPI().addFeatureTags("packet-listeners",
+                        java.util.Arrays.asList("NoFallTeleportObserver", "NoFallPacketGate", "NoFallPacketObserver"));
+                StaticLog.logInfo("NoFall movement observation active; net checks remain disabled.");
+            }
+            else StaticLog.logInfo("No packet level checks activated.");
             return;
         }
         StaticLog.logInfo("Adding packet level hooks for ProtocolLib (MC " + ProtocolLibrary.getProtocolManager().getMinecraftVersion().getVersion() + ")...");
@@ -118,11 +130,17 @@ public class ProtocolLibComponent implements IDisableListener, INotifyReload, Jo
             // (Also sets lastKeepAliveTime, if enabled.)
             register("fr.neatmonster.nocheatplus.checks.net.protocollib.UseEntityAdapter", plugin);
         }
-        if (worldMan.isActiveAnywhere(CheckType.NET_FLYINGFREQUENCY) || worldMan.isActiveAnywhere(CheckType.NET_MOVING)) {
-            // (Also sets lastKeepAliveTime, if enabled.)
-            register("fr.neatmonster.nocheatplus.checks.net.protocollib.MovingFlying", plugin);
-            register("fr.neatmonster.nocheatplus.checks.net.protocollib.OutgoingPosition", plugin);
+        final boolean netMovement = worldMan.isActiveAnywhere(CheckType.NET_FLYINGFREQUENCY)
+                || worldMan.isActiveAnywhere(CheckType.NET_MOVING);
+        if (nativeNoFall) {
+            register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallTeleportObserver", plugin);
+            register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketGate", plugin);
+            register("fr.neatmonster.nocheatplus.checks.net.protocollib.NoFallPacketObserver", plugin);
         }
+        if (netMovement) {
+            register("fr.neatmonster.nocheatplus.checks.net.protocollib.MovingFlying", plugin);
+        }
+        if (netMovement) register("fr.neatmonster.nocheatplus.checks.net.protocollib.OutgoingPosition", plugin);
         if (worldMan.isActiveAnywhere(CheckType.NET_KEEPALIVEFREQUENCY) || worldMan.isActiveAnywhere(CheckType.FIGHT_GODMODE)) {
             // (Set lastKeepAlive if this or fight.godmode is enabled.)
             register("fr.neatmonster.nocheatplus.checks.net.protocollib.KeepAliveAdapter", plugin);

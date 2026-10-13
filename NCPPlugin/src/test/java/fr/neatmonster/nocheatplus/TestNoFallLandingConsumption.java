@@ -97,12 +97,13 @@ public class TestNoFallLandingConsumption {
             assertEquals(4, distance.getValue() - move.yDistance, 1.0e-6);
         } finally { fr.neatmonster.nocheatplus.compat.versions.ServerVersion.setMinecraftVersion(previous); }
     }
-    @Test public void ordinaryTeleportCarriesDescentButConsumesAContactBeforeImmunity() throws Exception {
+    @Test public void ordinaryTeleportUsesNativeDescentAndConsumesContactBeforeImmunity() throws Exception {
         Fixture f = new Fixture();
         var placement = new fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData();
         when(f.data.playerMoves.getFirstPastMove()).thenReturn(placement);
-        NoFall.afterTeleport(f.player, f.data, f.player.getLocation(), 5, true);
-        verify(f.player).setFallDistance(5);
+        when(f.player.getFallDistance()).thenReturn(5f);
+        NoFall.afterTeleport(f.player, f.data, f.player.getLocation(), 12, true);
+        verify(f.player, never()).setFallDistance(anyFloat());
         assertEquals(5, f.data.noFallFallDistance, 0);
         assertFalse(f.data.noFallSkipAirCheck);
         placement.from.onGround = true;

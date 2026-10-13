@@ -38,6 +38,7 @@ import org.bukkit.plugin.Plugin;
 
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.CheckListener;
+import fr.neatmonster.nocheatplus.checks.moving.player.NoFall;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.moving.ElytraResidual;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
@@ -90,19 +91,6 @@ public class VehicleChecks extends CheckListener {
     private final IWorldDataManager worldDataManager = NCPAPIProvider.getNoCheatPlusAPI().getWorldDataManager();
 
     private final Set<EntityType> normalVehicles = ConcurrentHashMap.newKeySet();
-
-    /** Temporary use, reset world to null afterwards, avoid nesting. */
-    private final Location useLoc = new Location(null, 0, 0, 0);
-    /** Temporary use, reset world to null afterwards, avoid nesting. */
-    private final Location useLocEnter = new Location(null, 0, 0, 0);
-    /** Temporary use, reset world to null afterwards, avoid nesting. */
-    private final Location useLocVehicleEnter = new Location(null, 0, 0, 0);
-
-    /** Temporary use, avoid nesting. */
-    private final SimplePositionWithLook usePos1 = new SimplePositionWithLook();
-    /** Temporary use, avoid nesting. */
-    @SuppressWarnings("unused")
-    private final SimplePositionWithLook usePos2 = new SimplePositionWithLook();
 
     /** Auxiliary functionality. */
     private final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
@@ -387,7 +375,7 @@ public class VehicleChecks extends CheckListener {
         }
         // Determine best locations to use.
         // (Currently always use firstPastMove and vehicleLocation.)
-        final Location useFrom = LocUtil.set(useLoc, world, firstPastMove.toIsValid ? firstPastMove.to : firstPastMove.from);
+        final Location useFrom = LocUtil.set(new Location(null, 0, 0, 0), world, firstPastMove.toIsValid ? firstPastMove.to : firstPastMove.from);
         final Location useTo = vehicleLocation;
         // Initialize moveInfo.
         if (vehicleType == EntityType.PIG) {
@@ -511,11 +499,11 @@ public class VehicleChecks extends CheckListener {
         final boolean debug = pData.isDebugActive(checkType);
 
         data.joinOrRespawn = false;
-        data.vehicleConsistency = MoveConsistency.getConsistency(thisMove, player.getLocation(useLoc));
+        data.vehicleConsistency = MoveConsistency.getConsistency(thisMove, player.getLocation());
         switch (data.vehicleConsistency) {
             case FROM:
             case TO:
-                aux.resetPositionsAndMediumProperties(player, player.getLocation(useLoc), data, cc); // TODO: Drop MC 1.4!
+                aux.resetPositionsAndMediumProperties(player, player.getLocation(), data, cc); // TODO: Drop MC 1.4!
                 break;
             case INCONSISTENT:
                 // TODO: Any exploits exist? -> TeleportUtil.forceMount(player, vehicle)
@@ -526,11 +514,13 @@ public class VehicleChecks extends CheckListener {
         SetBackEntry newTo = null;
         data.sfNoLowJump = true;
 
-        if (cc.noFallVehicleReset) {
-            // Reset noFall data.
-            data.noFallSkipAirCheck = true; // Might allow one time cheat.
+        if (cc.noFallVehicleReset && pData.isCheckActive(CheckType.MOVING_NOFALL, player)
+                && !(cc.noFallSkipAllowFlight && player.getAllowFlight())) {
+            // Collision support and a confirmed ride are different native rules.
+            // Riding resets the passenger's descent even before the vehicle lands.
             data.sfLowJump = false;
-            data.clearNoFallData();
+            if (vehicle.isOnGround()) NoFall.onVehicleLanded(data);
+            else NoFall.onVehicleAir(player, data, false);
         }
 
         if (debug) {
@@ -614,7 +604,7 @@ public class VehicleChecks extends CheckListener {
                 setBack(player, vehicle, newTo, data, cc, pData);
             //}, null);
         }
-        useLoc.setWorld(null);
+
     }
 
     private void updateVehicleData(final Player player, final MovingData data, final Entity vehicle, 
@@ -683,7 +673,7 @@ public class VehicleChecks extends CheckListener {
             boolean scheduleSetBack = cc.scheduleVehicleSetBacks;
             // Schedule as task, if set so.
             if (scheduleSetBack) {
-                aux.resetVehiclePositions(vehicle, LocUtil.set(useLoc, vehicle.getWorld(), newTo), data, cc); // Heavy-ish, though.
+                aux.resetVehiclePositions(vehicle, LocUtil.set(new Location(null, 0, 0, 0), vehicle.getWorld(), newTo), data, cc); // Heavy-ish, though.
                 data.vehicleSetBackTaskId = Folia.runSyncTaskForEntity(vehicle, plugin, (arg) -> new VehicleSetBackTask(vehicle, player, newTo.getLocation(vehicle.getWorld()), debug).run(), null);
 
                 if (!Folia.isTaskScheduled(data.vehicleSetBackTaskId)) {
@@ -804,8 +794,9 @@ public class VehicleChecks extends CheckListener {
         data.vehicleLeave = false;
         data.removeAllVelocity();
         // Event should have a vehicle, in case check this last.
-        final Location vLoc = vehicle.getLocation(useLocVehicleEnter);
-        data.vehicleConsistency = MoveConsistency.getConsistency(vLoc, null, player.getLocation(useLocEnter));
+        final Location vLoc = vehicle.getLocation();
+        final Location playerLoc = player.getLocation();
+        data.vehicleConsistency = MoveConsistency.getConsistency(vLoc, null, playerLoc);
         if (data.isVehicleSetBack) {
             /*
              * Currently checking for consistency is done in
@@ -815,13 +806,17 @@ public class VehicleChecks extends CheckListener {
         }
         else {
             data.vehicleSetBacks.resetAll(vLoc);
+            // VehicleEnvelope uses this as its own in-air movement counter.
+            // A real mount starts that counter; the passenger's earlier fall
+            // cannot make a newly spawned/falling boat violate its envelope.
+            data.sfJumpPhase = 0;
         }
         aux.resetVehiclePositions(vehicle, vLoc, data, cc);
         if (pData.isDebugActive(checkType)) {
-            debug(player, "Vehicle enter: " + vehicle.getType() + " , player: " + useLocEnter + " c=" + data.vehicleConsistency);
+            debug(player, "Vehicle enter: " + vehicle.getType() + " , player: " + playerLoc + " c=" + data.vehicleConsistency);
         }
-        useLocVehicleEnter.setWorld(null);
-        useLocEnter.setWorld(null);
+
+
         // TODO: more resetting, visible check (visible -> interact entity) ?
     }
 
@@ -838,10 +833,7 @@ public class VehicleChecks extends CheckListener {
         }
         onPlayerVehicleLeave(player, null);
         //      if (BlockProperties.isRails(pFrom.getTypeId())) {
-        // Always clear no fall data, let Minecraft do fall damage.
-        data.noFallSkipAirCheck = true; // Might allow one time cheat.
-        data.sfLowJump = false;
-        data.clearNoFallData();
+        // The leave handler keeps an airborne fall. Do not clear it again here.
         // TODO: What with processingEvents.remove(player.getName());
         //      }
     }
@@ -916,9 +908,11 @@ public class VehicleChecks extends CheckListener {
             final Location vLoc = vehicle.getLocation();
             // (Don't override vehicle set back and last position here.)
             // Workaround for some entities/animals that don't fire VehicleMoveEventS.
-            if (!normalVehicles.contains(vehicle.getType()) || cc.noFallVehicleReset) {
-                data.noFallSkipAirCheck = true; // Might allow one time cheat.
-                data.clearNoFallData();
+            if ((!normalVehicles.contains(vehicle.getType()) || cc.noFallVehicleReset)
+                    && pData.isCheckActive(CheckType.MOVING_NOFALL, player)
+                    && !(cc.noFallSkipAllowFlight && player.getAllowFlight())) {
+                if (vehicle.isOnGround()) NoFall.onVehicleLanded(data);
+                else NoFall.onVehicleAir(player, data, true);
             }
             // Check consistency with vehicle location.
             if (MoveConsistency.getConsistency(vLoc, null, pLoc) == MoveConsistency.INCONSISTENT) {

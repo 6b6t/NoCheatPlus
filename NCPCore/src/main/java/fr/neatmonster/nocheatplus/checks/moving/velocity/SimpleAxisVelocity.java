@@ -79,6 +79,14 @@ public class SimpleAxisVelocity {
         return !queued.isEmpty();
     }
 
+    /** Whether a queued entry exceeds the given value (e.g. an upward impulse). */
+    public boolean hasQueuedAbove(final double value) {
+        for (final SimpleEntry entry : queued) {
+            if (entry.value > value) return true;
+        }
+        return false;
+    }
+
     /**
      * Use the next matching entry.
      * 

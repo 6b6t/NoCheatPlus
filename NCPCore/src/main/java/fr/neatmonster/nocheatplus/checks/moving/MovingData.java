@@ -238,6 +238,39 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public boolean noFallSkipAirCheck = false;
     /** Last coordinate from when the player was affected wind charge explosion */
     public Location noFallCurrentLocOnWindChargeHit = null;
+    /** Legacy snapshot field. New glides have no duration threshold. */
+    public int noFallGlideTicks = 0;
+    /** Legacy snapshot debt, discarded when rebasing to native glide accounting. */
+    public float noFallGlideCarry = 0f;
+    /** Native glide accounting is active until the next move after closing. */
+    public boolean noFallGlideEstablished = false;
+    public int noFallGlideAccountingTick = Integer.MIN_VALUE;
+    public boolean noFallGlideLimitPending;
+    /** Native distance was at least one at the last accounted glide move and
+     * stayed above one after its packet (no upward reset): only the native glide
+     * limit can make it exactly one before the next move. */
+    public boolean noFallGlideNativeAbove;
+    /** The server's own glide simulation met a surface just below the accepted
+     * position since the last accounted move (not the client's contact). */
+    public boolean noFallGlideShadowContact;
+
+    /** Drop native-glide transition state and any legacy snapshot debt. */
+    public void clearGlideDebt() {
+        noFallGlideTicks = 0;
+        noFallGlideCarry = 0f;
+        noFallGlideEstablished = false;
+        noFallGlideAccountingTick = Integer.MIN_VALUE;
+        noFallGlideLimitPending = false;
+        noFallGlideNativeAbove = false;
+        noFallGlideShadowContact = false;
+    }
+
+    /** Received position packets the move being processed spans (0: unknown). */
+    public int noFallMovePackets;
+    /** The last move NoFall matched to a received packet: received packets it
+     * spanned (0: unknown) and its endpoint. */
+    public int noFallLastMovePackets;
+    public double noFallLastMoveX = Double.NaN, noFallLastMoveY = Double.NaN, noFallLastMoveZ = Double.NaN;
 
     // *----------Data of the SurvivalFly check----------*
     /** Default lift-off envelope, used after resetting. <br> TODO: Test, might be better ground. */
@@ -606,6 +639,15 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Called when a player leaves the server.
      */
     public void onPlayerLeave() {
+        noFallMatchedPacketSequence = 0L;
+        noFallMovePackets = 0;
+        noFallLastMovePackets = 0;
+        noFallLastMoveX = noFallLastMoveY = noFallLastMoveZ = Double.NaN;
+        invalidateNativeLandingTask();
+        noFallGeneration++;
+        noFallCancelledAirFallDebt = 0f;
+        noFallSetBackFallDebt = 0f;
+        noFallContactFallDebt = 0f;
         // Player data outlives a logout: no residual glide credit into the next session.
         ElytraResidual.end(elytraResidual);
         resetSetBackTeleport();
@@ -724,16 +766,80 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     }
 
 
+    /** Entity-owned token for pending native-distance restores; never transferred. */
+    public long noFallGeneration;
+    /** One owning-entity landing probe at a time; resets invalidate its generation. */
+    public volatile boolean noFallNativeLandingTaskPending;
+    public long noFallNativeLandingGeneration;
+    /** Finite owner retries while an accepted descent approaches an owned block shape. */
+    public int noFallNearGroundProbeTries;
+    /** Each scheduled probe has a fixed token, separate from refreshed fall generations. */
+    public volatile long noFallNativeLandingTaskToken;
+
+    public void invalidateNativeLandingTask() {
+        noFallNativeLandingTaskToken++;
+        noFallNativeLandingTaskPending = false;
+    }
+    /** Native distance erased by a FALL event this check cancelled while airborne. */
+    public float noFallCancelledAirFallDebt;
+    /** Accepted descent erased by a tracked NCP correction, never its rejected endpoint. */
+    public float noFallSetBackFallDebt;
+    /** That set-back debt came from an impossible glide reversal (NoFall#checkDamage). */
+    public boolean noFallSetBackReversal;
+    /** Accepted physical contact whose matching received packet denied ground. */
+    public float noFallContactFallDebt;
+    /** Last received movement sequence matched to an accepted position. */
+    public long noFallMatchedPacketSequence;
+    /** Final received true-ground step from confirmed support, awaiting native processing. */
+    public fr.neatmonster.nocheatplus.checks.net.model.DataPacketFlying noFallBoatGroundStep;
+
+
     /**
-     * Clear the data of the new fall check.
+     * Damaging landing restored for native processing, awaiting proof that
+     * native processed it. Not owed descent by itself: NoFall.resolveHandoff
+     * settles it (consumed, or owed as contact debt) before anything charges
+     * it. Kept through glide transitions and worker checkpoints with its
+     * contact position; only that settlement or an authoritative reset ends it.
      */
+    public float noFallHandoffDistance;
+    public double noFallHandoffX, noFallHandoffY, noFallHandoffZ;
+    /** Native may process this landing without a FALL event (damage cooldown,
+     * invulnerability, zero native damage); otherwise only its event consumes it. */
+    public boolean noFallHandoffSilent;
+
+    public void clearNoFallHandoff() {
+        noFallHandoffDistance = 0f;
+        noFallHandoffSilent = false;
+    }
+
+    /** Clear the fall check and invalidate callbacks for the previous descent. */
     public void clearNoFallData() {
+        clearNoFallHandoff();
+        clearNoFallDescent();
+    }
+
+    /** Rebase descent accounting without settling a pending landing confirmation. */
+    public void clearNoFallDescent() {
+        noFallGeneration++;
+        noFallCancelledAirFallDebt = 0f;
+        noFallSetBackFallDebt = 0f;
+        noFallContactFallDebt = 0f;
+        noFallBoatGroundStep = null;
+        noFallNearGroundProbeTries = 0;
         noFallFallDistance = 0;
         noFallMaxY = BlockProperties.getMinWorldY();
         noFallSkipAirCheck = false;
     }
     
+    /** Synchronous wind explosion context; never a transferable velocity allowance. */
+    public int windChargeImpulseEntityTick = Integer.MIN_VALUE;
+    public java.util.UUID windChargeImpulseSource;
+    public java.util.UUID nativeWindChargeSource;
+
     public void clearWindChargeImpulse() {
+        windChargeImpulseEntityTick = Integer.MIN_VALUE;
+        windChargeImpulseSource = null;
+        nativeWindChargeSource = null;
         noFallCurrentLocOnWindChargeHit = null;
     }
 
@@ -1271,6 +1377,15 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         return verVel.hasQueued();
     }
 
+    /**
+     * Queued upward vertical velocity (knockback, explosions). The entries the
+     * fly-check transition workaround adds itself (the last descent, zero) do
+     * not count. False without a tracker.
+     */
+    public boolean hasUpwardVerticalVelocity() {
+        return verVel != null && verVel.hasQueuedAbove(0.0);
+    }
+
 
     /**
      * Get the first matching velocity entry (invalidate others). Sets
@@ -1548,11 +1663,16 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
 
 
     public void useVerticalBounce(final Player player) {
+        noFallGeneration++;
+        noFallCancelledAirFallDebt = 0f;
+        noFallSetBackFallDebt = 0f;
+        noFallContactFallDebt = 0f;
         // CHEATING: Ensure fall distance is reset.
         player.setFallDistance(0f);
         noFallMaxY = BlockProperties.getMinWorldY();
         noFallFallDistance = 0f;
         noFallSkipAirCheck = true;
+        clearGlideDebt();
         prependVerticalVelocity(verticalBounce);
         verticalBounce = null;
     }
@@ -1630,6 +1750,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
                 case MOVING_NOFALL:
                     noFallVL = 0;
                     clearNoFallData();
+                    clearGlideDebt();
                     break;
                 case MOVING_MOREPACKETS:
                     morePacketsVL = 0;

@@ -637,6 +637,38 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
     }
 
     @Override
+    public boolean dispatchNativeLanding(Player player) {
+        return NativeLandingAccess.dispatch(player);
+    }
+
+    @Override
+    public boolean canCollideWith(Player player, org.bukkit.entity.Entity other) {
+        return NativeLandingAccess.canCollide(player, other);
+    }
+
+    @Override
+    public boolean hasVerticalCollisionBelow(Player player) {
+        return NativeLandingAccess.hasCollisionBelow(player);
+    }
+
+    @Override
+    public boolean hasSweptBoatSupport(org.bukkit.entity.Entity entity, double minX, double feetY,
+            double minZ, double maxX, double maxZ) {
+        return NativeLandingAccess.supportsSweptBoat(entity, minX, feetY, minZ, maxX, maxZ);
+    }
+
+    @Override
+    public boolean hasSweptBoatSupport(org.bukkit.entity.Entity entity, double minX, double feetY,
+            double minZ, double maxX, double maxZ, int latencyTicks) {
+        return NativeLandingAccess.supportsSweptBoat(entity, minX, feetY, minZ, maxX, maxZ, latencyTicks);
+    }
+
+    @Override
+    public boolean isIgnoringFallDamageFromCurrentImpulse(Player player) {
+        return NativeLandingAccess.hasNativeImpulse(player);
+    }
+
+    @Override
     public boolean resetActiveItem(Player player) {
         if (this.reflectLivingEntity != null && this.reflectLivingEntity.nmsclearActiveItem != null) {
             Object handle = getHandle(player);

@@ -293,6 +293,12 @@ public abstract class BlockCache {
      */
     public abstract boolean standsOnEntity(Entity entity, final double minX, final double minY, final double minZ, final double maxX, final double maxY, final double maxZ);
 
+    /** Completed native contact; backends may distinguish it from motion support. */
+    public boolean standsOnEntityContact(Entity entity, final double minX, final double minY, final double minZ,
+            final double maxX, final double maxY, final double maxZ) {
+        return standsOnEntity(entity, minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
 
     /**
      * Remove references.<br>

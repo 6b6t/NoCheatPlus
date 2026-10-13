@@ -139,6 +139,9 @@ public class TestElytraResidualLifecycle {
     }
 
     private static void set(final Object target, final Class<?> owner, final String name, final Object value) throws Exception {
+        if (value instanceof Location && java.util.Arrays.stream(owner.getDeclaredFields()).noneMatch(f -> f.getName().equals(name))) {
+            return; // Merged with NoFall v4: shared scratch Locations are invocation-local there.
+        }
         final Field field = owner.getDeclaredField(name);
         field.setAccessible(true);
         field.set(target, value);
@@ -253,6 +256,9 @@ public class TestElytraResidualLifecycle {
         final Entity vehicle = mock(Entity.class);
         when(vehicle.getLocation(any(Location.class))).thenAnswer(at(world, 10.5, 100.0, 10.5));
         when(player.getLocation(any(Location.class))).thenAnswer(at(world, 10.5, 100.5, 10.5));
+        // Merged with NoFall v4: VehicleChecks reads fresh (invocation-local) locations.
+        when(vehicle.getLocation()).thenReturn(new Location(world, 10.5, 100.0, 10.5));
+        when(player.getLocation()).thenReturn(new Location(world, 10.5, 100.5, 10.5));
         final Method enter = VehicleChecks.class.getDeclaredMethod("dataOnVehicleEnter",
                 Player.class, Entity.class, MovingData.class, IPlayerData.class);
         enter.setAccessible(true);

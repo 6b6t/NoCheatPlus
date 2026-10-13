@@ -145,6 +145,29 @@ public interface MCAccess extends IGetBlockCache, IEntityAccessDimensions {
      */
     public void dealFallDamage(Player player, double damage);
 
+    /** Run the server's block fallOn/attributes/impulse accounting at confirmed contact. */
+    default boolean dispatchNativeLanding(Player player) { return false; }
+
+    /** Solid collision, rather than an entity's interaction/hit box. */
+    default boolean canCollideWith(Player player, Entity other) { return false; }
+
+    /** Collision computed by the native move, independent of the packet ground bit. */
+    default boolean hasVerticalCollisionBelow(Player player) { return false; }
+
+    /** Contact with a boat's native previous/current collision box, on its owner. */
+    default boolean hasSweptBoatSupport(Entity entity, double minX, double feetY, double minZ,
+            double maxX, double maxZ) { return false; }
+
+    /** As above, also accepting boxes up to latencyTicks older (the client's round trip). */
+    default boolean hasSweptBoatSupport(Entity entity, double minX, double feetY, double minZ,
+            double maxX, double maxZ, int latencyTicks) {
+        return hasSweptBoatSupport(entity, minX, feetY, minZ, maxX, maxZ);
+    }
+
+    /** Authoritative native wind context; packet movement cannot create it. */
+    default boolean isIgnoringFallDamageFromCurrentImpulse(Player player) { return false; }
+
+
     /**
      * If dealFallDamage(Player, double) will fire a damage event.
      * @return

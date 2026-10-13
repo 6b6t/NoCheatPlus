@@ -85,15 +85,29 @@ public class TestTeleportCompletion {
         }).when(aux).resetPositionsAndMediumProperties(any(), any(), same(data), same(config));
     }
 
-    @Test public void ordinaryFoxPlacementKeepsOnlyPreTeleportDescentWhenNoFallIsActive() throws Exception {
+    @Test public void ordinaryFoxPlacementKeepsNativeDescentWhenNoFallIsActive() throws Exception {
         var reset = MovingConfig.class.getField("noFallTpReset");reset.setAccessible(true);reset.setBoolean(config,false);
         when(pData.isCheckActive(CheckType.MOVING_NOFALL,player)).thenReturn(true);
-        data.noFallFallDistance=5;data.noFallMaxY=120;
+        data.noFallFallDistance=12;data.noFallMaxY=120;
+        when(player.getFallDistance()).thenReturn(5f);
         Location to=new Location(world,16,81,16);when(player.getLocation()).thenReturn(to);
         MovingUtil.onTeleportComplete(player,to,1,data,pData);
         assertEquals(5,data.noFallFallDistance,0);assertEquals(81,data.noFallMaxY,0);
-        verify(player).setFallDistance(5);
+        verify(player, never()).setFallDistance(anyFloat());
         assertFalse(data.noFallSkipAirCheck);
+    }
+    @Test public void authoritativeResetBeforeFoxPlacementCannotReviveBounce() throws Exception {
+        var reset = MovingConfig.class.getField("noFallTpReset");reset.setAccessible(true);reset.setBoolean(config,false);
+        when(pData.isCheckActive(CheckType.MOVING_NOFALL,player)).thenReturn(true);
+        data.noFallFallDistance=1.086f;data.noFallMaxY=95;data.noFallSetBackFallDebt=9;
+        when(player.getFallDistance()).thenReturn(0f);
+        Location to=new Location(world,16,93,16);when(player.getLocation()).thenReturn(to);
+        long generation=data.noFallGeneration;
+        MovingUtil.onTeleportComplete(player,to,1,data,pData);
+        assertEquals(0,data.noFallFallDistance,0);assertEquals(93,data.noFallMaxY,0);
+        assertEquals(0,data.noFallSetBackFallDebt,0);
+        assertFalse(fr.neatmonster.nocheatplus.checks.moving.player.NoFall.mayRestoreCancelledFall(data,generation));
+        verify(player, never()).setFallDistance(anyFloat());
     }
     @Test
     public void distantArrivalThenSmallMoveDoesNotRollBackButUncheckedDriftDoes() throws Exception {
@@ -142,12 +156,32 @@ public class TestTeleportCompletion {
     public void matchingCoordinatesInAnotherWorldAreNotOurPendingSetBack() {
         final Location source = new Location(world, 10, 90, 0);
         data.prepareSetBack(source);
-        final Location to = new Location(world(), 10, 90, 0);
+        final World destinationWorld = world();
+        final Location to = new Location(destinationWorld, 10, 90, 0);
         when(player.getLocation()).thenReturn(to.clone());
         MovingUtil.onTeleportComplete(player, to, 1L, data, pData);
-        assertEquals(to.getWorld(), data.getSetBack(to).getWorld());
+        assertEquals(destinationWorld, data.getSetBack(to).getWorld());
         assertFalse(data.hasTeleported());
         verify(aux).resetPositionsAndMediumProperties(player, to, data, config);
+    }
+
+    @Test public void trackedCorrectionKeepsOnlyAcceptedDebtWhenNativeDistanceIsReset() throws Exception {
+        final Location to = new Location(world, 10, 81, 0);
+        when(player.getLocation()).thenReturn(to.clone());
+        data.prepareSetBack(to);data.noFallFallDistance=7;data.noFallMaxY=90;
+        data.noFallSetBackFallDebt=7;
+        final PlayerMoveInfo info=mock(PlayerMoveInfo.class);
+        final PlayerLocation from=mock(PlayerLocation.class);
+        final String worldName=world.getName();when(from.getWorldName()).thenReturn(worldName);
+        when(from.getX()).thenReturn(to.getX());when(from.getY()).thenReturn(to.getY());
+        when(from.getZ()).thenReturn(to.getZ());
+        final Field fromField=MoveInfo.class.getField("from");fromField.setAccessible(true);
+        fromField.set(info,from);when(aux.usePlayerMoveInfo()).thenReturn(info);
+        MovingUtil.onTeleportComplete(player,to,1,data,pData);
+        assertEquals(7,data.noFallFallDistance,0);assertEquals(88,data.noFallMaxY,0);
+        assertEquals(7,data.noFallSetBackFallDebt,0);
+        verify(player,never()).setFallDistance(anyFloat());
+        assertFalse(data.hasTeleported());
     }
 
     @Test

@@ -144,10 +144,11 @@ public class CreativeFly extends Check {
             }
         }
 
-        // Do not check for nofall if the player has slowfalling active or is gliding
-        if (Bridge1_13.hasSlowfalling() && model.getScaleSlowfallingEffect() 
-            || Bridge1_9.isGlidingWithElytra(player) && thisMove.yDistance > -0.5) {
+        // Slow falling resets descent. Elytra accounting is rebased to native
+        // distance by NoFall, including short legitimate deploys.
+        if (Bridge1_13.hasSlowfalling() && model.getScaleSlowfallingEffect()) {
             data.clearNoFallData();
+            data.clearGlideDebt();
         } 
         
         // HACK: when switching model, we need to add some velocity to harmonize the transition and not trggering fps.
