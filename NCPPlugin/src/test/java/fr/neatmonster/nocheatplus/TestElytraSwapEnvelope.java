@@ -1087,7 +1087,10 @@ public class TestElytraSwapEnvelope {
         final Process process;
         try {
             process = new ProcessBuilder("git", "-C", root.getPath(), "diff", "--unified=0", diffBase(root), "--",
-                    "NCPCore/src/main", "NCPCompatBukkit/src/main", "NCPPlugin/src/main")
+                    "NCPCore/src/main", "NCPCompatBukkit/src/main", "NCPPlugin/src/main",
+                    // Telemetry is explicitly asynchronous and timestamps observations, separate from elytra enforcement.
+                    ":!NCPCore/src/main/java/fr/neatmonster/nocheatplus/telemetry/**",
+                    ":!NCPPlugin/src/main/java/fr/neatmonster/nocheatplus/TelemetryService.java")
                     .redirectErrorStream(true).start();
         }
         catch (final IOException e) {

@@ -291,6 +291,16 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public boolean sfLowJump = false;
     /** Hacky way to indicate that this movement cannot be a lowjump. */
     public boolean sfNoLowJump = false; 
+    /** Vanilla bed bounce armed by an accepted landing on a bed: rise of the next move (0.0 = none). See BedBounce. */
+    public double sfBedBounceRise = 0.0;
+    /** playerMoveCount of the landing move that armed sfBedBounceRise. */
+    public int sfBedBounceMove = 0;
+    /** A vanilla step past a block corner was accepted: the next move may lift off from its end. See CornerStep. */
+    public boolean sfCornerStepArmed = false;
+    /** playerMoveCount of the step move that armed sfCornerStepArmed. */
+    public int sfCornerStepMove = 0;
+    /** Where the armed step ended. */
+    public double sfCornerStepX, sfCornerStepY, sfCornerStepZ;
     /** Basic envelope constraints for lifting off ground. */
     public LiftOffEnvelope liftOffEnvelope = defaultLiftOffEnvelope;
     /** Count how many moves have been made inside a medium (other than air). */
@@ -356,6 +366,23 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public double untrackedSeenAckX;
     public double untrackedSeenAckY;
     public double untrackedSeenAckZ;
+
+    /**
+     * Shulker box the server opened for this player (InventoryOpenEvent), for the untracked poll's lid push
+     * allowance (ShulkerLidRide): block position, facing, lid progress at opening, tick.
+     */
+    public boolean shulkerLidOpenValid = false;
+    public String shulkerLidOpenWorld = null;
+    /** Facing of that box (the direction its lid opens and pushes). */
+    public org.bukkit.block.BlockFace shulkerLidOpenFace = null;
+    public int shulkerLidOpenX;
+    public int shulkerLidOpenY;
+    public int shulkerLidOpenZ;
+    public float shulkerLidOpenProgress;
+    /** TickTask tick of the opening. */
+    public int shulkerLidOpenTick;
+    /** The unchecked start of a split move has been logged for this opening. */
+    public boolean shulkerLidMoveStartLogged = false;
 
     public void resetUntrackedPosition(final Location location) {
         untrackedTrustedValid = true;
@@ -454,6 +481,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         sfHoverTicks = sfHoverLoginTicks = -1;
         sfDirty = false;
         sfLowJump = false;
+        sfBedBounceRise = 0.0;
+        sfCornerStepArmed = false;
         liftOffEnvelope = defaultLiftOffEnvelope;
         insideMediumCount = 0;
         vehicleConsistency = MoveConsistency.INCONSISTENT;
@@ -493,6 +522,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         sfHoverTicks = -1; // 0 ?
         sfDirty = false;
         sfLowJump = false;
+        sfBedBounceRise = 0.0;
+        sfCornerStepArmed = false;
         liftOffEnvelope = defaultLiftOffEnvelope;
         insideMediumCount = 0;
         insideBubbleStreamCount = 0;
@@ -684,6 +715,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         sfZeroVdistRepeat = 0;
         sfDirty = false;
         sfLowJump = false;
+        sfBedBounceRise = 0.0;
+        sfCornerStepArmed = false;
         liftOffEnvelope = defaultLiftOffEnvelope;
         insideMediumCount = 0;
         lastFrictionHorizontal = lastFrictionVertical = 0.0;
@@ -835,6 +868,9 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public int windChargeImpulseEntityTick = Integer.MIN_VALUE;
     public java.util.UUID windChargeImpulseSource;
     public java.util.UUID nativeWindChargeSource;
+    /** Explosion knockback / mace reset without a PlayerVelocityEvent, bound to vanilla-shaped moves. */
+    public final fr.neatmonster.nocheatplus.checks.moving.velocity.NativePushTracker nativePush =
+            new fr.neatmonster.nocheatplus.checks.moving.velocity.NativePushTracker();
 
     public void clearWindChargeImpulse() {
         windChargeImpulseEntityTick = Integer.MIN_VALUE;
@@ -1159,6 +1195,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public void removeAllVelocity() {
         horVel.clear();
         verVel.clear();
+        nativePush.clear();
         sfDirty = false;
     }
 

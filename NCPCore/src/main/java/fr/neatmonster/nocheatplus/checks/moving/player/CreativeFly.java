@@ -313,6 +313,8 @@ public class CreativeFly extends Check {
             // Execute whatever actions are associated with this check and the violation level and find out if we
             // should cancel the event.
             final ViolationData vd = new ViolationData(this, player, data.creativeFlyVL, result, cc.creativeFlyActions);
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.creativeBlocks(vd, from, to);
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, tags);
             if (vd.needsParameters()) {
                 vd.setParameter(ParameterName.LOCATION_FROM, String.format(Locale.US, "%.2f, %.2f, %.2f", from.getX(), from.getY(), from.getZ()));
                 vd.setParameter(ParameterName.LOCATION_TO, String.format(Locale.US, "%.2f, %.2f, %.2f", to.getX(), to.getY(), to.getZ()));

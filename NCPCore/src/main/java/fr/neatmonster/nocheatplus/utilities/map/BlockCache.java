@@ -299,6 +299,24 @@ public abstract class BlockCache {
         return standsOnEntity(entity, minX, minY, minZ, maxX, maxY, maxZ);
     }
 
+    /**
+     * Test if the given box (the entity's box) touches the side of another entity the entity collides with (boat,
+     * raft, shulker, ...): the other box within xzMargin horizontally, its top more than minSideHeight above minY and
+     * its bottom below maxY. Any such entity with a top above maxTop makes the result false (it
+     * would block a climb). Default: no entity support (false).
+     *
+     * @param entity
+     *            The moving entity (a player).
+     * @param maxTop
+     *            Highest top an obstacle may have.
+     * @return True if at least one such entity touches the side and none is taller than maxTop.
+     */
+    public boolean touchesCollidableEntitySide(Entity entity, final double minX, final double minY, final double minZ,
+            final double maxX, final double maxY, final double maxZ, final double xzMargin,
+            final double minSideHeight, final double maxTop) {
+        return false;
+    }
+
 
     /**
      * Remove references.<br>
@@ -432,6 +450,15 @@ public abstract class BlockCache {
         // TODO: Convention for null bounds -> full ?
         node.setBounds(nBounds);
         return nBounds;
+    }
+
+    /**
+     * Exact native collision boxes, independent of NCP movement models.
+     * Empty means a known empty shape; null means unavailable or unsupported.
+     * Callers must check loaded state and region ownership before querying.
+     */
+    public double[] getCollisionBounds(final int x, final int y, final int z) {
+        return null;
     }
 
     /**

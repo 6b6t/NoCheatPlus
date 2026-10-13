@@ -1048,18 +1048,25 @@ public class RichBoundsLocation implements IGetBukkitLocation, IGetBlockPosition
             if (blockFlags == null || (blockFlags.longValue() & BlockFlags.F_GROUND) != 0) {
                 // TODO: Consider dropping this shortcut.
                 final int bY = Location.locToBlock(y - yOnGround);
-                final IBlockCacheNode useNode = bY == blockY ? getOrCreateBlockCacheNode() : (bY == blockY -1 ? getOrCreateBlockCacheNodeBelow() : blockCache.getOrCreateBlockCacheNode(blockX,  bY, blockZ, false));
+                int supportX = blockX, supportZ = blockZ;
+                if (hasClearNegativeExterior(bY)) {
+                    supportX -= x == blockX ? 1 : 0;
+                    supportZ -= z == blockZ ? 1 : 0;
+                }
+                final IBlockCacheNode useNode = supportX != blockX || supportZ != blockZ
+                        ? blockCache.getOrCreateBlockCacheNode(supportX, bY, supportZ, false)
+                        : bY == blockY ? getOrCreateBlockCacheNode() : (bY == blockY -1 ? getOrCreateBlockCacheNodeBelow() : blockCache.getOrCreateBlockCacheNode(blockX,  bY, blockZ, false));
                 final Material id = useNode.getType();
                 final long flags = BlockFlags.getBlockFlags(id);
                 // TODO: Might remove check for variable ?
                 if ((flags & BlockFlags.F_GROUND) != 0 && (flags & BlockFlags.F_VARIABLE) == 0) {
-                    final double[] bounds = useNode.getBounds(blockCache, blockX, bY, blockZ);
+                    final double[] bounds = useNode.getBounds(blockCache, supportX, bY, supportZ);
                     // Check collision if not inside of the block. [Might be a problem for cauldron or similar + something solid above.]
                     // TODO: Might need more refinement.
-                    if (bounds != null && y - bY >= bounds[4] && BlockProperties.collidesBlock(blockCache, x, minY - yOnGround, z, x, minY, z, blockX, bY, blockZ, useNode, null, flags)) {
+                    if (bounds != null && y - bY >= bounds[4] && BlockProperties.collidesBlock(blockCache, x, minY - yOnGround, z, x, minY, z, supportX, bY, supportZ, useNode, null, flags)) {
                         // TODO: BlockHeight is needed for fences, use right away (above)?
-                        if (!BlockProperties.isPassableWorkaround(blockCache, blockX, bY, blockZ, minX - blockX, minY - yOnGround - bY, minZ - blockZ, useNode, maxX - minX, yOnGround, maxZ - minZ,  1.0)
-                            || (flags & BlockFlags.F_GROUND_HEIGHT) != 0 &&  BlockProperties.getGroundMinHeight(blockCache, blockX, bY, blockZ, useNode, flags) <= y - bY) {
+                        if (!BlockProperties.isPassableWorkaround(blockCache, supportX, bY, supportZ, minX - supportX, minY - yOnGround - bY, minZ - supportZ, useNode, maxX - minX, yOnGround, maxZ - minZ,  1.0)
+                            || (flags & BlockFlags.F_GROUND_HEIGHT) != 0 &&  BlockProperties.getGroundMinHeight(blockCache, supportX, bY, supportZ, useNode, flags) <= y - bY) {
                            //  NCPAPIProvider.getNoCheatPlusAPI().getLogManager().debug(Streams.TRACE_FILE, "*** onground SHORTCUT");
                             onGround = true;
                         }
@@ -1083,6 +1090,66 @@ public class RichBoundsLocation implements IGetBukkitLocation, IGetBlockPosition
             notOnGroundMaxY = Math.max(notOnGroundMaxY, yOnGround);
         }
         return onGround;
+    }
+
+    /**
+     * AEF's conservative single-face geometry gate. Unknown, occupied, covered,
+     * unsupported and vertex geometry retain the live centre shortcut.
+     */
+    private boolean hasClearNegativeExterior(final int supportY) {
+        final boolean faceX = x == blockX, faceZ = z == blockZ;
+        if (faceX == faceZ || world == null) return false;
+        final int exteriorX = blockX - (faceX ? 1 : 0);
+        final int exteriorZ = blockZ - (faceZ ? 1 : 0);
+        final int worldMinY = world.getMinHeight(), worldMaxY = world.getMaxHeight();
+        if (blockY <= worldMinY || blockY + 1 >= worldMaxY
+                || supportY < worldMinY || supportY >= worldMaxY
+                || !MapUtil.areChunksLoadedAndOwned(world, blockX, blockZ, 0.0)
+                || !MapUtil.areChunksLoadedAndOwned(world, exteriorX, exteriorZ, 0.0)) return false;
+        if (!isFullCollisionCube(blockCache.getCollisionBounds(blockX, blockY, blockZ))
+                || !isFullCollisionCube(blockCache.getCollisionBounds(blockX, blockY - 1, blockZ))) return false;
+        final double[] exterior = blockCache.getCollisionBounds(exteriorX, blockY, exteriorZ);
+        final double[] above = blockCache.getCollisionBounds(exteriorX, blockY + 1, exteriorZ);
+        if (exterior == null || exterior.length != 0 || above == null || above.length != 0
+                || !blockCache.getType(exteriorX, blockY + 1, exteriorZ).isAir()) return false;
+
+        final double halfMaxX = faceX ? x : maxX, halfMaxZ = faceZ ? z : maxZ;
+        if (minX >= halfMaxX || minZ >= halfMaxZ || minY >= maxY) return false;
+        // Match AEF's two-cell origin padding, so protruding shapes and unknown
+        // neighboring origins cannot be mistaken for an open exterior. Its inset
+        // controls only the scan range; overlap uses the strict half, including
+        // the artificial face plane (no thin-wall epsilon exemption).
+        final double epsilon = 1.0E-4;
+        final int scanMinX = Location.locToBlock(minX + epsilon) - 2;
+        final int scanMaxX = Location.locToBlock(halfMaxX - epsilon) + 2;
+        final int scanMinZ = Location.locToBlock(minZ + epsilon) - 2;
+        final int scanMaxZ = Location.locToBlock(halfMaxZ - epsilon) + 2;
+        final int scanMinY = Math.max(worldMinY, Location.locToBlock(minY + epsilon) - 2);
+        final int scanMaxY = Math.min(worldMaxY - 1, Location.locToBlock(maxY - epsilon) + 2);
+        for (int bx = scanMinX; bx <= scanMaxX; bx++) {
+            for (int bz = scanMinZ; bz <= scanMaxZ; bz++) {
+                if (!MapUtil.areChunksLoadedAndOwned(world, bx, bz, 0.0)) return false;
+                for (int by = scanMinY; by <= scanMaxY; by++) {
+                    final double[] boxes = blockCache.getCollisionBounds(bx, by, bz);
+                    if (boxes == null) return false;
+                    if (blockCache.getType(bx, by, bz) == Material.LAVA
+                            && bx < halfMaxX && bx + 1 > minX && by < maxY && by + 1 > minY
+                            && bz < halfMaxZ && bz + 1 > minZ) return false;
+                    for (int i = 0; i < boxes.length; i += 6) {
+                        if (bx + boxes[i] < halfMaxX && bx + boxes[i + 3] > minX
+                                && by + boxes[i + 1] < maxY && by + boxes[i + 4] > minY
+                                && bz + boxes[i + 2] < halfMaxZ && bz + boxes[i + 5] > minZ) return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean isFullCollisionCube(final double[] bounds) {
+        return bounds != null && bounds.length == 6
+                && bounds[0] == 0.0 && bounds[1] == 0.0 && bounds[2] == 0.0
+                && bounds[3] == 1.0 && bounds[4] == 1.0 && bounds[5] == 1.0;
     }
 
     public boolean adjustOnGround(boolean change) {

@@ -169,6 +169,7 @@ public class VehicleEnvelope extends Check {
         if (violation) {
             data.vehicleEnvelopeVL += 1.0; // Add up one for now.
             final ViolationData vd = new ViolationData(this, player, data.vehicleEnvelopeVL, 1, cc.vehicleEnvelopeActions);
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.blocks(vd, moveInfo.from, moveInfo.to);
             vd.setParameter(ParameterName.TAGS, StringUtil.join(CONTEXT.get().tags, "+"));
             if (executeActions(vd).willCancel()) {
                 return data.vehicleSetBacks.getValidSafeMediumEntry();

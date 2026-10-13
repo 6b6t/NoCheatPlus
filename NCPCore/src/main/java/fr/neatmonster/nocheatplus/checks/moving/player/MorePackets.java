@@ -97,6 +97,8 @@ public class MorePackets extends Check {
 
             // Violation handling.
             final ViolationData vd = new ViolationData(this, player, data.morePacketsVL, violation, cc.morePacketsActions);
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.blocks(vd, from, to);
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, tags);
             if (debug || vd.needsParameters()) {
                 vd.setParameter(ParameterName.PACKETS, Integer.toString(new Double(violation).intValue()));
                 vd.setParameter(ParameterName.TAGS, StringUtil.join(tags, "+"));

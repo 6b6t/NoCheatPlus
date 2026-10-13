@@ -94,6 +94,7 @@ public class ImpossibleHit extends Check {
         if (violation) {
             data.impossibleHitVL += 1D;
             final ViolationData vd = new ViolationData(this, player, data.impossibleHitVL, 1D, cc.impossibleHitActions);
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, tags);
             if (vd.needsParameters()) vd.setParameter(ParameterName.TAGS, StringUtil.join(tags, "+"));
             cancel = executeActions(vd).willCancel();
             if (slientCancel && cancel) {

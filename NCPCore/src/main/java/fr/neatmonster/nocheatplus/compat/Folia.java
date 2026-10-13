@@ -15,6 +15,8 @@
 package fr.neatmonster.nocheatplus.compat;
 
 import java.lang.reflect.Method;
+import java.lang.invoke.MethodHandle;
+import java.lang.invoke.MethodHandles;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -44,11 +46,22 @@ public class Folia {
         return isFoliaServer;
     }
 
+    // Resolved only on Folia. Keep unsupported APIs fail-closed, without lookup on each move.
+    private static final MethodHandle ENTITY_OWNER = ownershipHandle(Entity.class);
+    private static final MethodHandle LOCATION_OWNER = ownershipHandle(Location.class);
+
+    private static MethodHandle ownershipHandle(Class<?> type) {
+        if (!isFoliaServer) return null;
+        try { return MethodHandles.publicLookup().unreflect(Bukkit.class.getMethod("isOwnedByCurrentRegion", type)); }
+        catch (ReflectiveOperationException | LinkageError e) { return null; }
+    }
+
     public static boolean isOwnedByCurrentRegion(final Entity entity) {
         if (!isFoliaServer) return Bukkit.isPrimaryThread();
         try {
-            return (Boolean) Bukkit.class.getMethod("isOwnedByCurrentRegion", Entity.class).invoke(null, entity);
-        } catch (ReflectiveOperationException e) {
+            if (ENTITY_OWNER == null) throw new IllegalStateException("Entity ownership API unavailable");
+            return (boolean) ENTITY_OWNER.invokeExact(entity);
+        } catch (Throwable e) {
             throw new IllegalStateException("Cannot determine entity region ownership", e);
         }
     }
@@ -56,8 +69,9 @@ public class Folia {
     public static boolean isOwnedByCurrentRegion(final Location location) {
         if (!isFoliaServer) return Bukkit.isPrimaryThread();
         try {
-            return (Boolean) Bukkit.class.getMethod("isOwnedByCurrentRegion", Location.class).invoke(null, location);
-        } catch (ReflectiveOperationException e) {
+            if (LOCATION_OWNER == null) throw new IllegalStateException("Location ownership API unavailable");
+            return (boolean) LOCATION_OWNER.invokeExact(location);
+        } catch (Throwable e) {
             throw new IllegalStateException("Cannot determine location region ownership", e);
         }
     }

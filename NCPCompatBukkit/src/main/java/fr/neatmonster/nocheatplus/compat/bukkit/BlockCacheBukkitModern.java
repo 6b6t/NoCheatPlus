@@ -23,6 +23,12 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.util.BoundingBox;
+import org.bukkit.util.VoxelShape;
+import org.bukkit.block.Block;
+import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
+import fr.neatmonster.nocheatplus.utilities.ds.map.CoordMap;
+import fr.neatmonster.nocheatplus.utilities.ds.map.CoordHashMap;
+import fr.neatmonster.nocheatplus.utilities.map.MapUtil;
 
 import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.compat.bukkit.model.BukkitShapeModel;
@@ -38,6 +44,9 @@ import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 public class BlockCacheBukkitModern extends BlockCacheBukkit {
 
     private Map<Material, BukkitShapeModel> shapeModels;
+    private final CoordMap<double[]> collisionBounds = new CoordHashMap<double[]>(23);
+    private static final boolean HAS_COLLISION_SHAPE =
+            ReflectionUtil.getMethodNoArgs(Block.class, "getCollisionShape") != null;
 
     public BlockCacheBukkitModern(Map<Material, BukkitShapeModel> shapeModels) {
         super(null);
@@ -46,6 +55,32 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
 
     public BlockCacheBukkitModern(World world) {
         super(world);
+    }
+
+    @Override
+    public double[] getCollisionBounds(final int x, final int y, final int z) {
+        // Guard even cached queries: an unavailable cell never authorizes selection.
+        if (!HAS_COLLISION_SHAPE || world == null || y < world.getMinHeight()
+                || y >= world.getMaxHeight() || !MapUtil.areChunksLoadedAndOwned(world, x, z, 0.0)) return null;
+        final double[] cached = collisionBounds.get(x, y, z);
+        if (cached != null) return cached;
+        final VoxelShape shape = world.getBlockAt(x, y, z).getCollisionShape();
+        if (shape == null) return null;
+        final java.util.Collection<BoundingBox> boxes = shape.getBoundingBoxes();
+        final double[] bounds = new double[boxes.size() * 6];
+        int i = 0;
+        for (final BoundingBox box : boxes) {
+            bounds[i++] = box.getMinX(); bounds[i++] = box.getMinY(); bounds[i++] = box.getMinZ();
+            bounds[i++] = box.getMaxX(); bounds[i++] = box.getMaxY(); bounds[i++] = box.getMaxZ();
+        }
+        collisionBounds.put(x, y, z, bounds);
+        return bounds;
+    }
+
+    @Override
+    public void cleanup() {
+        super.cleanup();
+        collisionBounds.clear();
     }
 
     @Override
@@ -140,6 +175,39 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
             return standsOnNativeEntity((org.bukkit.entity.Player) entity, minX, minY, minZ, maxX, maxY, maxZ, true);
         }
         return standsOnEntityLive(entity);
+    }
+
+    @Override
+    public boolean touchesCollidableEntitySide(final Entity entity, final double minX, final double minY,
+            final double minZ, final double maxX, final double maxY, final double maxZ, final double xzMargin,
+            final double minSideHeight, final double maxTop) {
+        if (!(entity instanceof org.bukkit.entity.Player) || Double.isNaN(maxTop) || Double.isInfinite(maxTop)
+                || !(maxTop > minY + minSideHeight) || !(xzMargin >= 0.0) || !(maxY > minY)
+                || fr.neatmonster.nocheatplus.compat.versions.ServerVersion.compareMinecraftVersion("26.1") < 0) {
+            return false;
+        }
+        final org.bukkit.entity.Player player = (org.bukkit.entity.Player) entity;
+        if (!Folia.isOwnedByCurrentRegion(player)) return false;
+        boolean touched = false;
+        try {
+            for (final Entity other : player.getNearbyEntities(2.0, 4.0, 2.0)) {
+                if (!Folia.isOwnedByCurrentRegion(other) || !other.isValid()
+                        || other.getUniqueId().equals(player.getUniqueId())) continue;
+                final BoundingBox box = other.getBoundingBox();
+                if (box.getMaxX() < minX - xzMargin || box.getMinX() > maxX + xzMargin
+                        || box.getMaxZ() < minZ - xzMargin || box.getMinZ() > maxZ + xzMargin) continue;
+                // Beside the player: top above the feet (else it is ground), bottom below the head.
+                if (box.getMaxY() <= minY + minSideHeight || box.getMinY() >= maxY) continue;
+                if (!NativeLandingAccess.canCollide(player, other)) continue;
+                // Vanilla jumpOutOfFluid needs the box 0.6 higher to be free: a taller obstacle blocks the climb.
+                if (box.getMaxY() > maxTop) return false;
+                touched = true;
+            }
+        } catch (RuntimeException crossRegion) {
+            // Ownership/lookup failure cannot manufacture a climb.
+            return false;
+        }
+        return touched;
     }
 
     private boolean standsOnNativeEntity(final org.bukkit.entity.Player player, final double minX, final double minY,

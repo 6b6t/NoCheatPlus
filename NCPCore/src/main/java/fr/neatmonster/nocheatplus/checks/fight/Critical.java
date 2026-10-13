@@ -136,6 +136,7 @@ public class Critical extends Check {
                         // Execute whatever actions are associated with this check and 
                         //  the violation level and find out if we should cancel the event.
                         final ViolationData vd = new ViolationData(this, player, data.criticalVL, 1.0, cc.criticalActions);
+                        fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, tags);
                         if (vd.needsParameters()) vd.setParameter(ParameterName.TAGS, StringUtil.join(tags, "+"));
                         cancel = executeActions(vd).willCancel();
                         // TODO: Introduce penalty instead of cancel.

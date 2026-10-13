@@ -40,11 +40,15 @@ import fr.neatmonster.nocheatplus.checks.moving.magic.LostGround;
 import fr.neatmonster.nocheatplus.checks.moving.magic.Magic;
 import fr.neatmonster.nocheatplus.checks.moving.magic.MagicBunny;
 import fr.neatmonster.nocheatplus.checks.moving.magic.AirWorkarounds;
+import fr.neatmonster.nocheatplus.checks.moving.magic.BedBounce;
+import fr.neatmonster.nocheatplus.checks.moving.magic.CornerStep;
+import fr.neatmonster.nocheatplus.checks.moving.magic.FluidEntityClimb;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LiquidWorkarounds;
 import fr.neatmonster.nocheatplus.checks.moving.model.LiftOffEnvelope;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.util.AuxMoving;
 import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
+import fr.neatmonster.nocheatplus.checks.moving.velocity.NativePushTracker;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.VelocityFlags;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.SimpleEntry;
 import fr.neatmonster.nocheatplus.checks.workaround.WRPT;
@@ -87,6 +91,8 @@ public class SurvivalFly extends Check {
     /** Scratch data belongs to one invocation, including nested checks on the same thread. */
     private static final class CheckContext {
         boolean bufferUse;
+        /** This move is a vanilla step past a block corner (see CornerStep). */
+        boolean cornerStep;
         final ArrayList<String> tags = new ArrayList<String>(15);
         final ArrayList<String> justUsedWorkarounds = new ArrayList<String>();
     }
@@ -115,6 +121,31 @@ public class SurvivalFly extends Check {
     public SurvivalFly() {
         super(CheckType.MOVING_SURVIVALFLY);
         blockChangeTracker = NCPAPIProvider.getNoCheatPlusAPI().getBlockChangeTracker();
+    }
+
+    /**
+     * Sides of the player's box with a solid block right next to it (NativePushTracker.BLOCKED_* bits):
+     * a push towards such a side is clipped by vanilla (hole fights, walls). The floor and the ceiling
+     * are left out.
+     */
+    private static int blockedSides(final PlayerLocation loc) {
+        final double m = 0.05, in = 0.01;
+        final double minX = loc.getMinX(), maxX = loc.getMaxX(), minZ = loc.getMinZ(), maxZ = loc.getMaxZ();
+        final double minY = loc.getMinY() + in, maxY = loc.getMaxY() - in;
+        int sides = 0;
+        if (BlockProperties.collides(loc.getBlockCache(), maxX, minY, minZ + in, maxX + m, maxY, maxZ - in, BlockFlags.F_SOLID)) {
+            sides |= NativePushTracker.BLOCKED_POS_X;
+        }
+        if (BlockProperties.collides(loc.getBlockCache(), minX - m, minY, minZ + in, minX, maxY, maxZ - in, BlockFlags.F_SOLID)) {
+            sides |= NativePushTracker.BLOCKED_NEG_X;
+        }
+        if (BlockProperties.collides(loc.getBlockCache(), minX + in, minY, maxZ, maxX - in, maxY, maxZ + m, BlockFlags.F_SOLID)) {
+            sides |= NativePushTracker.BLOCKED_POS_Z;
+        }
+        if (BlockProperties.collides(loc.getBlockCache(), minX + in, minY, minZ - m, maxX - in, maxY, minZ, BlockFlags.F_SOLID)) {
+            sides |= NativePushTracker.BLOCKED_NEG_Z;
+        }
+        return sides;
     }
 
     private static boolean hasWeavingEffect(final Player player) {
@@ -236,9 +267,19 @@ public class SurvivalFly extends Check {
         // TODO: Extra workarounds for toOnGround (step-up is a case with to on ground)?
         // TODO: This isn't correct, needs redesign.
         // TODO: Quick addition. Reconsider entry points etc.
+        // A vanilla step past a block corner ends over air at the block's top, where the client is on ground: the
+        // very next move lifts off from there like from ground (see CornerStep). One move only.
+        final boolean cornerStepLiftOff = CornerStep.isLiftOff(data.sfCornerStepArmed, data.sfCornerStepMove,
+                data.getPlayerMoveCount(), data.sfCornerStepX, data.sfCornerStepY, data.sfCornerStepZ,
+                from.getX(), from.getY(), from.getZ());
+        data.sfCornerStepArmed = false;
         final boolean resetFrom;
         if (fromOnGround || from.isResetCond()) {
             resetFrom = true;
+        }
+        else if (cornerStepLiftOff) {
+            resetFrom = true;
+            context.tags.add("cornerstep_liftoff");
         }
         else if (isSamePos) {
 
@@ -289,8 +330,41 @@ public class SurvivalFly extends Check {
             data.sfNoLowJump = true;
         } 
 
+        // Vanilla bed bounce after a short fall (see BedBounce): the hop right after an accepted landing
+        // on a bed is no low jump, if it rises no more than the vanilla bounce. Only for this one move.
+        if (data.sfBedBounceRise > 0.0) {
+            if (BedBounce.isBounceLiftOff(data.sfBedBounceRise, data.sfBedBounceMove, data.getPlayerMoveCount(),
+                    fromOnGround, yDistance, BedBounce.isOnBedTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
+                            from.getMaxX(), from.getMaxZ(), from.getY()))) {
+                data.sfNoLowJump = true;
+                context.tags.add("bedbounce");
+            }
+            data.sfBedBounceRise = 0.0;
+        }
+
         // Alter some data before checking anything
         setHorVerDataExAnte(thisMove, from, to, data, yDistance, pData, player, cc, xDistance, zDistance);
+
+        // Knockback without a velocity event (explosion that does not hurt, Wind Burst, mace smash reset):
+        // only a move equal to vanilla's first move after the push gets vertical credit, for this move only,
+        // and only if the same move also shows the push sideways (or a block on that side stopped it).
+        final boolean pushPending = data.nativePush.hasPending();
+        final double nativePushY = data.nativePush.beginMove(player.getTicksLived(), yDistance, fromOnGround,
+                lastMove.toIsValid, lastMove.yDistance, lastMove.toIsValid && lastMove.from.onGround,
+                lastMove.toIsValid && lastMove.to.onGround, lastMove.toIsValid && lastMove.headObstructed,
+                toOnGround, thisMove.headObstructed,
+                xDistance, zDistance,
+                lastMove.toIsValid ? lastMove.to.getX() - lastMove.from.getX() : 0.0,
+                lastMove.toIsValid ? lastMove.to.getZ() - lastMove.from.getZ() : 0.0,
+                lastMove.toIsValid && Magic.touchedSlipperyBlock(lastMove),
+                pushPending ? mcAccess.getHandle().getFasterMovementAmplifier(player) : Double.NEGATIVE_INFINITY,
+                pushPending ? blockedSides(to) : 0);
+        if (!Double.isNaN(nativePushY)) {
+            data.prependVerticalVelocity(new SimpleEntry(tick, nativePushY, 1));
+            data.setFrictionJumpPhase();
+            data.sfNoLowJump = true;
+            context.tags.add("nativepush");
+        }
 
 
 
@@ -370,6 +444,19 @@ public class SurvivalFly extends Check {
         // Vertical move                  ///
         /////////////////////////////////////
         double vAllowedDistance = 0, vDistanceAboveLimit = 0;
+
+        // Vanilla step past a block corner: from ground (or lost ground), rise by at most the vanilla step height (0.6,
+        // even if sfStepHeight is configured higher) to exactly the top of a block the box crossed, ending beside it
+        // over air (see CornerStep).
+        context.cornerStep = resetFrom && !toOnGround && !resetTo && !from.isResetCond()
+                && HasHorizontalDistance && yDistance > 0.0 && yDistance <= Math.min(cc.sfStepHeight, CornerStep.VANILLA_STEP_HEIGHT)
+                && data.liftOffEnvelope == LiftOffEnvelope.NORMAL
+                && CornerStep.crossedStepTop(to.getBlockCache(), from.getMinX(), from.getMinZ(), from.getMaxX(), from.getMaxZ(),
+                        from.getY(), to.getMinX(), to.getMinZ(), to.getMaxX(), to.getMaxZ(), to.getY(),
+                        to.getMaxY() - to.getMinY(), cc.sfStepHeight);
+        if (context.cornerStep) {
+            context.tags.add("cornerstep");
+        }
         
         // Wild-card: allow step height from ground to ground, if not on/in a medium already.
         if (yDistance >= 0.0 && yDistance <= cc.sfStepHeight 
@@ -682,6 +769,26 @@ public class SurvivalFly extends Check {
             data.sfVLInAir = false;
         }
 
+        // 4a: Accepted step past a block corner, no violation: the next move may lift off from its top (see CornerStep).
+        if (context.cornerStep && result <= 0.0) {
+            data.sfCornerStepArmed = true;
+            data.sfCornerStepMove = data.getPlayerMoveCount();
+            data.sfCornerStepX = to.getX();
+            data.sfCornerStepY = to.getY();
+            data.sfCornerStepZ = to.getZ();
+        }
+
+        // 4b: Accepted landing on a bed (not sneaking): arm the vanilla bounce for the next move (see BedBounce).
+        if (toOnGround && !fromOnGround) {
+            final double bedBounceRise = BedBounce.riseAfterLanding(lastMove.toIsValid, lastMove.to.onGround,
+                    lastMove.yDistance, fromOnGround, toOnGround, isReallySneaking(player) && player.isSneaking(),
+                    BedBounce.isOnBedTop(to.getBlockCache(), to.getMinX(), to.getMinZ(), to.getMaxX(), to.getMaxZ(), to.getY()));
+            if (bedBounceRise > 0.0) {
+                data.sfBedBounceRise = bedBounceRise;
+                data.sfBedBounceMove = data.getPlayerMoveCount();
+            }
+        }
+
         // 5: Horizontal velocity invalidation.
         if (hDistance <= (cc.velocityStrictInvalidation ? thisMove.hAllowedDistanceBase : thisMove.hAllowedDistanceBase / 2.0)) {
             data.clearActiveHorVel();
@@ -740,6 +847,7 @@ public class SurvivalFly extends Check {
             context.tags.add("bedfly");
             data.survivalFlyVL += 100D;
             final ViolationData vd = new ViolationData(this, player, data.survivalFlyVL, 100D, cc.survivalFlyActions);
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, context.tags);
             if (vd.needsParameters()) vd.setParameter(ParameterName.TAGS, StringUtil.join(context.tags, "+"));
             cancel = executeActions(vd).willCancel();
         } 
@@ -1658,11 +1766,12 @@ public class SurvivalFly extends Check {
             else {
 
                 // Code duplication with the absolute limit below.
-                if (yDistance < 0.0 || yDistance > cc.sfStepHeight || !context.tags.contains("lostground_couldstep")) {
+                if (yDistance < 0.0 || yDistance > cc.sfStepHeight
+                        || !context.tags.contains("lostground_couldstep") && !context.cornerStep) {
                     vAllowedDistance = maxJumpGain + jumpGainMargin;
                     thisMove.allowjump = true;
                 }
-                // Lostground_couldstep was applied.
+                // Lostground_couldstep was applied, or a vanilla step past a block corner (CornerStep).
                 else vAllowedDistance = yDistance;
             }
             strictVdistRel = false;
@@ -2100,6 +2209,22 @@ public class SurvivalFly extends Check {
             }
         }
 
+        // 4b: Knockback without a velocity event (explosion that does not hurt, Wind Burst): only the
+        // part of the move the push vector explains (in its direction), and only if it explains all
+        // of what is left after ordinary velocity (a damaging hit just before keeps its own credit).
+        if (hDistanceAboveLimit > 0.0) {
+            final double push = data.nativePush.horizontalCredit(to.getX() - from.getX(), to.getZ() - from.getZ(),
+                    hDistanceAboveLimit);
+            if (push > 0.0) {
+                context.tags.add("hpush");
+                context.bufferUse = false;
+                hDistanceAboveLimit = 0.0;
+                data.clearHAccounting();
+                // The push also lifted the player: its low apex is not a low jump.
+                data.sfNoLowJump = true;
+            }
+        }
+
         // 5: Re-check for bunnyhopping if the hDistance is still above limit (2nd).
         if (hDistanceAboveLimit > 0.0) {
             hDistanceAboveLimit = MagicBunny.bunnyHop(from, to, player, hAllowedDistance, hDistanceAboveLimit, sprinting, thisMove, lastMove, data, cc, context.tags, speedAmplifier);
@@ -2257,6 +2382,39 @@ public class SurvivalFly extends Check {
             return new double[]{yDistance, 0.0};
         }
         
+
+        //////////////////////////////////////////////////////////////////////////////
+        // 5b: Vanilla lift-offs beside/on an entity the player collides with.     //
+        //////////////////////////////////////////////////////////////////////////////
+        // Blocks are covered by LIMIT_NEAR_GROUND and waterlogged ground; boats, rafts and shulkers were not.
+        // Only the exact vanilla rise is accepted (see FluidEntityClimb).
+        if (yDistance > 0.0 && !thisMove.headObstructed) {
+            // Climbing out of the liquid at the side of a boat: jumpOutOfFluid 0.3F (+ the 0.04F swim kick).
+            if (lastMove.toIsValid && FluidEntityClimb.isClimbRise(yDistance)) {
+                final double maxTop = FluidEntityClimb.maxObstacleTop(from.getY(), lastMove.yDistance);
+                if (!Double.isNaN(maxTop) && FluidEntityClimb.allowsClimbOut(yDistance, true, thisMove.headObstructed,
+                        from.touchesCollidableEntitySide(FluidEntityClimb.SIDE_MARGIN,
+                                FluidEntityClimb.MIN_SIDE_HEIGHT, maxTop))) {
+                    context.tags.add("entityclimb");
+                    return new double[]{FluidEntityClimb.MAX_CLIMB_RISE, 0.0};
+                }
+            }
+            // Jumping off an entity in shallow water (fluid at most 0.4 above the feet): an ordinary jump.
+            final double jumpGain = LiftOffEnvelope.NORMAL.getMinJumpGain(data.jumpAmplifier);
+            if (yDistance <= jumpGain + FluidEntityClimb.RISE_MARGIN && !from.isInWaterLogged()
+                    && !from.isInBubbleStream() && from.standsOnEntityContact(0.00001, 0.0, 0.0)) {
+                final double fluidHeight = FluidEntityClimb.fluidHeight(from.getBlockCache(), from.getMinX(),
+                        from.getMinY(), from.getMinZ(), from.getMaxX(), from.getMaxY(), from.getMaxZ());
+                if (FluidEntityClimb.allowsShallowJump(yDistance, true, fluidHeight, thisMove.headObstructed,
+                        jumpGain)) {
+                    // Like waterlogged ground: the air phase that follows is an ordinary jump.
+                    data.liftOffEnvelope = LiftOffEnvelope.NORMAL;
+                    context.tags.add("entityshallowjump");
+                    return new double[]{jumpGain, 0.0};
+                }
+            }
+        }
+
 
         ///////////////////////////////////
         // 6: At this point a violation. //
@@ -2541,6 +2699,8 @@ public class SurvivalFly extends Check {
         if (Double.isInfinite(data.survivalFlyVL)) data.survivalFlyVL = 0;
         data.survivalFlyVL += result;
         final ViolationData vd = new ViolationData(this, player, data.survivalFlyVL, result, cc.survivalFlyActions);
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.blocks(vd, from, to);
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, context.tags);
         if (vd.needsParameters()) {
             vd.setParameter(ParameterName.LOCATION_FROM, String.format(Locale.US, "%.2f, %.2f, %.2f", from.getX(), from.getY(), from.getZ()));
             vd.setParameter(ParameterName.LOCATION_TO, String.format(Locale.US, "%.2f, %.2f, %.2f", to.getX(), to.getY(), to.getZ()));
@@ -2580,6 +2740,7 @@ public class SurvivalFly extends Check {
         data.sfVLMoveCount = data.getPlayerMoveCount();
         data.sfVLInAir = true;
         final ViolationData vd = new ViolationData(this, player, data.survivalFlyVL, cc.sfHoverViolation, cc.survivalFlyActions);
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, "hover");
         if (vd.needsParameters()) {
             vd.setParameter(ParameterName.LOCATION_FROM, String.format(Locale.US, "%.2f, %.2f, %.2f", loc.getX(), loc.getY(), loc.getZ()));
             vd.setParameter(ParameterName.LOCATION_TO, "(HOVER)");

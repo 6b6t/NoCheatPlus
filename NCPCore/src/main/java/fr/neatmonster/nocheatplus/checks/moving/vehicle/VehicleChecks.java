@@ -387,6 +387,8 @@ public class VehicleChecks extends CheckListener {
         moveInfo.set(vehicle, useFrom, useTo, 
                 vehicleType == EntityType.PIG ? Math.max(0.13, cc.yOnGround) : cc.yOnGround); // TODO: Extra config.
         moveInfo.setExtendFullWidth(0.0);
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.beginVehicle(player, useFrom, useTo);
+        try {
         // TODO: Check consistency for given/set and log debug/warnings if necessary (to = vehicleLocation? from = firstPastMove).
         // Check coordinates, just in case.
         if (checkIllegal(moveInfo.from, moveInfo.to)) {
@@ -422,6 +424,7 @@ public class VehicleChecks extends CheckListener {
                 player, fake, data, cc, pData);
         // Cleanup.
         aux.returnVehicleMoveInfo(moveInfo);
+        } finally { fr.neatmonster.nocheatplus.telemetry.Telemetry.endVehicle(player); }
     }
 
     /**
@@ -656,6 +659,7 @@ public class VehicleChecks extends CheckListener {
     private void setBack(final Player player, final Entity vehicle, 
             final SetBackEntry newTo, final MovingData data, 
             final MovingConfig cc, final IPlayerData pData) {
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "vehicle-setback");
         final boolean debug = pData.isDebugActive(checkType);
         // TODO: Generic set back manager, preventing all sorts of stuff that might be attempted or just happen before the task is running?
         if (!Folia.isTaskScheduled(data.vehicleSetBackTaskId)) {

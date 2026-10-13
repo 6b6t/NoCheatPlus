@@ -67,6 +67,18 @@ public class ViolationData implements IViolationInfo, ActionData {
 
     private boolean needsParameters = false;
 
+    private String telemetryTags;
+    private Map<String, Object> telemetryBlocksFrom, telemetryBlocksTo;
+    private java.util.List<Object> telemetryFrom, telemetryTo;
+    public void setTelemetryPositions(java.util.List<Object> from, java.util.List<Object> to) { telemetryFrom = from; telemetryTo = to; }
+    public java.util.List<Object> getTelemetryFrom() { return telemetryFrom; }
+    public java.util.List<Object> getTelemetryTo() { return telemetryTo; }
+    public void setTelemetryBlocks(Map<String, Object> from, Map<String, Object> to) { telemetryBlocksFrom = from; telemetryBlocksTo = to; }
+    public Map<String, Object> getTelemetryBlocksFrom() { return telemetryBlocksFrom; }
+    public Map<String, Object> getTelemetryBlocksTo() { return telemetryBlocksTo; }
+    public void setTelemetryTags(String tags) { telemetryTags = tags; }
+    public String getTelemetryTags() { return telemetryTags; }
+
     private boolean willCancel;
 
     /** Group penalties by input type. */

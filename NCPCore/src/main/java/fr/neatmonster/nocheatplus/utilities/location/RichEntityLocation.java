@@ -173,6 +173,16 @@ public class RichEntityLocation extends RichBoundsLocation {
                 maxX + xzMargin, minY + yMargin, maxZ + xzMargin);
     }
 
+    /**
+     * Test if the entity touches the side of another entity it collides with (boat, raft, shulker, ...), whose top
+     * is more than minSideHeight above the feet, and no such entity is taller than maxTop. See
+     * {@link fr.neatmonster.nocheatplus.utilities.map.BlockCache#touchesCollidableEntitySide}.
+     */
+    public boolean touchesCollidableEntitySide(final double xzMargin, final double minSideHeight, final double maxTop) {
+        return blockCache.touchesCollidableEntitySide(entity, minX, minY, minZ, maxX, maxY, maxZ, xzMargin,
+                minSideHeight, maxTop);
+    }
+
     /** Completed native contact, distinct from entity motion interpolation. */
     public boolean standsOnEntityContact(final double yOnGround, final double xzMargin, final double yMargin) {
         return blockCache.standsOnEntityContact(entity, minX - xzMargin, minY - yOnGround - yMargin, minZ - xzMargin,

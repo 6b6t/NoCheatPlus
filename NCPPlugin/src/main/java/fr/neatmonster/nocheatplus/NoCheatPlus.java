@@ -290,6 +290,8 @@ public class NoCheatPlus extends JavaPlugin implements NoCheatPlusAPI {
         }
     }
 
+    private TelemetryService telemetryService;
+
     private INotifyReload reloadHook = new ReloadHook();
 
     /** Access point for thread safe message queuing. */
@@ -646,6 +648,7 @@ public class NoCheatPlus extends JavaPlugin implements NoCheatPlusAPI {
      */
     @Override
     public void onDisable() {
+        if (telemetryService != null) { telemetryService.close(); telemetryService = null; }
 
         // Set BukkitAudiences to null
         if(this.adventure != null) {
@@ -975,6 +978,7 @@ public class NoCheatPlus extends JavaPlugin implements NoCheatPlusAPI {
         // Initialize data manager.
         worldDataManager.onEnable();
         pDataMan.onEnable();
+        telemetryService = TelemetryService.start(this, config);
 
         // Register components. 
 
@@ -1167,6 +1171,8 @@ public class NoCheatPlus extends JavaPlugin implements NoCheatPlusAPI {
      */
     private void processReload() {
         final ConfigFile config = ConfigManager.getConfigFile();
+        if (telemetryService != null) { telemetryService.close(); telemetryService = null; }
+        telemetryService = TelemetryService.start(this, config);
         setInstanceMembers(config);
         // TODO: Process registered ComponentFactory instances.
         // Set up MCAccess.

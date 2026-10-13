@@ -29,6 +29,7 @@ import org.bukkit.ChatColor;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
@@ -44,6 +45,8 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPortalEnterEvent;
 import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryOpenEvent;
+import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerBedEnterEvent;
 import org.bukkit.event.player.PlayerBedLeaveEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
@@ -87,10 +90,12 @@ import fr.neatmonster.nocheatplus.checks.moving.player.PlayerSetBackMethod;
 import fr.neatmonster.nocheatplus.checks.moving.player.SurvivalFly;
 import fr.neatmonster.nocheatplus.checks.moving.util.AuxMoving;
 import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
+import fr.neatmonster.nocheatplus.checks.moving.util.ShulkerLidRide;
 import fr.neatmonster.nocheatplus.checks.moving.util.bounce.BounceType;
 import fr.neatmonster.nocheatplus.checks.moving.util.bounce.BounceUtil;
 import fr.neatmonster.nocheatplus.checks.moving.vehicle.VehicleChecks;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.AccountEntry;
+import fr.neatmonster.nocheatplus.checks.moving.velocity.NativePushTracker;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.SimpleEntry;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.VelocityFlags;
 import fr.neatmonster.nocheatplus.checks.net.NetData;
@@ -314,6 +319,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                     if (projectile.getType() != BridgeEntityType.WIND_CHARGE) return;
                     data.windChargeImpulseEntityTick = player.getTicksLived();
                     data.windChargeImpulseSource = projectile.getUniqueId();
+                    fr.neatmonster.nocheatplus.telemetry.Telemetry.activity(player, "wind-charge-impulse");
                 } catch (ReflectiveOperationException invalid) {
                     StaticLog.logWarning("Failed to read wind-charge source: " + invalid.getMessage());
                 }
@@ -341,8 +347,11 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                         acceptNativeWindChargeHitVelocity(player, data, pData.getGenericInstance(MovingConfig.class),
                                 (Entity) hitSource.invoke(event), (Vector) knockback.invoke(event));
                     } else {
-                        acceptNativeWindChargeVelocity(player, data, pData.getGenericInstance(MovingConfig.class),
-                                (Vector) knockback.invoke(event));
+                        final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
+                        final Vector impulse = (Vector) knockback.invoke(event);
+                        if (!acceptNativeWindChargeVelocity(player, data, cc, impulse)) {
+                            acceptNativeExplosionVelocity(player, data.nativePush, impulse, getPingMs(player));
+                        }
                     }
                 } catch (ReflectiveOperationException invalid) {
                     StaticLog.logWarning("Failed to read native wind-charge impulse: " + invalid.getMessage());
@@ -365,13 +374,16 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
         data.addVelocity(player, cc, result.getX(), result.getY(), result.getZ());
     }
 
-    /** Consume only the synchronous impulse following an attributed wind-charge hit. */
-    public static void acceptNativeWindChargeVelocity(final Player player, final MovingData data,
+    /**
+     * Consume only the synchronous impulse following an attributed wind-charge hit.
+     * @return true if this impulse belonged to an attributed wind charge (handled or rejected here).
+     */
+    public static boolean acceptNativeWindChargeVelocity(final Player player, final MovingData data,
             final MovingConfig cc, final Vector impulse) {
-        if (data.windChargeImpulseSource == null || data.windChargeImpulseEntityTick != player.getTicksLived()) return;
+        if (data.windChargeImpulseSource == null || data.windChargeImpulseEntityTick != player.getTicksLived()) return false;
         data.windChargeImpulseEntityTick = Integer.MIN_VALUE;
         final Vector result = player.getVelocity().clone().add(impulse);
-        if (!Double.isFinite(result.getX()) || !Double.isFinite(result.getY()) || !Double.isFinite(result.getZ())) return;
+        if (!Double.isFinite(result.getX()) || !Double.isFinite(result.getY()) || !Double.isFinite(result.getZ())) return true;
         // The native result includes momentum and earlier impulses. Consume the
         // old estimate now, never after a later authoritative velocity arrives.
         data.nativeWindChargeSource = data.windChargeImpulseSource;
@@ -381,6 +393,36 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
         // Insert at the event's tick, with ordinary expiry, without deleting any
         // newer/independent velocity entries or storing renewable pending credit.
         data.addVelocity(player, cc, result.getX(), result.getY(), result.getZ());
+        return true;
+    }
+
+    /**
+     * Explosion knockback (end crystal, TNT, bed/anchor, Wind Burst) that the server sends
+     * only inside the explosion packet. Without damage (hurt cooldown during crystal spam,
+     * shield, the attacker's own Wind Burst) there is no PlayerVelocityEvent. NCP credited
+     * this packet through ProtocolLib until 1.21.2 changed its layout. Here it is stored
+     * as a push that only a vanilla-shaped move can use (see NativePushTracker), never as
+     * a speed without direction. A hurting explosion is credited once, by its velocity event.
+     * <br>
+     * Wind Burst: the server has just set the attacker's vertical motion to 0.01 (mace
+     * smash), so the client adds the push to 0.01, not to its own fall speed.
+     */
+    public static void acceptNativeExplosionVelocity(final Player player, final NativePushTracker push,
+            final Vector impulse, final int pingMs) {
+        if (impulse == null || player.isInsideVehicle()) return;
+        final boolean afterMaceReset = player.getVelocity().getY() == NativePushTracker.MACE_RESET_Y
+                && impulse.getY() > 0.0;
+        push.addPush(player.getTicksLived(), impulse.getX(), impulse.getY(), impulse.getZ(),
+                afterMaceReset, NativePushTracker.window(pingMs));
+    }
+
+    /**
+     * A successful mace smash sets the attacker's vertical motion to 0.01 and sends it
+     * directly (no PlayerVelocityEvent): the next move(s) stop the fall. Only the exact
+     * vanilla shapes of that stop are credited (NativePushTracker).
+     */
+    public static void acceptMaceSmash(final Player player, final NativePushTracker push, final int pingMs) {
+        push.onMaceSmash(player.getTicksLived(), NativePushTracker.window(pingMs));
     }
 
     private boolean registerTeleportCompletionEvent(final NoCheatPlusAPI api) {
@@ -409,6 +451,9 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                     final Player player = event.getPlayer();
                     // An earlier listener may have started another cross-region teleport.
                     if (!Folia.isOwnedByCurrentRegion(player)) return;
+                    // A plugin placed the player from inside a PlayerMoveEvent (same region: synchronous). As for
+                    // Bukkit's teleport event, that move must not overwrite this placement at MONITOR afterwards.
+                    interruptMoveProcessing(player);
                     final Location to = (Location) getTo.invoke(event);
                     final long sequence = ((Number) getSequence.invoke(event)).longValue();
                     final IPlayerData pData = DataManager.getPlayerData(player);
@@ -648,6 +693,9 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
                 data.nativeWindChargeSource = null;
                 continue; // Already credited the final, source-attributed native impulse.
             }
+            if (data.nativePush.getLastImpulseTick() == player.getTicksLived()) {
+                continue; // The native explosion impulse of this tick is already handled (no estimate on top).
+            }
             addWindChargeVelocity(player, explosionLocation, playerLocation, data,
                     pData.isDebugActive(CheckType.MOVING));
         }
@@ -682,6 +730,20 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     }
 
 
+    /** Mace smash: the server resets the attacker's vertical motion (see acceptMaceSmash). */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onMaceSmash(final EntityDamageByEntityEvent event) {
+        if (!(event.getDamager() instanceof Player)) return;
+        final Player player = (Player) event.getDamager();
+        if (player.getFallDistance() <= 1.5f || Bridge1_9.isGliding(player)) return;
+        final ItemStack item = Bridge1_9.getItemInMainHand(player);
+        if (item == null || !"MACE".equals(item.getType().name())) return;
+        if (!Folia.isOwnedByCurrentRegion(player)) return;
+        final IPlayerData pData = DataManager.getPlayerData(player);
+        if (!pData.isCheckActive(CheckType.MOVING, player) || player.isInsideVehicle()) return;
+        acceptMaceSmash(player, pData.getGenericInstance(MovingData.class).nativePush, getPingMs(player));
+    }
+
     /**
      * When a player changes their gamemode, all information related to the moving checks becomes invalid.
      * 
@@ -713,6 +775,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     @EventHandler(ignoreCancelled = true, priority = EventPriority.LOWEST)
     public void onPlayerMove(final PlayerMoveEvent event) {
 
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.begin(event);
         counters.add(idMoveEvent, 1);
         final Player player = event.getPlayer();
         // Store the event for monitor level checks.
@@ -828,6 +891,7 @@ catch (java.lang.Throwable thr) {}
                 debug(player, "Early return" + (token == null ? "" : (" (" + token + ")")) +  " on PlayerMoveEvent: from: " + from + " , to: " + to);
             }
             if (newTo != null) {
+                fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "early-return-setback");
                 // Illegal Yaw/Pitch.
                 if (LocUtil.needsYawCorrection(newTo.getYaw())) {
                     newTo.setYaw(LocUtil.correctYaw(newTo.getYaw()));
@@ -886,8 +950,24 @@ catch (java.lang.Throwable thr) {}
             // Split into two moves.
             // 1. Process from -> loc.
             if (debug) debug(player, "Split move 1 (from -> loc):");
+            // The server's own push by a shulker lid this player opened, exactly along its facing from the last checked
+            // position: not the player's move (checking it would see the whole push in one move). Like a teleport.
+            final double lidPush = lastMove.valid && lastMove.toIsValid
+                    && TrigUtil.isSamePos(from, lastMove.to.getX(), lastMove.to.getY(), lastMove.to.getZ())
+                    ? ShulkerLidRide.explainsMoveStart(player, data, from, loc) : Double.NaN;
+            if (!Double.isNaN(lidPush)) {
+                if (debug) debug(player, "Split move 1 is the server's own shulker lid push, not checked.");
+                if (!data.shulkerLidMoveStartLogged) {
+                    data.shulkerLidMoveStartLogged = true;
+                    NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
+                            CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Move start within an opening shulker lid push"
+                            + String.format(Locale.ROOT, " (facing=%s, d=%.3f, push up to %.3f), not checked.", data.shulkerLidOpenFace,
+                                    TrigUtil.distance(from, loc), lidPush));
+                }
+            }
             moveInfo.set(player, from, loc, cc.yOnGround);
-            if (!checkPlayerMove(player, from, loc, 1, moveInfo, debug, data, cc, pData, event) && processingEvents.containsKey(player.getName())) {
+            if ((!Double.isNaN(lidPush) || !checkPlayerMove(player, from, loc, 1, moveInfo, debug, data, cc, pData, event))
+                && processingEvents.containsKey(player.getName())) {
 
                 // Between -> set data accordingly (compare: onPlayerMoveMonitor).
                 onMoveMonitorNotCancelled(player, from, loc, System.currentTimeMillis(), TickTask.getTick(), pData.getGenericInstance(CombinedData.class), data, cc, pData);
@@ -930,6 +1010,7 @@ catch (java.lang.Throwable thr) {}
         else if (DataManager.getPlayerData(player).isPlayerSetBackScheduled()) {
             // A set back has been scheduled, but the player is moving randomly.
             // TODO: Instead alter the move from location and let it get through? +- when
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "awaiting-setback-move");
             event.setCancelled(true);
             if (debug) debug(player, "Cancel move, due to a scheduled teleport (set back).");
             return true;
@@ -1824,6 +1905,7 @@ catch (java.lang.Throwable thr) {}
             }
             final ViolationData vd = new ViolationData(check, player, vL, violation, actions);
             // TODO: Reduce copy and paste (method to fill in locations, once using exact coords and latering default actions).
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, "EXTREME_MOVE");
             if (vd.needsParameters()) {
                 vd.setParameter(ParameterName.LOCATION_FROM, String.format(Locale.US, "%.2f, %.2f, %.2f", from.getX(), from.getY(), from.getZ()));
                 vd.setParameter(ParameterName.LOCATION_TO, String.format(Locale.US, "%.2f, %.2f, %.2f", to.getX(), to.getY(), to.getZ()));
@@ -1942,6 +2024,7 @@ catch (java.lang.Throwable thr) {}
     private void prepareSetBack(final Player player, final PlayerMoveEvent event, final Location newTo, 
                                 final MovingData data, final MovingConfig cc, final IPlayerData pData) {
 
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "prepare-setback");
         // Illegal Yaw/Pitch.
         if (LocUtil.needsYawCorrection(newTo.getYaw())) {
             newTo.setYaw(LocUtil.correctYaw(newTo.getYaw()));
@@ -1989,6 +2072,7 @@ catch (java.lang.Throwable thr) {}
 
     @EventHandler(priority=EventPriority.MONITOR, ignoreCancelled = false)
     public void onPlayerMoveMonitor(final PlayerMoveEvent event) {
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.end(event);
 
         // TODO: Use stored move data to verify if from/to have changed (thus a teleport will result, possibly a minor issue due to the teleport).
         final long now = System.currentTimeMillis();
@@ -2243,6 +2327,16 @@ catch (java.lang.Throwable thr) {}
 
 
     /**
+     * A teleport happened while a PlayerMoveEvent of this player may still be in processing: MONITOR must not
+     * record that move's end point over the teleport's reset.
+     */
+    void interruptMoveProcessing(final Player player) {
+        final PlayerMoveEvent interrupted = processingEvents.remove(player.getName());
+        if (interrupted != null) requestedMovePositions.remove(interrupted);
+    }
+
+
+    /**
      * LOWEST: Checks, indicate cancel processing player move.
      * 
      * @param event
@@ -2253,8 +2347,7 @@ catch (java.lang.Throwable thr) {}
 
         final Player player = event.getPlayer();
         // Prevent further moving processing for nested events.
-        final PlayerMoveEvent interrupted = processingEvents.remove(player.getName());
-        if (interrupted != null) requestedMovePositions.remove(interrupted);
+        interruptMoveProcessing(player);
         // Various early return conditions.
         if (event.isCancelled()) return;
 
@@ -2673,6 +2766,8 @@ catch (java.lang.Throwable thr) {}
         final IPlayerData pData = DataManager.getPlayerData(player);
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         final MovingData data = pData.getGenericInstance(MovingData.class);
+        // Same tick as a native explosion push: this event carries the server motion incl. that push.
+        data.nativePush.onVelocityEvent(player.getTicksLived());
         // Ignore players who are in vehicles.
         if (player.isInsideVehicle()) {
             data.removeAllVelocity();
@@ -2755,6 +2850,7 @@ catch (java.lang.Throwable thr) {}
                 // Put that distance back on the next tick.
                 final float owed = Math.max(Math.max(0f, player.getFallDistance()),
                         Math.max(0f, Math.max(yDiff, data.noFallFallDistance)));
+                fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "nofall-native-air-landing");
                 event.setCancelled(true);
                 data.noFallCancelledAirFallDebt = Math.max(data.noFallCancelledAirFallDebt, owed);
                 // Unit tests have no server. A live server zeroes the distance after this event returns.
@@ -3662,6 +3758,7 @@ catch (java.lang.Throwable thr) {}
         if (player.isDead() || player.isSleeping() || player.isInsideVehicle()) return false;
         final Location newTo = enforceLocation(player, player.getLocation(), data);
         if (newTo == null) return false;
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "owner-correction", newTo);
         MovingUtil.teleportSetBack(player, newTo, data);
         return true;
     }
@@ -3683,6 +3780,23 @@ catch (java.lang.Throwable thr) {}
             }
         }
         else return null;
+    }
+
+
+    /**
+     * Remember a shulker box the server just opened for this player: for up to ten ticks its lid pushes them along
+     * its facing on the server without a PlayerMoveEvent (see {@link ShulkerLidRide}). Only a box whose lid isn't
+     * fully out yet starts an opening.
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onInventoryOpenShulkerLid(final InventoryOpenEvent event) {
+        if (!(event.getPlayer() instanceof Player) || event.getInventory().getType() != InventoryType.SHULKER_BOX) {
+            return;
+        }
+        final Player player = (Player) event.getPlayer();
+        final Location box = event.getInventory().getLocation();
+        ShulkerLidRide.recordOpening(DataManager.getGenericInstance(player, MovingData.class),
+                box != null && player.getWorld().equals(box.getWorld()) ? box : null);
     }
 
 
@@ -3758,12 +3872,46 @@ catch (java.lang.Throwable thr) {}
                                      loc.getX(), loc.getY(), loc.getZ()) <= 0.01) {
             return;
         }
+        // An opening shulker lid the server opened for this player pushes them along its facing without a move event.
+        final double lidRide = ShulkerLidRide.explains(player, data, loc);
+        if (!Double.isNaN(lidRide)) {
+            // Vanilla's own push: don't correct it.
+            if (data.shulkerLidOpenFace == BlockFace.UP) {
+                NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
+                        CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Untracked move within an opening shulker lid push"
+                        + String.format(Locale.ROOT, " (dy=%.3f, push up to %.3f), not set back.", loc.getY() - data.untrackedTrustedY, lidRide));
+                // Standing on the real lid's top: the server's own move-rejection teleports during the push can leave
+                // no move event to follow it there. Take that height only, never x or z.
+                final double lidTop = ShulkerLidRide.restingOnLid(data, loc);
+                if (!Double.isNaN(lidTop)) {
+                    setUntrackedTrusted(data, world, data.untrackedTrustedX, lidTop, data.untrackedTrustedZ);
+                }
+            }
+            else {
+                NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
+                        CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Untracked move within an opening shulker lid push"
+                        + String.format(Locale.ROOT, " (facing=%s, d=%.3f, push up to %.3f, near side %.3f -> %.3f out), not set back.",
+                                data.shulkerLidOpenFace,
+                                TrigUtil.distance(data.untrackedTrustedX, data.untrackedTrustedY, data.untrackedTrustedZ,
+                                        loc.getX(), loc.getY(), loc.getZ()), lidRide,
+                                ShulkerLidRide.nearSide(data, player, data.untrackedTrustedX, data.untrackedTrustedY, data.untrackedTrustedZ),
+                                ShulkerLidRide.nearSide(data, player, loc.getX(), loc.getY(), loc.getZ())));
+                // Pushed exactly along the facing: the player stands where the server's push put them (in the
+                // inventory they send no move to follow it). Take that coordinate only, never past the replayed push.
+                final double[] pushed = ShulkerLidRide.pushedAlongFacing(data, loc, lidRide);
+                if (pushed != null) {
+                    setUntrackedTrusted(data, world, pushed[0], pushed[1], pushed[2]);
+                }
+            }
+            return;
+        }
         // Correct back to the trusted position. The regular set back may have moved into the air.
         final Location newTo = new Location(loc.getWorld(), data.untrackedTrustedX, data.untrackedTrustedY,
                                             data.untrackedTrustedZ, loc.getYaw(), loc.getPitch());
         NCPAPIProvider.getNoCheatPlusAPI().getLogManager().warning(Streams.TRACE_FILE,
                 CheckUtils.getLogMessagePrefix(player, CheckType.MOVING) + "Untracked move (no PlayerMoveEvent) to "
                 + LocUtil.simpleFormat(loc) + ", set back to " + LocUtil.simpleFormat(newTo) + ".");
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "owner-correction", newTo);
         MovingUtil.teleportSetBack(player, newTo, data);
     }
 

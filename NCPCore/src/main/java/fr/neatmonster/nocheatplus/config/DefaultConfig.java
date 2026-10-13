@@ -44,6 +44,16 @@ public class DefaultConfig extends ConfigFile {
         /** MC 1.18 expanded the height limit for building by 64 blocks up */
         final int cfMaxWorldY = ServerVersion.compareMinecraftVersion("1.18") >= 0 ? 200 : 128;
 
+        // Observational telemetry; production must explicitly enable it.
+        set("telemetry.enabled", false);
+        set("telemetry.sample-percent", 1.0);
+        set("telemetry.move-sample-real-percent", 0.0);
+        set("telemetry.queue", 50000);
+        set("telemetry.min-free-bytes", 20000000000L);
+        set("telemetry.max-folder-bytes", 5000000000L);
+        set("telemetry.folder", "ncp-telemetry");
+        set("telemetry.recent-ticks", 100);
+
         // General.
         set(ConfPaths.SAVEBACKCONFIG, true, 785);
 

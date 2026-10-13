@@ -228,6 +228,8 @@ public class Passable extends Check {
         // Return the reset position.
         data.passableVL += 1d;
         final ViolationData vd = new ViolationData(this, player, data.passableVL, 1, cc.passableActions);
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.blocks(vd, from, to);
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, tags);
         if (debug || vd.needsParameters()) {
             vd.setParameter(ParameterName.LOCATION_FROM, String.format(Locale.US, "%.2f, %.2f, %.2f", from.getX(), from.getY(), from.getZ()));
             vd.setParameter(ParameterName.LOCATION_TO, String.format(Locale.US, "%.2f, %.2f, %.2f", to.getX(), to.getY(), to.getZ()));
