@@ -160,6 +160,7 @@ public class BlockInteractListener extends CheckListener {
             cancelId = Integer.MIN_VALUE;
         }
         if (cancelId != Integer.MIN_VALUE) {
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "blockinteract-state-guard");
             event.setUseInteractedBlock(Result.DENY);
             event.setUseItemInHand(Result.DENY);
             event.setCancelled(true);

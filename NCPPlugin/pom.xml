@@ -169,6 +169,25 @@
                     </filters>
                 </configuration>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+                <executions>
+                    <execution>
+                        <id>validate-packaged-yaml</id>
+                        <phase>package</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <includes><include>**/TestPackagedResources.java</include></includes>
+                            <systemPropertyVariables>
+                                <telemetry.packagedJar>${project.build.directory}/${project.build.finalName}.jar</telemetry.packagedJar>
+                            </systemPropertyVariables>
+                            <reportsDirectory>${project.build.directory}/packaged-resource-reports</reportsDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

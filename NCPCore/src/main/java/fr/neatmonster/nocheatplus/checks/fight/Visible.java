@@ -130,6 +130,7 @@ public class Visible extends Check{
         if (cancel) {
             data.visibleVL += 1.0;
             final ViolationData vd = new ViolationData(this, player, data.visibleVL, 1.0, cc.visibleActions);
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, rayTracing.getStepsDone() > rayTracing.getMaxSteps() ? "raytracing_maxsteps" : "raytracing");
             //if (vd.needsParameters()) vd.setParameter(ParameterName.TAGS, StringUtil.join(tags, "+"));
             cancel = executeActions(vd).willCancel();
         }

@@ -173,6 +173,8 @@ public abstract class Check implements IDebugPlayer {
             TickTask.requestActionsExecution(violationData);
         }
 
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.cancel(violationData);
+
         // (Permission checks are moved to cached permissions, lazily updated.)
         return violationData;
     }

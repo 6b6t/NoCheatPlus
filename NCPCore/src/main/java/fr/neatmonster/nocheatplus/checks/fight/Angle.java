@@ -213,6 +213,7 @@ public class Angle extends Check {
                 violation = violationMove;
                 data.angleVL += violation;
                 final ViolationData vd = new ViolationData(this, player, data.angleVL, violation, cc.angleActions);
+                fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, tags);
                 if (vd.needsParameters()) vd.setParameter(ParameterName.TAGS, StringUtil.join(tags, "+"));
                 cancel = executeActions(vd).willCancel();
             } 
@@ -222,6 +223,7 @@ public class Angle extends Check {
                 violation = violationTime;
                 data.angleVL += violation;
                 final ViolationData vd = new ViolationData(this, player, data.angleVL, violation, cc.angleActions);
+                fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, tags);
                 if (vd.needsParameters()) vd.setParameter(ParameterName.TAGS, StringUtil.join(tags, "+"));
                 cancel = executeActions(vd).willCancel();
             } 
@@ -231,6 +233,7 @@ public class Angle extends Check {
                 violation = violationYaw;
                 data.angleVL += violation;
                 final ViolationData vd = new ViolationData(this, player, data.angleVL, violation, cc.angleActions);
+                fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, tags);
                 if (vd.needsParameters()) vd.setParameter(ParameterName.TAGS, StringUtil.join(tags, "+"));
                 cancel = executeActions(vd).willCancel();
             } 
@@ -240,6 +243,7 @@ public class Angle extends Check {
                 violation = violationSwitchSpeed;
                 data.angleVL += violation;
                 final ViolationData vd = new ViolationData(this, player, data.angleVL, violation, cc.angleActions);
+                fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, tags);
                 if (vd.needsParameters()) vd.setParameter(ParameterName.TAGS, StringUtil.join(tags, "+"));
                 cancel = executeActions(vd).willCancel();
             } 

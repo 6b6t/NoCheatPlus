@@ -19,6 +19,7 @@ import org.bukkit.block.data.Directional;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.entity.HumanEntity;
 import org.bukkit.util.BoundingBox;
+import org.junit.Before;
 import org.junit.Test;
 
 import fr.neatmonster.nocheatplus.compat.bukkit.model.BukkitShulkerBox;
@@ -27,6 +28,14 @@ import fr.neatmonster.nocheatplus.compat.bukkit.model.BukkitShulkerBox;
  * Upward lids retain the staged viewer model; sideways/downward lids follow physical bounds.
  */
 public class TestShulkerBoxModel {
+
+    private int tick = 1000;
+
+    @Before
+    public void freshLids() {
+        BukkitShulkerBox.forgetLids();
+        BukkitShulkerBox.tickSource = () -> tick;
+    }
 
     static final BlockFace[] FACES = {BlockFace.UP, BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.WEST, BlockFace.EAST};
 
@@ -85,7 +94,10 @@ public class TestShulkerBoxModel {
         }
         final double[] shape = new BukkitShulkerBox().getShape(null, world, 10, 64, 20);
         if (face == BlockFace.UP) {
-            verify(block, never()).getBoundingBox();
+            if (viewed) {
+                // Viewed: the staged viewer model alone, no physical read.
+                verify(block, never()).getBoundingBox();
+            }
         } else {
             verify(block, never()).getState();
         }
@@ -135,9 +147,57 @@ public class TestShulkerBoxModel {
             final BoundingBox box = vanillaBox(10, 64, 20, BlockFace.UP, lid);
             // Viewer present: full height immediately, even when the physical lid has barely opened.
             assertArrayEquals(expected(BlockFace.UP, 0.5), shape(box, BlockFace.UP, true), 0.0);
-            // Last viewer gone: closed immediately, including every remaining closing-animation tick.
-            assertArrayEquals(expected(BlockFace.UP, 0.0), shape(box, BlockFace.UP, false), 0.0);
         }
+    }
+
+    @Test
+    public void upwardLidStaysOpenShapedWhileItClosesWithoutViewers() {
+        // Last viewer gone: every remaining closing tick (server lid still out) keeps the open shape, as it had
+        // while viewed; only the shut lid is the closed cube again. Same for a lid out without any viewer.
+        final List<Double> lids = animation();
+        for (int i = 0; i < lids.size(); i++) {
+            final double lid = lids.get(i);
+            // (The last closing step leaves float noise of a few 1e-9: shut, but right after the lid was out.)
+            assertArrayEquals((i < 9 ? "opening " : "closing ") + lid, expected(BlockFace.UP, 0.5),
+                    shape(vanillaBox(10, 64, 20, BlockFace.UP, lid), BlockFace.UP, false), 0.0);
+        }
+        assertArrayEquals(expected(BlockFace.UP, 0.5), shape(vanillaBox(10, 64, 20, BlockFace.UP, 0.5), BlockFace.UP, false), 0.0);
+        // Once the rider's own (later) lid has had time to shut too, the shut lid is the cube.
+        tick += BukkitShulkerBox.CLOSE_LAG_TICKS + 1;
+        assertArrayEquals(expected(BlockFace.UP, 0.0), shape(vanillaBox(10, 64, 20, BlockFace.UP, 0.0), BlockFace.UP, false), 0.0);
+        // Float noise of a shut lid is shut.
+        assertArrayEquals(expected(BlockFace.UP, 0.0), shape(new BoundingBox(10, 64, 20, 11, 65.00005, 21), BlockFace.UP, false), 0.0);
+    }
+
+    @Test
+    public void upwardLidKeepsTheOpenShapeForTheRidersLatencyAfterItShut() {
+        // Shut without having been seen out: the cube at once.
+        assertArrayEquals(expected(BlockFace.UP, 0.0), shape(vanillaBox(10, 64, 20, BlockFace.UP, 0.0), BlockFace.UP, false), 0.0);
+        // Seen closing (no viewers, lid 0.05 out), then shut: open shape for CLOSE_LAG_TICKS more, then the cube.
+        assertArrayEquals(expected(BlockFace.UP, 0.5), shape(vanillaBox(10, 64, 20, BlockFace.UP, 0.05), BlockFace.UP, false), 0.0);
+        for (int i = 1; i <= BukkitShulkerBox.CLOSE_LAG_TICKS; i++) {
+            tick++;
+            assertArrayEquals("tick " + i, expected(BlockFace.UP, 0.5), shape(vanillaBox(10, 64, 20, BlockFace.UP, 0.0), BlockFace.UP, false), 0.0);
+        }
+        tick++;
+        assertArrayEquals(expected(BlockFace.UP, 0.0), shape(vanillaBox(10, 64, 20, BlockFace.UP, 0.0), BlockFace.UP, false), 0.0);
+        // Only that box: the same box elsewhere, or a sideways box at that spot, are not affected.
+        assertArrayEquals(expected(BlockFace.UP, 0.5), shape(vanillaBox(10, 64, 20, BlockFace.UP, 0.05), BlockFace.UP, false), 0.0);
+        tick++;
+        assertArrayEquals(expected(BlockFace.NORTH, 0.0), shape(vanillaBox(10, 64, 20, BlockFace.NORTH, 0.0), BlockFace.NORTH, false), 0.0);
+        // Time running backwards (reload): forget it.
+        tick -= 100;
+        assertArrayEquals(expected(BlockFace.UP, 0.0), shape(vanillaBox(10, 64, 20, BlockFace.UP, 0.0), BlockFace.UP, false), 0.0);
+    }
+
+    @Test
+    public void onlyAnUpwardLidOnTopKeepsTheOpenShapeWithoutViewers() {
+        // Anything that isn't the block plus a lid on top: closed cube, as before.
+        assertArrayEquals(expected(BlockFace.UP, 0.0), shape(new BoundingBox(), BlockFace.UP, false), 0.0);
+        assertArrayEquals(expected(BlockFace.UP, 0.0), shape(new BoundingBox(10, 64, 19.7, 11, 65, 21), BlockFace.UP, false), 0.0);
+        assertArrayEquals(expected(BlockFace.UP, 0.0), shape(new BoundingBox(10, 64.2, 20, 11, 65.3, 21), BlockFace.UP, false), 0.0);
+        assertArrayEquals(expected(BlockFace.UP, 0.0), shape(new BoundingBox(10, 64, 20, 11.2, 65.3, 21), BlockFace.UP, false), 0.0);
+        assertArrayEquals(expected(BlockFace.UP, 0.0), shape(null, BlockFace.UP, false), 0.0);
     }
 
     @Test

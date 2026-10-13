@@ -704,6 +704,7 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
                 if (attackerPData.isDebugActive(checkType)) {
                     debug(player, "Prevent " + weaponType + " damage, due to a recent set back.");
                 }
+                fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "fight-recent-setback");
                 event.setCancelled(true);
                 return;
             }
@@ -720,6 +721,7 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
                         // Use fight data flag for efficiency.
                         debug(attacker, "Prevent melee attack, due to a scheduled set back.");
                     }
+                    fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "fight-scheduled-setback");
                     event.setCancelled(true);
                 }
                 // Ordinary melee damage handling.
@@ -756,6 +758,7 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
             if (pData.isDebugActive(checkType)) {
                 debug(player, "Prevent " + projectile.getType() + " launch, due to a recent set back.");
             }
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "fight-projectile-recent-setback");
             event.setCancelled(true);
         }
     }
@@ -966,6 +969,7 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
         if (player.isDead() && BridgeHealth.getHealth(player) <= 0.0) {
             // Heal after death.
             // TODO: Problematic. At least skip CUSTOM.
+            fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "fight-heal-dead");
             event.setCancelled(true);
             counters.addPrimaryThread(idCancelDead, 1);
             return;
