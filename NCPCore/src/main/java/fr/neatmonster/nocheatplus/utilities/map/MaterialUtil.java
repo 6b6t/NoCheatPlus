@@ -746,6 +746,27 @@ public class MaterialUtil {
     public static boolean isBoat(final EntityType entity) {
         return BOATSTYPE.contains(entity);
     }
+
+    /**
+     * Boats and bamboo rafts, for standing on them (PR #3). Rafts don't end in BOAT, so isBoat misses them. Vehicle
+     * checks keep using isBoat.
+     *
+     * @param entity
+     * @return
+     */
+    public static boolean isBoatOrRaft(final EntityType entity) {
+        return entity != null && (BOATSTYPE.contains(entity) || isRaftName(entity.name()));
+    }
+
+    /**
+     * Entity type names of bamboo rafts (BAMBOO_RAFT, BAMBOO_CHEST_RAFT since 1.21.2).
+     *
+     * @param name
+     * @return
+     */
+    public static boolean isRaftName(final String name) {
+        return name != null && name.endsWith("_RAFT");
+    }
     
     /**
      * Check if this block can be fertilized with bone meal
