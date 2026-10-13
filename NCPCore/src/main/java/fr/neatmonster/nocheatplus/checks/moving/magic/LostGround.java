@@ -142,6 +142,17 @@ public class LostGround {
             return applyLostGround(player, from, true, thisMove , data, "micro", tags);
         }
         final double setBackYDistance = from.getY() - data.getSetBackY();
+        final double horizontalStepLimit = Math.max(thisMove.walkSpeed, lastMove.hAllowedDistanceBase) * 2.2;
+
+        // Landing on raised ground can step higher than the jump's original anchor.
+        final double landingStepHeight = Math.min(cc.sfStepHeight, CornerStep.VANILLA_STEP_HEIGHT);
+        if (lastMove.yDistance < 0.0 && Magic.inAir(lastMove) && !from.isResetCond()
+            && yDistance > 0.0 && yDistance <= landingStepHeight && hDistance <= horizontalStepLimit
+            && to.isOnGround()
+            && from.isOnGround(Math.min(landingStepHeight - yDistance,
+                    -lastMove.yDistance * Magic.FRICTION_MEDIUM_AIR + Magic.GRAVITY_MAX), 0.0, 0.0)) {
+            return applyLostGround(player, from, true, thisMove, data, "landingstep", tags);
+        }
 
         // Step height related.
         if (yDistance <= cc.sfStepHeight && hDistance <= 1.5 && !from.isResetCond()) { // hDistance is arbitrary, just to confine.
@@ -151,7 +162,7 @@ public class LostGround {
                 // Half block step up (definitive).
                 // The current horizontal allowance is calculated after lost-ground checks.
                 if (to.isOnGround() && setBackYMargin >= yDistance
-                    && hDistance <= Math.max(thisMove.walkSpeed, lastMove.hAllowedDistanceBase) * 2.2) {
+                    && hDistance <= horizontalStepLimit) {
                     if (lastMove.yDistance < 0.0 || yDistance <= cc.sfStepHeight && from.isOnGround(cc.sfStepHeight - yDistance)) {
                         return applyLostGround(player, from, true, thisMove, data, "step", tags);
                     }

@@ -94,6 +94,53 @@ public class TestLandingStep {
         assertFalse(current.touchedGroundWorkaround);
     }
 
+    @Test
+    public void landingOnRaisedCarpetThenSteppingOntoRaftCanExceedTheOldJumpAnchor() {
+        raisedLanding(70.0625);
+        assertTrue(step(0.1024, 70.625 - 70.17675927506424));
+        assertTrue(tags.contains("lostground_landingstep"));
+        assertTrue(current.touchedGroundWorkaround);
+        verify(data).setSetBack(from);
+    }
+
+    @Test
+    public void raisedStepNeedsGroundWithinTheFallingMove() {
+        raisedLanding(70.0);
+        assertFalse(step(0.1024, 70.625 - 70.17675927506424));
+        verify(data, never()).setSetBack(from);
+    }
+
+    @Test
+    public void hoveringOrMissingRaftSupportCannotResetTheJumpAnchor() {
+        raisedLanding(70.0625);
+        last.yDistance = 0;
+        assertFalse(step(0.1024, 70.625 - 70.17675927506424));
+        last.yDistance = -0.07544406518948656;
+        when(to.isOnGround()).thenReturn(false);
+        assertFalse(step(0.1024, 70.625 - 70.17675927506424));
+        verify(data, never()).setSetBack(from);
+    }
+
+    @Test
+    public void raisedLandingCannotStepHigherThanVanillaEvenWithAHigherConfiguredLimit() throws Exception {
+        raisedLanding(70.0625);
+        final var stepHeight = MovingConfig.class.getField("sfStepHeight");
+        stepHeight.setAccessible(true);
+        stepHeight.setDouble(config, 1.1);
+        when(to.getY()).thenReturn(70.9);
+        assertFalse(step(0.1024, 70.9 - 70.17675927506424));
+        verify(data, never()).setSetBack(from);
+    }
+
+    private void raisedLanding(final double groundY) {
+        when(data.getSetBackY()).thenReturn(69.0);
+        when(from.getY()).thenReturn(70.17675927506424);
+        when(to.getY()).thenReturn(70.625);
+        last.yDistance = -0.07544406518948656;
+        when(from.isOnGround(anyDouble(), eq(0.0), eq(0.0))).thenAnswer(call ->
+                (double) call.getArgument(0) >= from.getY() - groundY);
+    }
+
     private boolean step(final double horizontal, final double vertical) {
         try (MockedStatic<BlockProperties> blocks = mockStatic(BlockProperties.class)) {
             return LostGround.lostGround(player, from, to, horizontal, vertical, true,
