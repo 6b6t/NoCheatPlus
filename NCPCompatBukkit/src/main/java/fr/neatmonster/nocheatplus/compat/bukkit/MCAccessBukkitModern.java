@@ -20,10 +20,13 @@ import java.util.Map;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
+import org.bukkit.damage.DamageSource;
+import org.bukkit.damage.DamageType;
 
 import fr.neatmonster.nocheatplus.compat.AlmostBoolean;
 import fr.neatmonster.nocheatplus.compat.BridgeHealth;
 import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
+import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.compat.blocks.init.BlockInit;
 import fr.neatmonster.nocheatplus.compat.bukkit.model.*;
 import fr.neatmonster.nocheatplus.compat.cbreflect.reflect.ReflectBase;
@@ -565,6 +568,19 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         return handle;
     }
 
+    private static final boolean HAS_DAMAGE_SOURCE_API = hasDamageSourceAPI();
+
+    private static boolean hasDamageSourceAPI() {
+        try {
+            Class<?> source = Class.forName("org.bukkit.damage.DamageSource", false, MCAccessBukkitModern.class.getClassLoader());
+            Class.forName("org.bukkit.damage.DamageType", false, MCAccessBukkitModern.class.getClassLoader());
+            Player.class.getMethod("damage", double.class, source);
+            return true;
+        } catch (ReflectiveOperationException unavailable) {
+            return false;
+        }
+    }
+
     private boolean canDealFallDamage() {
         return this.reflectLivingEntity != null && this.reflectLivingEntity.nmsDamageEntity != null 
                && (this.reflectDamageSource.nmsFALL != null || this.reflectDamageSources != null);
@@ -572,11 +588,18 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
 
     @Override
     public AlmostBoolean dealFallDamageFiresAnEvent() {
-        return canDealFallDamage() ? AlmostBoolean.YES : AlmostBoolean.NO;
+        return HAS_DAMAGE_SOURCE_API || canDealFallDamage() ? AlmostBoolean.YES : AlmostBoolean.NO;
     }
 
     @Override
     public void dealFallDamage(Player player, double damage) {
+        if (HAS_DAMAGE_SOURCE_API) {
+            // Use the native FALL source: modifiers, cancellation and cooldown tags
+            // are handled by the server, exactly as for an ordinary landing.
+            // No debt, task or player reference survives this owning-thread call.
+            dealNativeFallDamage(player, damage);
+            return;
+        }
         if (canDealFallDamage()) {
             Object handle = getHandle(player);
             if (handle != null) {
@@ -597,6 +620,20 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
             }
         } 
         else BridgeHealth.damage(player, damage);
+    }
+
+    @Override
+    public boolean isEnderPearlDamage(org.bukkit.event.entity.EntityDamageEvent event) {
+        return HAS_DAMAGE_SOURCE_API
+                && "minecraft:ender_pearl".equals(event.getDamageSource().getDamageType().getKey().toString())
+                || super.isEnderPearlDamage(event);
+    }
+
+    protected void dealNativeFallDamage(Player player, double damage) {
+        if (!Folia.isOwnedByCurrentRegion(player)) {
+            throw new IllegalStateException("Fall damage requires the player owning region");
+        }
+        player.damage(damage, DamageSource.builder(DamageType.FALL).build());
     }
 
     @Override

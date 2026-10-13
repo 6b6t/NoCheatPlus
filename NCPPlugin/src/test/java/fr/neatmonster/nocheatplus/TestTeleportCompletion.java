@@ -85,6 +85,16 @@ public class TestTeleportCompletion {
         }).when(aux).resetPositionsAndMediumProperties(any(), any(), same(data), same(config));
     }
 
+    @Test public void ordinaryFoxPlacementKeepsOnlyPreTeleportDescentWhenNoFallIsActive() throws Exception {
+        var reset = MovingConfig.class.getField("noFallTpReset");reset.setAccessible(true);reset.setBoolean(config,false);
+        when(pData.isCheckActive(CheckType.MOVING_NOFALL,player)).thenReturn(true);
+        data.noFallFallDistance=5;data.noFallMaxY=120;
+        Location to=new Location(world,16,81,16);when(player.getLocation()).thenReturn(to);
+        MovingUtil.onTeleportComplete(player,to,1,data,pData);
+        assertEquals(5,data.noFallFallDistance,0);assertEquals(81,data.noFallMaxY,0);
+        verify(player).setFallDistance(5);
+        assertFalse(data.noFallSkipAirCheck);
+    }
     @Test
     public void distantArrivalThenSmallMoveDoesNotRollBackButUncheckedDriftDoes() throws Exception {
         final Location to = new Location(world, 8000000, 90, -8000000);
@@ -519,4 +529,26 @@ public class TestTeleportCompletion {
         when(world.getName()).thenReturn(id.toString());
         return world;
     }
+    @Test
+    public void snapshotTeleportInvalidationPreservesCancelledAndTrackedCorrections() throws Exception {
+        final MovingListener listener = mock(MovingListener.class, CALLS_REAL_METHODS);
+        final var container = mock(org.bukkit.persistence.PersistentDataContainer.class);
+        when(player.getPersistentDataContainer()).thenReturn(container);
+        when(pData.isCheckActive(CheckType.MOVING, player)).thenReturn(false);
+        final Location target = new Location(world, 5, 64, 5);
+        data.prepareSetBack(target);
+        final var event = new PlayerTeleportEvent(player, player.getLocation(), target, TeleportCause.PLUGIN);
+        try (MockedStatic<Folia> folia = mockStatic(Folia.class);
+             MockedStatic<DataManager> manager = mockStatic(DataManager.class)) {
+            folia.when(Folia::isFoliaServer).thenReturn(true);
+            manager.when(() -> DataManager.getPlayerData(player)).thenReturn(pData);
+            event.setCancelled(true); listener.onPlayerTeleportMonitor(event);
+            event.setCancelled(false); listener.onPlayerTeleportMonitor(event);
+            verifyNoInteractions(container);
+            event.setTo(new Location(world, 20, 70, 20)); listener.onPlayerTeleportMonitor(event);
+            verify(container).remove(new org.bukkit.NamespacedKey("nocheatplus", "fall_state_v2"));
+            verify(container).remove(new org.bukkit.NamespacedKey("nocheatplus", "fall_world_v2"));
+        }
+    }
+
 }

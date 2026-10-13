@@ -1,0 +1,13 @@
+--- plugins/NoCheatPlus/config.yml (LIVE)
++++ plugins/NoCheatPlus/config.yml (NoFall v2)
+@@ -547,8 +547,8 @@
+       actions: cancel log:ncpdiagmp:0:1:f
+     # cancel vl>2 cancel log:morepackets:10:9:i vl>100 cancel log:morepackets:0:2:ifc cmdc:kickpackets:0:10
+     nofall:
+-      active: false
+-      dealdamage: true
++      active: true
++      dealdamage: false
+       skipallowflight: true
+       resetonviolation: false
+       resetonteleport: false

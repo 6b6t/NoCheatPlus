@@ -193,5 +193,11 @@ public interface MCAccess extends IGetBlockCache, IEntityAccessDimensions {
      * @param player
      * @return true if can reset and vice versa
      */
+    /** Identify native pearl effects independently of legacy Bukkit damage causes. */
+    default boolean isEnderPearlDamage(org.bukkit.event.entity.EntityDamageEvent event) {
+        return event instanceof org.bukkit.event.entity.EntityDamageByEntityEvent
+                && ((org.bukkit.event.entity.EntityDamageByEntityEvent) event).getDamager() instanceof org.bukkit.entity.EnderPearl;
+    }
+
     public boolean resetActiveItem(Player player);
 }

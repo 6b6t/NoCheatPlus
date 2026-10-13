@@ -82,6 +82,7 @@ import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveInfo;
 import fr.neatmonster.nocheatplus.checks.moving.player.CreativeFly;
 import fr.neatmonster.nocheatplus.checks.moving.player.MorePackets;
 import fr.neatmonster.nocheatplus.checks.moving.player.NoFall;
+import fr.neatmonster.nocheatplus.checks.moving.player.FallStateSnapshot;
 import fr.neatmonster.nocheatplus.checks.moving.player.Passable;
 import fr.neatmonster.nocheatplus.checks.moving.player.PlayerSetBackMethod;
 import fr.neatmonster.nocheatplus.checks.moving.player.SurvivalFly;
@@ -193,7 +194,6 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
     final Location useBedLeaveLoc = new Location(null, 0, 0, 0);
     final Location useChangeWorldLoc = new Location(null, 0, 0, 0);
     final Location useDeathLoc = new Location(null, 0, 0, 0);
-    final Location useFallLoc = new Location(null, 0, 0, 0);
     final Location useToggleFlightLoc = new Location(null, 0, 0, 0);
 
     /** Auxiliary functionality. */
@@ -1340,6 +1340,11 @@ catch (java.lang.Throwable thr) {}
             // 2: Process the bounce effect if the move is allowed.
             if (verticalBounce != BounceType.NO_BOUNCE) {
                 BounceUtil.processBounce(player, pFrom.getY(), pTo.getY(), verticalBounce, tick, this, data, cc, pData);
+                if (verticalBounce == BounceType.STATIC) {
+                    // A native bounce has no FALL event. Retained descent must
+                    // not be carried into a later fall or ordinary teleport.
+                    NoFall.consumeSlimeContact(pTo, data, Math.max(cc.noFallyOnGround, cc.yOnGround));
+                }
             }
 
             // 3: Finish processing the current move, move it to past ones
@@ -1805,6 +1810,13 @@ catch (java.lang.Throwable thr) {}
             final Location pLoc = player.getLocation(useLoc);
             onMoveMonitorNotCancelled(player, TrigUtil.isSamePosAndLook(pLoc, from) ? from : pLoc, event.getTo(), now, tick, data, mData, mCc, pData);
             useLoc.setWorld(null);
+            if (Folia.isFoliaServer()) {
+                if (noFall.isEnabled(player, pData) && !mData.hasTeleported()
+                        && !player.isGliding() && !player.isInsideVehicle()
+                        && !(player.getAllowFlight() && mCc.noFallSkipAllowFlight)) {
+                    FallStateSnapshot.save(player, mData, event.getTo());
+                } else FallStateSnapshot.clear(player);
+            }
         }
         else onCancelledMove(player, from, tick, now, mData, mCc, data, pData);
     }
@@ -1998,10 +2010,12 @@ catch (java.lang.Throwable thr) {}
     public void onPlayerDeath(final PlayerDeathEvent event) {
 
         final Player player = event.getEntity();
+        if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
         final IPlayerData pData = DataManager.getPlayerData(player);
         final MovingData data = pData.getGenericInstance(MovingData.class);
         //final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
         data.clearMostMovingCheckData();
+        data.clearWindChargeImpulse();
         data.setSetBack(player.getLocation(useDeathLoc)); // TODO: Monitor this change (!).
         data.isUsingItem = false;
         // Log location.
@@ -2156,11 +2170,19 @@ catch (java.lang.Throwable thr) {}
     @EventHandler(ignoreCancelled = false, priority = EventPriority.MONITOR)
     public void onPlayerTeleportMonitor(final PlayerTeleportEvent event) {
 
-        // Evaluate result and adjust data.
+        // Snapshot invalidation is independent of whether movement checking is
+        // currently active; cancelled/tracked corrections retain their descent.
         final Player player = event.getPlayer();
         final IPlayerData pData = DataManager.getPlayerData(player);
-        if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         final MovingData data = pData.getGenericInstance(MovingData.class);
+        final Location approvedTo = event.getTo();
+        final var tracked = data.getSetBackTeleport();
+        if (Folia.isFoliaServer() && !event.isCancelled() && approvedTo != null
+                && !data.isTeleported(approvedTo)
+                && !(tracked != null && tracked.isFor(player) && tracked.isDestination(approvedTo))) {
+            FallStateSnapshot.clear(player);
+        }
+        if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         // Invalidate first-move thing.
         // TODO: Might conflict with 'moved wrongly' on join.
         data.joinOrRespawn = false;
@@ -2444,6 +2466,15 @@ catch (java.lang.Throwable thr) {}
     @EventHandler(priority = EventPriority.LOWEST, ignoreCancelled = false)
     public void onEntityDamage(final EntityDamageEvent event) {
 
+        final Entity pearlTarget = event.getEntity();
+        if (pearlTarget instanceof Player && mcAccess.getHandle().isEnderPearlDamage(event)) {
+            final Player player = (Player) pearlTarget;
+            final MovingData data = DataManager.getPlayerData(player).getGenericInstance(MovingData.class);
+            data.clearNoFallData();
+            data.clearWindChargeImpulse();
+            if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+            return;
+        }
         if (event.getCause() != DamageCause.FALL) {
             return;
         }
@@ -2469,7 +2500,7 @@ catch (java.lang.Throwable thr) {}
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
         final PlayerMoveInfo moveInfo = aux.usePlayerMoveInfo();
         final double yOnGround = Math.max(cc.noFallyOnGround, cc.yOnGround);
-        final Location loc = player.getLocation(useFallLoc);
+        final Location loc = player.getLocation();
         moveInfo.set(player, loc, null, yOnGround);
         final PlayerLocation pLoc = moveInfo.from;
         pLoc.collectBlockFlags(yOnGround);
@@ -2477,7 +2508,6 @@ catch (java.lang.Throwable thr) {}
         if (event.isCancelled() || !MovingUtil.shouldCheckSurvivalFly(player, pLoc, moveInfo.to, data, cc, pData) 
             || !noFall.isEnabled(player, pData)) {
             data.clearNoFallData();
-            useFallLoc.setWorld(null);
             aux.returnPlayerMoveInfo(moveInfo);
             return;
         }
@@ -2488,6 +2518,25 @@ catch (java.lang.Throwable thr) {}
         final double damage = BridgeHealth.getRawDamage(event); // Raw damage.
         if (debug) debug(player, "Damage(FALL/PRE): " + damage + " / mc=" + player.getFallDistance() + " nf=" + data.noFallFallDistance + " yDiff=" + yDiff);
 
+        if (!cc.noFallDealDamage && ServerVersion.compareMinecraftVersion("26.1") >= 0) {
+            // Distance has already been restored before native collision processing.
+            // Fox applies its authoritative impulse-impact limit, support modifiers
+            // and attributes there. Recomputing damage from geometric distance here
+            // would undo legitimate wind-charge mitigation (and other native rules).
+            // Client-only support still cannot consume the descent or cause damage.
+            if (!pLoc.isOnGround(yOnGround) && !pLoc.isResetCond()) {
+                event.setCancelled(true);
+            }
+            else {
+                data.clearNoFallData();
+                data.vDistAcc.clear();
+                if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+                if (debug) debug(player, "Preserve native FALL damage and consume contact.");
+            }
+            aux.returnPlayerMoveInfo(moveInfo);
+            return;
+        }
+
         // NoFall bypass checks.
         // TODO: data.noFallSkipAirCheck is used to skip checking in general, thus move into that block or not?
         // TODO: Could consider skipping accumulated fall distance for NoFall in general as well.
@@ -2495,7 +2544,7 @@ catch (java.lang.Throwable thr) {}
             
             // Cheat: let Minecraft gather and deal fall damage.
             final float dataDist = Math.max(yDiff, data.noFallFallDistance);
-            final double dataDamage = NoFall.getDamage(dataDist);
+            final double dataDamage = NoFall.getDamage(player, dataDist);
             if (damage > dataDamage + 0.5 || dataDamage <= 0.0) {
 
                 // Hot fix: allow fall damage in lava.
@@ -2522,7 +2571,6 @@ catch (java.lang.Throwable thr) {}
                     if (dataDamage <= 0.0) {
                         // Cancel the event.
                         event.setCancelled(true);
-                        useFallLoc.setWorld(null);
                         aux.returnPlayerMoveInfo(moveInfo);
                         return;
                     }
@@ -2533,6 +2581,16 @@ catch (java.lang.Throwable thr) {}
                         BridgeHealth.setRawDamage(event, dataDamage);
                     }
                 }
+            }
+            if (ServerVersion.compareMinecraftVersion("26.1") >= 0
+                    && !pLoc.isOnGround(1.0, 0.3, 0.1) && !pLoc.isResetCond()
+                    && !pLoc.isAboveLadder() && !pLoc.isAboveStairs()) {
+                // A client-only placement/ground bit must not turn one descent
+                // into several native landings. Keep geometric accounting until
+                // contact with server-owned terrain; the landing restores it.
+                event.setCancelled(true);
+                aux.returnPlayerMoveInfo(moveInfo);
+                return;
             }
             // Be sure not to lose that block.
             // TODO: What is this and why is it right here?
@@ -2552,8 +2610,8 @@ catch (java.lang.Throwable thr) {}
         }
         aux.returnPlayerMoveInfo(moveInfo);
         // Fall-back check (skip with jump amplifier).
-        final double maxD = data.jumpAmplifier > 0.0 ? NoFall.getDamage((float) NoFall.getApplicableFallHeight(player, loc.getY(), data))
-                                                     : NoFall.getDamage(Math.max(yDiff, Math.max(data.noFallFallDistance, fallDistance))) + (allowReset ? 0.0 : Magic.FALL_DAMAGE_DIST);
+        final double maxD = data.jumpAmplifier > 0.0 ? NoFall.getDamage(player, (float) NoFall.getApplicableFallHeight(player, loc.getY(), data))
+                                                     : NoFall.getDamage(player, Math.max(yDiff, Math.max(data.noFallFallDistance, fallDistance))) + (allowReset ? 0.0 : Magic.FALL_DAMAGE_DIST);
         if (maxD > damage) {
             // TODO: respect dealDamage ?
             double damageafter = NoFall.calcDamagewithfeatherfalling(player, NoFall.calcReducedDamageByBlock(player, data, maxD), mcAccess.getHandle().dealFallDamageFiresAnEvent().decide());
@@ -2564,6 +2622,7 @@ catch (java.lang.Throwable thr) {}
         if (allowReset) {
             // Normal fall damage, reset data.
             data.clearNoFallData();
+            if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
             if (debug) debug(player, "Reset NoFall data on fall damage.");
         }
         else {
@@ -2581,7 +2640,6 @@ catch (java.lang.Throwable thr) {}
         }
         // Entity fall-distance should be reset elsewhere.
         // Cleanup.
-        useFallLoc.setWorld(null);
     }
 
 
@@ -2605,11 +2663,13 @@ catch (java.lang.Throwable thr) {}
     public void onPlayerRespawn(final PlayerRespawnEvent event) {
 
         final Player player = event.getPlayer();
+        if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
         final IPlayerData pData = DataManager.getPlayerData(player);
         if (!pData.isCheckActive(CheckType.MOVING, player)) return;
         final MovingData data = pData.getGenericInstance(MovingData.class);
         // TODO: Prevent/cancel scheduled teleport (use PlayerData/task for teleport, or a sequence count).
         data.clearMostMovingCheckData();
+        data.clearWindChargeImpulse();
         data.resetSetBack(); // To force dataOnJoin to set it to loc.
         // Handle respawn like join.
         dataOnJoin(player, event.getRespawnLocation(), true, data, pData.getGenericInstance(MovingConfig.class), pData.isDebugActive(checkType));
@@ -2653,7 +2713,10 @@ catch (java.lang.Throwable thr) {}
             scheduleUntrackedMoveCheck(player);
         }
         final IPlayerData pData = DataManager.getPlayerData(player);
-        if (!pData.isCheckActive(CheckType.MOVING, player)) return;
+        if (!pData.isCheckActive(CheckType.MOVING, player)) {
+            if (Folia.isFoliaServer()) FallStateSnapshot.clear(player);
+            return;
+        }
         final Location location = player.getLocation();
         final MovingData data = pData.getGenericInstance(MovingData.class);
         data.lastTeleportCompletionSequence = 0L;
@@ -2661,6 +2724,11 @@ catch (java.lang.Throwable thr) {}
         data.resetUntrackedPosition(location);
         dataOnJoin(player, location, false, data,
                 pData.getGenericInstance(MovingConfig.class), pData.isDebugActive(checkType));
+        if (Folia.isFoliaServer()) {
+            if (noFall.isEnabled(player, pData)) FallStateSnapshot.restore(player, data,
+                    !pData.getGenericInstance(MovingConfig.class).noFallTpReset);
+            else FallStateSnapshot.clear(player);
+        }
     }
 
 
