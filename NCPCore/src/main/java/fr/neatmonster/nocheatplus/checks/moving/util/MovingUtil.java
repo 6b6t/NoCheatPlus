@@ -900,6 +900,10 @@ public class MovingUtil {
 
         // Ordinary handling.
         if (data.hasSetBack()) {
+            final Location correction = data.getSurvivalFlyCorrection(refYaw, refPitch);
+            if (correction != null) {
+                return correction;
+            }
             return data.getSetBack(refYaw, refPitch); // (OK)
         }
 

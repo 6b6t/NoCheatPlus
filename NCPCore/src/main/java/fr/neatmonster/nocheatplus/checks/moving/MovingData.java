@@ -193,6 +193,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     private final LocationTrace trace;
     /** Setback location, shared between fly checks */
     private Location setBack = null;
+    /** Airborne correction destination, separate from the jump-height anchor. */
+    private Location survivalFlyCorrection = null;
     /** Telepot location, shared between fly checks */
     private Location teleported = null;
     private long setBackSequence;
@@ -472,6 +474,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         sfJumpPhase = 0;
         jumpAmplifier = 0;
         setBack = null;
+        survivalFlyCorrection = null;
         sfZeroVdistRepeat = 0;
         clearAccounting();
         clearHAccounting();
@@ -670,6 +673,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Called when a player leaves the server.
      */
     public void onPlayerLeave() {
+        survivalFlyCorrection = null;
         noFallMatchedPacketSequence = 0L;
         noFallMovePackets = 0;
         noFallLastMovePackets = 0;
@@ -695,6 +699,11 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * @param loc
      */
     public void resetPlayerPositions(final PlayerLocation loc) {
+        if (survivalFlyCorrection != null && (loc == null
+                || survivalFlyCorrection.getWorld() != loc.getWorld()
+                || !TrigUtil.isSamePos(loc, survivalFlyCorrection))) {
+            survivalFlyCorrection = null;
+        }
         resetPlayerPositions();
         if (loc != null) {
             final PlayerMoveData lastMove = playerMoves.getFirstPastMove();
@@ -885,6 +894,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * @param loc
      */
     public void setSetBack(final PlayerLocation loc) {
+        survivalFlyCorrection = null;
         if (setBack == null) {
             setBack = loc.getLocation();
         }
@@ -902,6 +912,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * @param loc
      */
     public void setSetBack(final Location loc) {
+        survivalFlyCorrection = null;
         if (setBack == null) {
             setBack = LocUtil.clone(loc);
         }
@@ -909,6 +920,22 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
             LocUtil.set(setBack, loc);
         }
         setBackResetTime = playerMoveCount;
+    }
+
+
+    /** Store a checked airborne position without raising the jump-height limit. */
+    public void setSurvivalFlyCorrection(final PlayerLocation loc) {
+        if (survivalFlyCorrection == null) {
+            survivalFlyCorrection = loc.getLocation();
+        }
+        else {
+            LocUtil.set(survivalFlyCorrection, loc);
+        }
+        setBackResetTime = playerMoveCount;
+    }
+
+    public Location getSurvivalFlyCorrection(final float yaw, final float pitch) {
+        return survivalFlyCorrection == null ? null : LocUtil.clone(survivalFlyCorrection, yaw, pitch);
     }
 
 
@@ -978,6 +1005,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
 
 
     public void setSetBackY(final double y) {
+        survivalFlyCorrection = null;
         setBack.setY(y);
         // (Skip setting/increasing the reset count.)
     }
@@ -1131,6 +1159,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      */
     public final void resetSetBack() {
         setBack = null;
+        survivalFlyCorrection = null;
     }
 
 
