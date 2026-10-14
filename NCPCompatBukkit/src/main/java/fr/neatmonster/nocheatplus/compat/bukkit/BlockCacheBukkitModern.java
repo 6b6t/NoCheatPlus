@@ -178,6 +178,28 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
     }
 
     @Override
+    public boolean standsOnEntityTop(final Entity entity, final double minX, final double minY,
+            final double minZ, final double maxX, final double maxY, final double maxZ) {
+        if (!(entity instanceof Player) || !Folia.isOwnedByCurrentRegion(entity)
+                || fr.neatmonster.nocheatplus.compat.versions.ServerVersion.compareMinecraftVersion("26.1") < 0) {
+            return false;
+        }
+        return nativeEntitySupport((Player) entity, minX, minY, minZ, maxX, maxY, maxZ, true, true);
+    }
+
+    @Override
+    public boolean stepsOnEntityTop(final Entity entity, final double minX, final double minY,
+            final double minZ, final double maxX, final double maxY, final double maxZ,
+            final double fromMinX, final double fromMinZ, final double fromMaxX, final double fromMaxZ) {
+        if (!(entity instanceof Player) || !Folia.isOwnedByCurrentRegion(entity)
+                || fr.neatmonster.nocheatplus.compat.versions.ServerVersion.compareMinecraftVersion("26.1") < 0) {
+            return false;
+        }
+        return nativeEntitySupport((Player) entity, minX, minY, minZ, maxX, maxY, maxZ, true, true,
+                fromMinX, fromMinZ, fromMaxX, fromMaxZ);
+    }
+
+    @Override
     public boolean touchesCollidableEntitySide(final Entity entity, final double minX, final double minY,
             final double minZ, final double maxX, final double maxY, final double maxZ, final double xzMargin,
             final double minSideHeight, final double maxTop) {
@@ -220,9 +242,9 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
             // Only the real footprint can stand on an entity.
             final double half = footprintHalfWidth(player, minX, maxX, minZ, maxZ);
             final double cx = (minX + maxX) * 0.5, cz = (minZ + maxZ) * 0.5;
-            return nativeEntitySupport(player, cx - half, minY, cz - half, cx + half, maxY, cz + half, false);
+            return nativeEntitySupport(player, cx - half, minY, cz - half, cx + half, maxY, cz + half, false, false);
         }
-        return nativeEntitySupport(player, minX, minY, minZ, maxX, maxY, maxZ, true);
+        return nativeEntitySupport(player, minX, minY, minZ, maxX, maxY, maxZ, true, false);
     }
 
     /** Half the player's real (scaled) width, never wider than the bounds given;
@@ -241,7 +263,16 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
     }
 
     private boolean nativeEntitySupport(final org.bukkit.entity.Player player, final double minX, final double minY,
-            final double minZ, final double maxX, final double maxY, final double maxZ, final boolean contact) {
+            final double minZ, final double maxX, final double maxY, final double maxZ, final boolean contact,
+            final boolean strictTop) {
+        return nativeEntitySupport(player, minX, minY, minZ, maxX, maxY, maxZ, contact, strictTop,
+                Double.NaN, Double.NaN, Double.NaN, Double.NaN);
+    }
+
+    private boolean nativeEntitySupport(final Player player, final double minX, final double minY,
+            final double minZ, final double maxX, final double maxY, final double maxZ, final boolean contact,
+            final boolean strictTop, final double fromMinX, final double fromMinZ,
+            final double fromMaxX, final double fromMaxZ) {
         final org.bukkit.Location feet = player.getLocation();
         final boolean currentFeet = Math.abs(feet.getY() - maxY) <= 0.00001
                 && Math.abs(feet.getX() - (minX + maxX) * 0.5) <= 0.00001
@@ -253,10 +284,17 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
             for (final Entity other : player.getNearbyEntities(1.5, 8.0, 1.5)) {
                 if (!fr.neatmonster.nocheatplus.compat.Folia.isOwnedByCurrentRegion(other) || !other.isValid()
                         || other.getUniqueId().equals(player.getUniqueId())
+                        || strictTop && !MaterialUtil.isBoatOrRaft(other.getType())
                         || !NativeLandingAccess.canCollide(player, other)) continue;
                 final org.bukkit.util.BoundingBox box = other.getBoundingBox();
                 if (box.getMaxX() <= minX || box.getMinX() >= maxX
                         || box.getMaxZ() <= minZ || box.getMinZ() >= maxZ) continue;
+                if (strictTop) {
+                    if (box.getMaxX() > fromMinX && box.getMinX() < fromMaxX
+                            && box.getMaxZ() > fromMinZ && box.getMinZ() < fromMaxZ) continue;
+                    if (box.getMaxY() >= minY && box.getMaxY() <= maxY) return true;
+                    continue;
+                }
                 if (box.getMaxY() >= minY - 0.00001 && box.getMaxY() <= maxY + 0.00001) return true;
                 // Interpolation may explain a gravity transition, but must not
                 // consume NoFall descent on every point along the old path.

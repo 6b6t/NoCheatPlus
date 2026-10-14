@@ -136,7 +136,7 @@ public class MagicBunny {
             } 
 
             // Check for special cases where the delay is shorter than ordinary (10.
-            if (!allowHop) { 
+            if (!allowHop && !thisMove.landingStep) {
 
                 // Reset delay with head obstructed.
                 if (
@@ -242,7 +242,8 @@ public class MagicBunny {
         final double MaxAccelMod1 = data.momentumTick > 0 ? (data.momentumTick > 2 ? 1.9 : 2.1) : 2.3;
 
         // 0: Proceed only if we allow hopping and hDistance is higher than the allowed speed.
-        if (allowHop && hDistance >= baseSpeed
+        // A falling landing may keep existing bunny friction, but cannot start a hop.
+        if (!thisMove.landingStep && (allowHop && hDistance >= baseSpeed
             // 0: Acceleration envelope. 
             // NOTE: According to MCP, bunnyhopping adds 0.2 unit of acceleration. Could replace the accel envelope by Minecraft's.
             && (hDistance > MinAccelMod * baseSpeed) && (hDistance < MaxAccelMod * baseSpeed)
@@ -250,7 +251,7 @@ public class MagicBunny {
             || (yDistance > from.getyOnGround() || hDistance < MaxAccelMod1 * baseSpeed) && lastMove.toIsValid
             && hDistance > MinAccelMod * lastMove.hDistance && hDistance < 2.15 * lastMove.hDistance // Always use 2.15 (Context: ice, slopes (...))
             && (!pastMove2.bunnyHop || !pastMove3.bunnyHop && !pastMove4.bunnyHop || !thisMove.headObstructed) // Needed to prevent ice friction abuse. Can happen legitimately but not consecutively (hop-> - -> hop -> - -> -).
-            ) {
+            )) {
             
             if (
                 // 0: Lift-off envelope conditions

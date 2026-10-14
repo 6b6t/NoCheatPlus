@@ -26,9 +26,11 @@ import fr.neatmonster.nocheatplus.checks.moving.model.LiftOffEnvelope;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.player.Passable;
 import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
+import fr.neatmonster.nocheatplus.compat.Bridge1_13;
 import fr.neatmonster.nocheatplus.compat.Bridge1_17;
 import fr.neatmonster.nocheatplus.compat.MCAccess;
 import fr.neatmonster.nocheatplus.compat.blocks.changetracker.BlockChangeTracker;
+import fr.neatmonster.nocheatplus.compat.versions.ServerVersion;
 import fr.neatmonster.nocheatplus.utilities.TickTask;
 import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
@@ -99,7 +101,33 @@ public class LostGround {
         if (blockChangeTracker != null && lostGroundPastState(player, from, to, data, cc, blockChangeTracker, tags)) {
             return true;
         }
-        // Nothing found.
+        // All base cases, including block history, get priority over the boat landing fallback.
+        return lostGroundLandingStep(player, from, to, hDistance, yDistance, lastMove, data, cc, tags);
+    }
+
+    private static boolean lostGroundLandingStep(final Player player, final PlayerLocation from,
+            final PlayerLocation to, final double hDistance, final double yDistance,
+            final PlayerMoveData lastMove, final MovingData data, final MovingConfig cc,
+            final Collection<String> tags) {
+        final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
+        // The support-to-top budget is the boat height. Block queries already include carpet/slab tops.
+        final double landingStepHeight = Math.min(cc.sfStepHeight, 0.5625) + CornerStep.TOP_EPSILON;
+        if (lastMove.toIsValid && lastMove.yDistance < 0.0 && Magic.inAir(lastMove)
+                && !from.isResetCond() && !to.isResetCond()
+                && yDistance > 0.0 && yDistance <= landingStepHeight
+                // walkSpeed is initialized here; the current horizontal allowance is still unset.
+                && hDistance <= thisMove.walkSpeed * 1.82 && to.isOnGround()
+                && Bridge1_13.getSlowfallingAmplifier(player) == Double.NEGATIVE_INFINITY
+                // Do not replace base velocity consumption, or retain credit for the following move.
+                && thisMove.verVelUsed == null
+                && data.peekVerticalVelocity(yDistance, Integer.MIN_VALUE, Integer.MAX_VALUE) == null
+                && ServerVersion.compareMinecraftVersion("26.1") >= 0
+                && to.stepsOnEntityTop(from, CornerStep.TOP_EPSILON)
+                && from.isOnGround(Math.min(landingStepHeight - yDistance,
+                        -lastMove.yDistance * Magic.FRICTION_MEDIUM_AIR + Magic.GRAVITY_MAX), 0.0, 0.0)) {
+            thisMove.landingStep = true;
+            return applyLostGround(player, from, true, thisMove, data, "landingstep", tags);
+        }
         return false;
     }
 
@@ -142,7 +170,6 @@ public class LostGround {
             return applyLostGround(player, from, true, thisMove , data, "micro", tags);
         }
         final double setBackYDistance = from.getY() - data.getSetBackY();
-
         // Step height related.
         if (yDistance <= cc.sfStepHeight && hDistance <= 1.5 && !from.isResetCond()) { // hDistance is arbitrary, just to confine.
 
