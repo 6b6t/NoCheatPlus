@@ -1760,7 +1760,7 @@ public class SurvivalFly extends Check {
                 else {
                     vAllowedDistance = Math.max(cc.sfStepHeight, maxJumpGain + jumpGainMargin);
                     thisMove.allowstep = true;
-                    thisMove.allowjump = true;
+                    thisMove.allowjump = !thisMove.landingStep;
                 }
             }
             else {

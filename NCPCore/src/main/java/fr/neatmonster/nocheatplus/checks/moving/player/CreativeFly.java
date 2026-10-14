@@ -508,7 +508,7 @@ public class CreativeFly extends Check {
 
         if (model.getApplyModifiers()) {
             data.bunnyhopDelay--;
-            if (!flying && resultH > 0 && resultH < 0.3) {
+            if (!flying && !thisMove.landingStep && resultH > 0 && resultH < 0.3) {
                 // 0: yDistance envelope
                 if (yDistance >= 0.0 &&
                     (

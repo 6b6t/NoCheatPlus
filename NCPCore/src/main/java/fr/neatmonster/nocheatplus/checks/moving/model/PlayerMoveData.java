@@ -70,6 +70,9 @@ public class PlayerMoveData extends MoveData {
 
     /** This move was a bunny hop. */
     public boolean bunnyHop;
+
+    /** Supported falling landing step; never a jump take-off. */
+    public boolean landingStep;
    
     /** This move was allowed to step. Set in SurvivalFly.check(vdistrel) */
     public boolean allowstep;
@@ -100,6 +103,7 @@ public class PlayerMoveData extends MoveData {
         walkSpeed = 0.287;
         // Properties involving the environment.
         bunnyHop = false;
+        landingStep = false;
         allowstep = false;
         allowjump = false;
         // Bounds set by checks.
