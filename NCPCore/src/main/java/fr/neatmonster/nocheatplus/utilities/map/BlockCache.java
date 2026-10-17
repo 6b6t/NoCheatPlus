@@ -299,6 +299,19 @@ public abstract class BlockCache {
         return standsOnEntity(entity, minX, minY, minZ, maxX, maxY, maxZ);
     }
 
+    /** Strict boat/raft top entered from outside the supplied source footprint. */
+    public boolean stepsOnEntityTop(Entity entity, final double minX, final double minY, final double minZ,
+            final double maxX, final double maxY, final double maxZ, final double fromMinX,
+            final double fromMinZ, final double fromMaxX, final double fromMaxZ) {
+        return false;
+    }
+
+    /** Strict entity top within the supplied feet interval; no native ground or swept history. */
+    public boolean standsOnEntityTop(Entity entity, final double minX, final double minY, final double minZ,
+            final double maxX, final double maxY, final double maxZ) {
+        return false;
+    }
+
     /**
      * Test if the given box (the entity's box) touches the side of another entity the entity collides with (boat,
      * raft, shulker, ...): the other box within xzMargin horizontally, its top more than minSideHeight above minY and

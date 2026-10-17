@@ -189,6 +189,18 @@ public class RichEntityLocation extends RichBoundsLocation {
                 maxX + xzMargin, minY + yMargin, maxZ + xzMargin);
     }
 
+    /** Strict boat/raft top entered from outside that entity's horizontal footprint. */
+    public boolean stepsOnEntityTop(final RichEntityLocation from, final double epsilon) {
+        return blockCache.stepsOnEntityTop(entity, minX, minY - epsilon, minZ, maxX, minY + epsilon, maxZ,
+                from.minX, from.minZ, from.maxX, from.maxZ);
+    }
+
+    /** Strict boat/raft top under the real footprint, within float noise of the feet. */
+    public boolean standsOnEntityTop(final double epsilon) {
+        return blockCache.standsOnEntityTop(entity, minX, minY - epsilon, minZ,
+                maxX, minY + epsilon, maxZ);
+    }
+
     /**
      * Checks if the entity is on ground, including entities such as Minecart, Boat.
      * 
