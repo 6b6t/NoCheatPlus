@@ -210,6 +210,41 @@ public class TestMaceSmash {
     }
 
     @Test
+    public void lostGroundWorkaroundsDoNotEraseAForgedDive() {
+        move(0);
+        assertTrue(move(-1));
+        final PlayerMoveData nearGround = prepare(-0.75, 1, elytra);
+        nearGround.touchedGround = nearGround.touchedGroundWorkaround = true;
+        nearGround.from.extraPropertiesValid = nearGround.to.extraPropertiesValid = true;
+        assertTrue("fastedge assumes contact while the player is still above the surface", accept(nearGround));
+        assertTrue(smash());
+    }
+
+    @Test
+    public void lostGroundWorkaroundsDoNotHideTheFirstImpossibleDive() {
+        move(-0.4);
+        final PlayerMoveData nearGround = prepare(-0.8, 1, elytra);
+        nearGround.touchedGround = nearGround.touchedGroundWorkaround = true;
+        assertTrue(accept(nearGround));
+        assertTrue(smash());
+    }
+
+    @Test
+    public void verifiedContactStillClearsEvidenceWhenAWorkaroundAlsoRan() {
+        for (final boolean atStart : new boolean[]{true, false}) {
+            moves.invalidate();
+            move(0);
+            move(-1);
+            final PlayerMoveData landing = prepare(-0.1, 1, elytra);
+            landing.touchedGround = landing.touchedGroundWorkaround = true;
+            final var contact = atStart ? landing.from : landing.to;
+            contact.extraPropertiesValid = contact.onGround = contact.onGroundOrResetCond = true;
+            assertFalse(accept(landing));
+            assertFalse(smash());
+        }
+    }
+
+    @Test
     public void teleportsAndSplitEventsDoNotCreateEvidence() {
         move(0);
         final PlayerMoveData teleport = prepare(-2, 1, elytra);

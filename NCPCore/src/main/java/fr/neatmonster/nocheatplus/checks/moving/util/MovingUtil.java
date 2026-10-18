@@ -71,12 +71,12 @@ public class MovingUtil {
         if (!move.toIsValid || !last.toIsValid
                 || !move.from.getWorldName().equals(last.to.getWorldName())
                 || !TrigUtil.isSamePos(move.from, last.to)
-                || move.touchedGround
-                || move.from.extraPropertiesValid && move.from.resetCond
-                || move.to.extraPropertiesValid && move.to.resetCond || player.isFlying()) {
+                || move.touchedGround && !move.touchedGroundWorkaround
+                || move.from.extraPropertiesValid && move.from.onGroundOrResetCond
+                || move.to.extraPropertiesValid && move.to.onGroundOrResetCond || player.isFlying()) {
             return false;
         }
-        // A forged return hop must not turn the next dive into a fresh, valid fall.
+        // Return hops and assumed ground contact must not erase a forged dive.
         if (last.invalidMaceFall) return true;
         if (move.yDistance > 0.0) return false;
         if (move.verVelUsed != null || data.fireworksBoostDuration > 0 || player.isRiptiding()) return false;
