@@ -541,6 +541,9 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
             info.set(player, player.getLocation(info.useLoc), null, 0.001); // Only restrict very near ground.
             final IPlayerData pData = DataManager.getPlayerData(player);
             final MovingData data = pData.getGenericInstance(MovingData.class);
+            if (!pData.isCheckActive(CheckType.MOVING_SURVIVALFLY, player)) {
+                data.elytraRelightBlocked = false;
+            }
             final boolean res = !MovingUtil.canLiftOffWithElytra(player, info.from, data);
             info.cleanup();
             aux.returnPlayerMoveInfo(info);
@@ -1466,6 +1469,9 @@ catch (java.lang.Throwable thr) {}
             if (newTo == null) {
                 thisMove.flyCheck = CheckType.MOVING_SURVIVALFLY;
                 newTo = survivalFly.check(player, pFrom, pTo, multiMoveCount, data, cc, pData, tick, time, useBlockChangeTracker);
+                if (newTo != null && isAirborneElytraToggle(player, thisMove, lastMove)) {
+                    data.elytraRelightBlocked = true;
+                }
             }
 
             // 1.4: Only check NoFall, if not already vetoed.
@@ -1591,12 +1597,16 @@ catch (java.lang.Throwable thr) {}
             // 3: Finish processing the current move, move it to past ones
             // TODO: More simple: UUID keys or a data flag instead?
             if (processingEvents.containsKey(playerName)) {
+                thisMove.invalidMaceFall = MovingUtil.isInvalidMaceFall(player, data);
                 data.playerMoves.finishCurrentMove();
             }
             // Teleport during violation processing, just invalidate thisMove.
             else thisMove.invalidate();
             // Increase time since set back.
             data.timeSinceSetBack ++;
+            if (data.elytraRelightBlocked) {
+                data.updateElytraRelightRecovery(Bridge1_9.isWearingElytra(player), thisMove.to.onGroundOrResetCond);
+            }
             return false;
         }
         // A check has requested a new to-location.
@@ -1934,17 +1944,23 @@ catch (java.lang.Throwable thr) {}
                                               final MovingData data, final MovingConfig cc) {
 
         final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
-        final double amount = guessVelocityAmount(player, data.playerMoves.getCurrentMove(), lastMove, data, cc);
+        final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
+        // A glide toggle supplies no impulse. Repeated toggles must not renew flight credit.
+        if (isAirborneElytraToggle(player, thisMove, lastMove)) {
+            if (debug) debug(player, "Glide toggle: keep existing velocity.");
+            return;
+        }
+        final double amount = guessVelocityAmount(player, thisMove, lastMove, data, cc);
         data.clearActiveHorVel(); // Clear active velocity due to adding actual speed here.
         data.bunnyhopDelay = 0; // Remove bunny hop due to add velocity 
         if (amount > 0.0) data.addHorizontalVelocity(new AccountEntry(tick, amount, cc.velocityActivationCounter, MovingData.getHorVelValCount(amount)));
         data.addVerticalVelocity(new SimpleEntry(lastMove.yDistance, cc.velocityActivationCounter));
         data.addVerticalVelocity(new SimpleEntry(0.0, cc.velocityActivationCounter));
         data.setFrictionJumpPhase();
-        // Unequip only. Still wearing an elytra keeps the existing predictor; packet flight never opens this window.
+        // Unequipped or depleted: a usable elytra never opens this recovery window.
         if (lastMove.modelFlying != null
                 && MovingConfig.ID_JETPACK_ELYTRA.equals(lastMove.modelFlying.getId())
-                && !Bridge1_9.isWearingElytra(player)) {
+                && !Bridge1_9.isWearingUsableElytra(player)) {
             // The CreativeFly elytra limit, with CreativeFly's modifiers but never above the model limit.
             final ModelFlying model = lastMove.modelFlying;
             final boolean modifiers = model.getApplyModifiers();
@@ -1962,6 +1978,15 @@ catch (java.lang.Throwable thr) {}
             }
         }
         if (debug) debug(player, "*** Transition from CreativeFly to SurvivalFly: Add velocity.");
+    }
+
+    private static boolean isAirborneElytraToggle(final Player player, final PlayerMoveData thisMove,
+                                                  final PlayerMoveData lastMove) {
+        return lastMove.modelFlying != null
+                && MovingConfig.ID_JETPACK_ELYTRA.equals(lastMove.modelFlying.getId())
+                && Bridge1_9.isWearingUsableElytra(player)
+                && !thisMove.touchedGround && !thisMove.from.onGroundOrResetCond
+                && !thisMove.to.onGroundOrResetCond;
     }
 
 
