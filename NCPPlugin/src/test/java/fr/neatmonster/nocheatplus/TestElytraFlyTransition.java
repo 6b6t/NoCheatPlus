@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Method;
 import java.util.UUID;
+import java.util.Map;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -13,6 +14,7 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.Damageable;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockedStatic;
@@ -20,6 +22,7 @@ import org.mockito.MockedStatic;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.MovingListener;
+import fr.neatmonster.nocheatplus.checks.moving.ElytraResidual;
 import fr.neatmonster.nocheatplus.checks.moving.location.tracking.LocationTrace.TraceEntryPool;
 import fr.neatmonster.nocheatplus.checks.moving.model.ModelFlying;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
@@ -27,6 +30,7 @@ import fr.neatmonster.nocheatplus.checks.moving.velocity.AccountEntry;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.SimpleEntry;
 import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
 import fr.neatmonster.nocheatplus.checks.workaround.WRPT;
+import fr.neatmonster.nocheatplus.compat.Bridge1_9;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 
@@ -37,6 +41,7 @@ public class TestElytraFlyTransition {
     private MovingConfig config;
     private PlayerMoveData lastMove;
     private MovingListener listener;
+    private Damageable elytraDamage;
 
     @Before
     public void setup() {
@@ -54,6 +59,8 @@ public class TestElytraFlyTransition {
         when(player.getInventory()).thenReturn(inventory);
         final ItemStack elytra = mock(ItemStack.class);
         when(elytra.getType()).thenReturn(Material.ELYTRA);
+        elytraDamage = mock(Damageable.class);
+        when(elytra.getItemMeta()).thenReturn(elytraDamage);
         when(inventory.getChestplate()).thenReturn(elytra);
         lastMove = data.playerMoves.getFirstPastMove();
         lastMove.valid = lastMove.toIsValid = true;
@@ -70,6 +77,59 @@ public class TestElytraFlyTransition {
                 Player.class, int.class, boolean.class, MovingData.class, MovingConfig.class);
         method.setAccessible(true);
         method.invoke(listener, player, tick, false, data, config);
+    }
+
+    private boolean isToggle() throws Exception {
+        final Method method = MovingListener.class.getDeclaredMethod("isAirborneElytraToggle",
+                Player.class, PlayerMoveData.class, PlayerMoveData.class);
+        method.setAccessible(true);
+        return (boolean) method.invoke(null, player, data.playerMoves.getCurrentMove(), lastMove);
+    }
+
+    @Test
+    public void depletedElytraKeepsTheNormalMomentumHandoff() throws Exception {
+        when(elytraDamage.getDamage()).thenReturn(Material.ELYTRA.getMaxDurability() - 1);
+        when(lastMove.modelFlying.getHorizontalModSpeed()).thenReturn(450.0);
+        lastMove.hDistance = 1.6523030862037018;
+        lastMove.yDistance = -0.18312551390701515;
+        assertFalse("Vanilla ended the glide; this is not a toggle", isToggle());
+        transition(100);
+        assertNotNull(data.getOrUseVerticalVelocity(lastMove.yDistance));
+        assertTrue(data.hasQueuedHorVel());
+        assertTrue("Depletion opens the same bounded coast as unequip", data.elytraResidual.open);
+        // The captured client still glides briefly after the server depletes the item.
+        for (final double[] move : new double[][] {{1.6534891593350949, -0.1813580346855872},
+                {1.6545106380214776, -0.17979389497219245}, {1.6545106380214776, -0.17979389497219245}}) {
+            assertTrue(ElytraResidual.allow(data.elytraResidual, move[0], move[1], 10.0,
+                    false, false, Bridge1_9.isWearingUsableElytra(player)));
+        }
+        when(elytraDamage.getDamage()).thenReturn(0);
+        assertFalse("Repairing the elytra closes residual credit", ElytraResidual.allow(data.elytraResidual,
+                1.65, -0.18, 10.0, false, false, Bridge1_9.isWearingUsableElytra(player)));
+    }
+
+    @Test
+    public void theLastUsableDurabilityPointStillDetectsToggles() throws Exception {
+        when(elytraDamage.getDamage()).thenReturn(Material.ELYTRA.getMaxDurability() - 2);
+        assertTrue(isToggle());
+    }
+
+    @Test
+    public void customMaximumDurabilityUsesTheSameVanillaBoundary() throws Exception {
+        for (final int maximum : new int[] {1, 100, 1000}) {
+            when(elytraDamage.serialize()).thenReturn(Map.of("max-damage", maximum));
+            when(elytraDamage.getDamage()).thenReturn(Math.max(0, maximum - 2));
+            assertEquals("Maximum " + maximum, maximum > 1, isToggle());
+            when(elytraDamage.getDamage()).thenReturn(maximum - 1);
+            assertFalse("Depleted at maximum " + maximum, isToggle());
+        }
+    }
+
+    @Test
+    public void unbreakableElytraCanStillFlyAtTheDamageBoundary() throws Exception {
+        when(elytraDamage.getDamage()).thenReturn(Material.ELYTRA.getMaxDurability() - 1);
+        when(elytraDamage.isUnbreakable()).thenReturn(true);
+        assertTrue(isToggle());
     }
 
     @Test

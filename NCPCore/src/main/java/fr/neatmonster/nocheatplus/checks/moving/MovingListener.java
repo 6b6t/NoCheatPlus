@@ -1957,10 +1957,10 @@ catch (java.lang.Throwable thr) {}
         data.addVerticalVelocity(new SimpleEntry(lastMove.yDistance, cc.velocityActivationCounter));
         data.addVerticalVelocity(new SimpleEntry(0.0, cc.velocityActivationCounter));
         data.setFrictionJumpPhase();
-        // Unequip only. Still wearing an elytra keeps the existing predictor; packet flight never opens this window.
+        // Unequipped or depleted: a usable elytra never opens this recovery window.
         if (lastMove.modelFlying != null
                 && MovingConfig.ID_JETPACK_ELYTRA.equals(lastMove.modelFlying.getId())
-                && !Bridge1_9.isWearingElytra(player)) {
+                && !Bridge1_9.isWearingUsableElytra(player)) {
             // The CreativeFly elytra limit, with CreativeFly's modifiers but never above the model limit.
             final ModelFlying model = lastMove.modelFlying;
             final boolean modifiers = model.getApplyModifiers();
@@ -1984,7 +1984,7 @@ catch (java.lang.Throwable thr) {}
                                                   final PlayerMoveData lastMove) {
         return lastMove.modelFlying != null
                 && MovingConfig.ID_JETPACK_ELYTRA.equals(lastMove.modelFlying.getId())
-                && Bridge1_9.isWearingElytra(player)
+                && Bridge1_9.isWearingUsableElytra(player)
                 && !thisMove.touchedGround && !thisMove.from.onGroundOrResetCond
                 && !thisMove.to.onGroundOrResetCond;
     }
