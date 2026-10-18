@@ -71,12 +71,14 @@ public class MovingUtil {
         if (!move.toIsValid || !last.toIsValid
                 || !move.from.getWorldName().equals(last.to.getWorldName())
                 || !TrigUtil.isSamePos(move.from, last.to)
-                || move.yDistance > 0.0 || move.touchedGround
+                || move.touchedGround
                 || move.from.extraPropertiesValid && move.from.resetCond
                 || move.to.extraPropertiesValid && move.to.resetCond || player.isFlying()) {
             return false;
         }
+        // A forged return hop must not turn the next dive into a fresh, valid fall.
         if (last.invalidMaceFall) return true;
+        if (move.yDistance > 0.0) return false;
         if (move.verVelUsed != null || data.fireworksBoostDuration > 0 || player.isRiptiding()) return false;
         final int impulseAge = data.nativePush == null ? -1 : player.getTicksLived() - data.nativePush.getLastImpulseTick();
         if (impulseAge >= 0 && impulseAge <= NativePushTracker.MAX_WINDOW) return false;

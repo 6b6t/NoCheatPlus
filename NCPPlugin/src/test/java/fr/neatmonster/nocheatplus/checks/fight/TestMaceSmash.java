@@ -108,6 +108,23 @@ public class TestMaceSmash {
     }
 
     @Test
+    public void repeatedShortDivesCannotClearEvidenceOnTheirReturnHops() {
+        move(0);
+        when(player.getVelocity()).thenReturn(new Vector(0, -0.3364168190503776, 0));
+        assertTrue(move(-1));
+        assertTrue(move(-0.75));
+        for (int i = 0; i < 8; i++) {
+            // Captured return hops between attacks; server gravity keeps running during the forged rise.
+            assertTrue(accept(prepare(1.5, 0, elytra)));
+            assertTrue(move(0.25));
+            when(player.getVelocity()).thenReturn(new Vector(0, -1.2666373203145314, 0));
+            assertTrue(move(-1));
+            assertTrue(move(-0.75));
+            assertTrue("The next short dive must not regain smash damage", smash());
+        }
+    }
+
+    @Test
     public void normalFreefallAndTerminalElytraDivesRemainUsable() {
         for (final ModelFlying model : new ModelFlying[] {null, elytra}) {
             moves.invalidate();
@@ -181,11 +198,10 @@ public class TestMaceSmash {
     }
 
     @Test
-    public void supportedLandingsAndNewAscentsEndTheInvalidFall() {
+    public void supportedLandingsEndTheInvalidFallButAirborneAscentsDoNot() {
         move(0);
         move(-1.5);
-        assertFalse(move(0.2));
-        assertFalse(smash());
+        assertTrue(move(0.2));
         assertTrue(move(-1.5));
         final PlayerMoveData landing = prepare(-0.1, 1, elytra);
         landing.touchedGround = true;
