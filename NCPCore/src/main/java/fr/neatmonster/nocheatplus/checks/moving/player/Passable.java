@@ -27,6 +27,7 @@ import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.ViolationData;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
+import fr.neatmonster.nocheatplus.compat.Bridge1_9;
 import fr.neatmonster.nocheatplus.compat.blocks.changetracker.BlockChangeTracker;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.collision.Axis;
@@ -61,7 +62,7 @@ public class Passable extends Check {
         return BlockProperties.isPassableAxisWise(from, to);
     }
 
-    private final ICollidePassable rayTracing = new PassableAxisTracing();
+    private final PassableAxisTracing rayTracing = new PassableAxisTracing();
     private final BlockChangeTracker blockTracker;
 
     public Passable() {
@@ -157,6 +158,7 @@ public class Passable extends Check {
         setNormalMargins(rayTracing, from, cc);
         rayTracing.set(from, to);
         rayTracing.setIgnoreInitiallyColliding(true);
+        rayTracing.setPreventCollisionGrowth(Bridge1_9.isGliding(player));
         if (useBlockChangeTracker) { // TODO: Extra flag for 'any' block changes.
             rayTracing.setBlockChangeTracker(blockTracker, data.blockChangeRef, tick, from.getWorld().getUID());
         }
