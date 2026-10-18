@@ -31,52 +31,6 @@ public class PassableAxisTracing extends AxisTracing implements ICollidePassable
     private int tick;
     private UUID worldId;
 
-    private boolean preventCollisionGrowth;
-    private double startMinX, startMinY, startMinZ, startMaxX, startMaxY, startMaxZ;
-    private double deltaX, deltaY, deltaZ;
-
-    /** Preserve escape from existing overlaps without allowing deeper penetration. */
-    public void setPreventCollisionGrowth(final boolean preventCollisionGrowth) {
-        this.preventCollisionGrowth = preventCollisionGrowth;
-    }
-
-    @Override
-    public void set(final double x0, final double y0, final double z0,
-            final double x1, final double y1, final double z1) {
-        super.set(x0, y0, z0, x1, y1, z1);
-        deltaX = x1 - x0;
-        deltaY = y1 - y0;
-        deltaZ = z1 - z0;
-    }
-
-    @Override
-    protected boolean isBlockIgnored(final int x, final int y, final int z) {
-        if (!super.isBlockIgnored(x, y, z)) return false;
-        if (!preventCollisionGrowth) return true;
-        final double[] bounds = blockCache.getBounds(x, y, z);
-        if (bounds == null) return true;
-        for (int i = 0; i + 5 < bounds.length; i += 6) {
-            final double growth = overlapGrowth(startMinX, startMaxX, x + bounds[i], x + bounds[i + 3], deltaX)
-                    + overlapGrowth(startMinY, startMaxY, y + bounds[i + 1], y + bounds[i + 4], deltaY)
-                    + overlapGrowth(startMinZ, startMaxZ, z + bounds[i + 2], z + bounds[i + 5], deltaZ);
-            if (growth > 1.0e-7) return false;
-        }
-        return true;
-    }
-
-    /** Initial relative growth of one overlap interval; contact must move inward to collide. */
-    private static double overlapGrowth(final double min, final double max,
-            final double blockMin, final double blockMax, final double delta) {
-        final double overlap = Math.min(max, blockMax) - Math.max(min, blockMin);
-        if (overlap <= 0.0) {
-            return overlap == 0.0 && (max == blockMin && delta > 0.0 || min == blockMax && delta < 0.0)
-                    ? Double.POSITIVE_INFINITY : Double.NEGATIVE_INFINITY;
-        }
-        final double upper = max < blockMax || max == blockMax && delta < 0.0 ? delta : 0.0;
-        final double lower = min > blockMin || min == blockMin && delta > 0.0 ? delta : 0.0;
-        return (upper - lower) / overlap;
-    }
-
     // TODO: Might need another option for margins (option to skip margin for the axis-start point, or alter ignoreFirst behavior).
     // TODO: Consider an iteration margin as well (0.5 below for fences).
 
@@ -100,12 +54,6 @@ public class PassableAxisTracing extends AxisTracing implements ICollidePassable
     @Override
     protected void collectInitiallyCollidingBlocks(double minX, double minY, double minZ, double maxX, double maxY,
             double maxZ, BlockPositionContainer results) {
-        startMinX = minX;
-        startMinY = minY;
-        startMinZ = minZ;
-        startMaxX = maxX;
-        startMaxY = maxY;
-        startMaxZ = maxZ;
         BlockProperties.collectInitiallyCollidingBlocks(blockCache, minX, minY, minZ, maxX, maxY, maxZ, results);
     }
 
@@ -155,7 +103,6 @@ public class PassableAxisTracing extends AxisTracing implements ICollidePassable
 
     @Override
     public void cleanup() {
-        preventCollisionGrowth = false;
         blockCache = null;
         blockChangeTracker = null;
         blockChangeRef = null;
