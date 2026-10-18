@@ -36,6 +36,7 @@ import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveInfo;
 import fr.neatmonster.nocheatplus.checks.moving.player.PlayerSetBackMethod;
 import fr.neatmonster.nocheatplus.checks.moving.player.NoFall;
+import fr.neatmonster.nocheatplus.checks.moving.velocity.NativePushTracker;
 import fr.neatmonster.nocheatplus.checks.net.NetData;
 import fr.neatmonster.nocheatplus.checks.net.model.CountableLocation;
 import fr.neatmonster.nocheatplus.compat.Bridge1_13;
@@ -62,6 +63,35 @@ import fr.neatmonster.nocheatplus.utilities.map.MapUtil;
  *
  */
 public class MovingUtil {
+
+    /** Track fake glide dives for mace damage without tightening the flight model. */
+    public static boolean isInvalidMaceFall(final Player player, final MovingData data) {
+        final PlayerMoveData move = data.playerMoves.getCurrentMove();
+        final PlayerMoveData last = data.playerMoves.getFirstPastMove();
+        if (!move.toIsValid || !last.toIsValid
+                || !move.from.getWorldName().equals(last.to.getWorldName())
+                || !TrigUtil.isSamePos(move.from, last.to)
+                || move.yDistance > 0.0 || move.touchedGround
+                || move.from.extraPropertiesValid && move.from.resetCond
+                || move.to.extraPropertiesValid && move.to.resetCond || player.isFlying()) {
+            return false;
+        }
+        if (last.invalidMaceFall) return true;
+        if (move.verVelUsed != null || data.fireworksBoostDuration > 0 || player.isRiptiding()) return false;
+        final int impulseAge = data.nativePush == null ? -1 : player.getTicksLived() - data.nativePush.getLastImpulseTick();
+        if (impulseAge >= 0 && impulseAge <= NativePushTracker.MAX_WINDOW) return false;
+        if (data.getVerticalVelocityTracker() != null
+                && data.peekVerticalVelocity(move.yDistance, 0, Integer.MAX_VALUE) != null) return false;
+        if (move.modelFlying == null || !MovingConfig.ID_JETPACK_ELYTRA.equals(move.modelFlying.getId())
+                || move.multiMoveCount != 0 || last.multiMoveCount != 0) return false;
+
+        // Full gravity is the fastest unpowered dive, regardless of pitch or horizontal speed.
+        double lowest = (Math.min(0.0, last.yDistance) - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
+        // Native downward knockback can precede its first accepted client move.
+        lowest = Math.min(lowest, player.getVelocity().getY());
+        // Lag queues packets individually; only sub-threshold movement can accumulate without an event.
+        return move.yDistance < lowest - 0.125;
+    }
 
     /** Apply a successful Fox placement on the player's destination thread. */
     public static void onTeleportComplete(final Player player, final Location to, final long sequence,

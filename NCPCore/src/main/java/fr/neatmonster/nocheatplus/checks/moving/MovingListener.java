@@ -1591,6 +1591,7 @@ catch (java.lang.Throwable thr) {}
             // 3: Finish processing the current move, move it to past ones
             // TODO: More simple: UUID keys or a data flag instead?
             if (processingEvents.containsKey(playerName)) {
+                thisMove.invalidMaceFall = MovingUtil.isInvalidMaceFall(player, data);
                 data.playerMoves.finishCurrentMove();
             }
             // Teleport during violation processing, just invalidate thisMove.
