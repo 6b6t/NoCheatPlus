@@ -317,6 +317,8 @@ public class MovingUtil {
     public static boolean isGlidingWithElytraValid(final Player player, final PlayerLocation fromLocation, 
                                                    final MovingData data, final MovingConfig cc) {
 
+        if (data.elytraRelightBlocked) return false;
+
         // TODO: Configuration for which/if to check on either lift-off / unknown / gliding.
         // TODO: Item durability?
         // TODO: TEST LAVA (ordinary and boost, lift off and other).
@@ -370,6 +372,7 @@ public class MovingUtil {
      * @return
      */
     public static boolean canLiftOffWithElytra(final Player player, final PlayerLocation loc, final MovingData data) {
+        if (data.elytraRelightBlocked) return false;
         // TODO: Item durability here too?
         // TODO: this/firstPast- Move not touching or not explicitly on ground would be enough?
         return 

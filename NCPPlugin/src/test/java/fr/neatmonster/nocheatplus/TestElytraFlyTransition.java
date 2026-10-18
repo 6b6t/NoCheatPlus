@@ -7,7 +7,9 @@ import java.lang.reflect.Method;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -23,8 +25,10 @@ import fr.neatmonster.nocheatplus.checks.moving.model.ModelFlying;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.AccountEntry;
 import fr.neatmonster.nocheatplus.checks.moving.velocity.SimpleEntry;
+import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
 import fr.neatmonster.nocheatplus.checks.workaround.WRPT;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
+import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 
 public class TestElytraFlyTransition {
     private Player player;
@@ -131,5 +135,55 @@ public class TestElytraFlyTransition {
         assertNotNull(data.getOrUseVerticalVelocity(0.3));
         assertNotNull(data.getOrUseVerticalVelocity(0.0));
         assertTrue(data.hasQueuedHorVel());
+    }
+
+    @Test
+    public void aRejectedToggleCannotImmediatelySwitchBackToGliding() {
+        final PlayerLocation from = mock(PlayerLocation.class);
+        when(from.isPassableBox()).thenReturn(true);
+        assertTrue(MovingUtil.canLiftOffWithElytra(player, from, data));
+        data.elytraRelightBlocked = true;
+        assertFalse(MovingUtil.canLiftOffWithElytra(player, from, data));
+        assertFalse(MovingUtil.isGlidingWithElytraValid(player, from, data, config));
+    }
+
+    @Test
+    public void repeatedCorrectionsCannotAccumulateRecoveryMoves() {
+        data.elytraRelightBlocked = true;
+        final Location correction = new Location(mock(World.class), 1, 100, 1);
+        for (int round = 0; round < 20; round++) {
+            data.timeSinceSetBack = 50;
+            data.prepareSetBack(correction);
+            assertEquals(0, data.timeSinceSetBack);
+            assertTrue(data.elytraRelightBlocked);
+            for (int accepted = 1; accepted < 10; accepted++) {
+                data.timeSinceSetBack = accepted;
+                data.updateElytraRelightRecovery(true, false);
+                assertTrue("Cannot relight after just " + accepted + " clean moves", data.elytraRelightBlocked);
+            }
+        }
+        data.timeSinceSetBack = 10;
+        data.updateElytraRelightRecovery(true, false);
+        assertFalse("Normal movement allows redeploying again", data.elytraRelightBlocked);
+    }
+
+    @Test
+    public void realContactOrUnequipAllowsImmediateRecovery() {
+        data.elytraRelightBlocked = true;
+        data.updateElytraRelightRecovery(true, true);
+        assertFalse(data.elytraRelightBlocked);
+        data.elytraRelightBlocked = true;
+        data.updateElytraRelightRecovery(false, false);
+        assertFalse(data.elytraRelightBlocked);
+    }
+
+    @Test
+    public void logoutAndFlyDataResetDoNotKeepAnOldBlock() {
+        data.elytraRelightBlocked = true;
+        data.onPlayerLeave();
+        assertFalse(data.elytraRelightBlocked);
+        data.elytraRelightBlocked = true;
+        data.clearFlyData();
+        assertFalse(data.elytraRelightBlocked);
     }
 }
