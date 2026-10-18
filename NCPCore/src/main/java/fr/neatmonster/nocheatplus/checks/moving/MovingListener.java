@@ -1935,7 +1935,17 @@ catch (java.lang.Throwable thr) {}
                                               final MovingData data, final MovingConfig cc) {
 
         final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
-        final double amount = guessVelocityAmount(player, data.playerMoves.getCurrentMove(), lastMove, data, cc);
+        final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
+        // A glide toggle supplies no impulse. Repeated toggles must not renew flight credit.
+        if (lastMove.modelFlying != null
+                && MovingConfig.ID_JETPACK_ELYTRA.equals(lastMove.modelFlying.getId())
+                && Bridge1_9.isWearingElytra(player)
+                && !thisMove.touchedGround && !thisMove.from.onGroundOrResetCond
+                && !thisMove.to.onGroundOrResetCond) {
+            if (debug) debug(player, "Glide toggle: keep existing velocity.");
+            return;
+        }
+        final double amount = guessVelocityAmount(player, thisMove, lastMove, data, cc);
         data.clearActiveHorVel(); // Clear active velocity due to adding actual speed here.
         data.bunnyhopDelay = 0; // Remove bunny hop due to add velocity 
         if (amount > 0.0) data.addHorizontalVelocity(new AccountEntry(tick, amount, cc.velocityActivationCounter, MovingData.getHorVelValCount(amount)));
