@@ -445,8 +445,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     }
 
     /** A rejected glide must follow the correction before switching checks again. */
-    public void updateElytraRelightRecovery(final boolean wearingElytra, final boolean onGroundOrResetCond) {
-        if (onGroundOrResetCond || !wearingElytra || timeSinceSetBack >= 10) {
+    public void updateElytraRelightRecovery(final boolean onGroundOrResetCond) {
+        if (onGroundOrResetCond || timeSinceSetBack >= 10) {
             elytraRelightBlocked = false;
         }
     }

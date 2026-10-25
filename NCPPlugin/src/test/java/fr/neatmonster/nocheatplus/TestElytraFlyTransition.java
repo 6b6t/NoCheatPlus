@@ -218,22 +218,32 @@ public class TestElytraFlyTransition {
             assertTrue(data.elytraRelightBlocked);
             for (int accepted = 1; accepted < 10; accepted++) {
                 data.timeSinceSetBack = accepted;
-                data.updateElytraRelightRecovery(true, false);
+                data.updateElytraRelightRecovery(false);
                 assertTrue("Cannot relight after just " + accepted + " clean moves", data.elytraRelightBlocked);
             }
         }
         data.timeSinceSetBack = 10;
-        data.updateElytraRelightRecovery(true, false);
+        data.updateElytraRelightRecovery(false);
         assertFalse("Normal movement allows redeploying again", data.elytraRelightBlocked);
     }
 
     @Test
-    public void realContactOrUnequipAllowsImmediateRecovery() {
+    public void realContactAllowsImmediateRecovery() {
         data.elytraRelightBlocked = true;
-        data.updateElytraRelightRecovery(true, true);
+        data.updateElytraRelightRecovery(true);
         assertFalse(data.elytraRelightBlocked);
+    }
+
+    @Test
+    public void unequippingAndReequippingCannotSkipAirborneRecovery() {
         data.elytraRelightBlocked = true;
-        data.updateElytraRelightRecovery(false, false);
+        data.timeSinceSetBack = 1;
+        data.updateElytraRelightRecovery(false);
+        assertTrue("Removing the Elytra must not clear the relight block", data.elytraRelightBlocked);
+        data.updateElytraRelightRecovery(false);
+        assertTrue("Re-equipping must still require recovery", data.elytraRelightBlocked);
+        data.timeSinceSetBack = 10;
+        data.updateElytraRelightRecovery(false);
         assertFalse(data.elytraRelightBlocked);
     }
 

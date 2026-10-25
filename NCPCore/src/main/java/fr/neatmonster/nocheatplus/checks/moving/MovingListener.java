@@ -1605,7 +1605,7 @@ catch (java.lang.Throwable thr) {}
             // Increase time since set back.
             data.timeSinceSetBack ++;
             if (data.elytraRelightBlocked) {
-                data.updateElytraRelightRecovery(Bridge1_9.isWearingElytra(player), thisMove.to.onGroundOrResetCond);
+                data.updateElytraRelightRecovery(thisMove.to.onGroundOrResetCond);
             }
             return false;
         }
