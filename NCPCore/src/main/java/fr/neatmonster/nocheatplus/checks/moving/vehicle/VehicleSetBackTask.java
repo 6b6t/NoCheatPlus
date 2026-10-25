@@ -14,12 +14,18 @@
  */
 package fr.neatmonster.nocheatplus.checks.moving.vehicle;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
+import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
+import fr.neatmonster.nocheatplus.checks.moving.util.AuxMoving;
+import fr.neatmonster.nocheatplus.compat.BridgeMisc;
+import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
@@ -54,7 +60,7 @@ public class VehicleSetBackTask implements Runnable{
         this.player = player;
         this.location = location;
         this.debug = debug;
-        this.passengers = passengers;
+        this.passengers = passengers.length == 0 ? vehicle.getPassengers().toArray(new Entity[0]) : passengers;
     }
 
     @Override
@@ -63,6 +69,10 @@ public class VehicleSetBackTask implements Runnable{
         final MovingData data = pData.getGenericInstance(MovingData.class);
         data.vehicleSetBackTaskId = null;
         try{
+            if (Folia.isFoliaServer()) {
+                correctOnFolia(data, pData);
+                return;
+            }
             NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(PassengerUtil.class).teleportWithPassengers(
                     vehicle, player, location, debug, passengers, true, pData);
         }
@@ -71,4 +81,35 @@ public class VehicleSetBackTask implements Runnable{
         }
     }
 
+    private void correctOnFolia(final MovingData data, final IPlayerData pData) {
+        final Plugin plugin = Bukkit.getPluginManager().getPlugin("NoCheatPlus");
+        data.isVehicleSetBack = true;
+        final var teleport = Folia.teleportEntityWithPassengersAsync(vehicle, location,
+                BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
+        data.vehicleSetBackTaskId = teleport;
+        teleport.whenComplete((success, error) -> Folia.runSyncTaskForEntity(vehicle, plugin, task -> {
+            if (data.vehicleSetBackTaskId != teleport) return;
+            data.vehicleSetBackTaskId = null;
+            data.isVehicleSetBack = false;
+            if (error != null) {
+                StaticLog.logSevere(error);
+                return;
+            }
+            if (!Boolean.TRUE.equals(success)) {
+                StaticLog.logWarning("Vehicle correction failed for " + player.getName());
+                return;
+            }
+            if (!vehicle.getPassengers().contains(player)) return;
+            final MovingConfig config = pData.getGenericInstance(MovingConfig.class);
+            final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
+            aux.resetVehiclePositions(vehicle, vehicle.getLocation(), data, config);
+            aux.resetPositionsAndMediumProperties(player, player.getLocation(), data, config);
+            data.timeSinceSetBack = 0;
+        }, () -> {
+            if (data.vehicleSetBackTaskId == teleport) {
+                data.vehicleSetBackTaskId = null;
+                data.isVehicleSetBack = false;
+            }
+        }));
+    }
 }

@@ -66,6 +66,7 @@ import fr.neatmonster.nocheatplus.utilities.entity.PassengerUtil;
 import fr.neatmonster.nocheatplus.utilities.location.LocUtil;
 import fr.neatmonster.nocheatplus.utilities.location.RichBoundsLocation;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 import fr.neatmonster.nocheatplus.worlds.IWorldDataManager;
 
 /**
@@ -538,18 +539,15 @@ public class VehicleChecks extends CheckListener {
             ensureSetBack(player, thisMove, data, pData);
         }
 
-        //if ((newTo == null || data.vehicleSetBacks.getSafeMediumEntry().isValidAndOlderThan(newTo))
-        //        //&& pData.isCheckActive(CheckType.MOVING_VEHICLE_PASSABLE, player)
-        //        ) {
-        //    final SetBackEntry tempNewTo = vehiclePassable.check(player, moveInfo.from, moveInfo.to, data, cc, pData, TickTask.getTick(), false);
-        //    if (tempNewTo != null) {
-        //        newTo = tempNewTo;
-        //    }
-        //}
-        
+        // Boat flight is allowed here; only entering solid blocks is checked.
+        final boolean boat = MaterialUtil.isBoat(vehicleType);
+        if (boat && pData.isCheckActive(CheckType.MOVING_VEHICLE_ENVELOPE, player)) {
+            newTo = vehicleEnvelope.checkBoatPassable(player, vehicle, moveInfo, data, cc, pData);
+        }
+
         // Moving envelope check(s).
         // TODO: Use set back storage for testing if this is appropriate (use SetBackEntry instead, remove Location retrieval then?).
-        if ((newTo == null || data.vehicleSetBacks.getSafeMediumEntry().isValidAndOlderThan(newTo))
+        if (!boat && (newTo == null || data.vehicleSetBacks.getSafeMediumEntry().isValidAndOlderThan(newTo))
                 && pData.isCheckActive(CheckType.MOVING_VEHICLE_ENVELOPE, player)) {
             // Skip if this is the first move after set back, with to=set back.
             if (data.timeSinceSetBack == 0 || thisMove.to.hashCode() == data.lastSetBackHash) {
@@ -561,6 +559,7 @@ public class VehicleChecks extends CheckListener {
                 }
             }
             else {
+                vehicleEnvelope.prepareCheckDetails(vehicle, moveInfo, thisMove);
                 // Check.
                 final SetBackEntry tempNewTo  = vehicleEnvelope.check(player, vehicle, 
                         thisMove, fake, data, cc, pData, moveInfo);
@@ -572,7 +571,7 @@ public class VehicleChecks extends CheckListener {
 
         // More packets: Sort this in last, to avoid setting the set back early. Always check to adjust set back, for now.
         // TODO: Still always update the frequency part?
-        if ((newTo == null || data.vehicleSetBacks.getMidTermEntry().isValidAndOlderThan(newTo))) {
+        if (!boat && (newTo == null || data.vehicleSetBacks.getMidTermEntry().isValidAndOlderThan(newTo))) {
             if (pData.isCheckActive(CheckType.MOVING_VEHICLE_MOREPACKETS, player)) {
                 final SetBackEntry tempNewTo = vehicleMorePackets.check(player, thisMove, newTo, 
                         data, cc, pData);
@@ -698,8 +697,9 @@ public class VehicleChecks extends CheckListener {
                 if (debug) {
                     debug(player, "Attempt to set the player back directly.");
                 }
-//                passengerUtil.teleportWithPassengers(vehicle, player,
-//                        newTo.getLocation(vehicle.getWorld()), debug, pData);
+                if (MaterialUtil.isBoat(vehicle.getType())) {
+                    new VehicleSetBackTask(vehicle, player, newTo.getLocation(vehicle.getWorld()), debug).run();
+                }
             }
 
         }

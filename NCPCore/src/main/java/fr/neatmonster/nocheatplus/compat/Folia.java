@@ -318,6 +318,25 @@ public class Folia {
         }
     }
 
+    /** Paper/Folia correction that keeps the vehicle's passenger tree attached. */
+    @SuppressWarnings("unchecked")
+    public static CompletableFuture<Boolean> teleportEntityWithPassengersAsync(final Entity entity, final Location loc,
+            final TeleportCause cause) {
+        try {
+            final Class<?> flag = Class.forName("io.papermc.paper.entity.TeleportFlag");
+            final Object flags = java.lang.reflect.Array.newInstance(flag, 1);
+            java.lang.reflect.Array.set(flags, 0, Class.forName("io.papermc.paper.entity.TeleportFlag$EntityState")
+                    .getField("RETAIN_PASSENGERS").get(null));
+            return (CompletableFuture<Boolean>) Entity.class.getMethod("teleportAsync", Location.class,
+                    TeleportCause.class, flags.getClass()).invoke(entity, loc, cause, flags);
+        }
+        catch (ReflectiveOperationException e) {
+            final CompletableFuture<Boolean> result = new CompletableFuture<>();
+            result.completeExceptionally(e);
+            return result;
+        }
+    }
+
     /**
      * @param object task number or ScheduledTask or Thread
      * @return Whether the task is scheduled

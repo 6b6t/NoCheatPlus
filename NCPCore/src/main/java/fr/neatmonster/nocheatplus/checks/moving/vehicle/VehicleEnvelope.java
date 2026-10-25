@@ -46,6 +46,8 @@ import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.PotionUtil;
 import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
 import fr.neatmonster.nocheatplus.utilities.StringUtil;
+import fr.neatmonster.nocheatplus.utilities.collision.Axis;
+import fr.neatmonster.nocheatplus.utilities.collision.PassableAxisTracing;
 import fr.neatmonster.nocheatplus.utilities.location.RichEntityLocation;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
 import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
@@ -157,7 +159,6 @@ public class VehicleEnvelope extends Check {
             CONTEXT.get().debugDetails.clear();
             data.ws.setJustUsedIds(CONTEXT.get().debugDetails); // Add just used workaround ids to this list directly, for now.
         }
-        prepareCheckDetails(vehicle, moveInfo, thisMove);
         // TODO: Need confine more!
         LostGroundVehicle.lostGround(vehicle, moveInfo.from, moveInfo.to, thisMove.hDistance, thisMove.yDistance, false, data.vehicleMoves.getFirstPastMove(), data, cc, null, CONTEXT.get().tags);
         final boolean violation = checkEntity(player, vehicle, thisMove, isFake, data, cc, debug, moveInfo);
@@ -167,6 +168,28 @@ public class VehicleEnvelope extends Check {
             CONTEXT.get().debugDetails.clear();
         }
 
+        return handleViolation(player, data, cc, violation, moveInfo);
+    }
+
+    /** Boats keep their existing flight freedom; only solid block crossings are rejected. */
+    public SetBackEntry checkBoatPassable(final Player player, final Entity vehicle,
+            final VehicleMoveInfo moveInfo, final MovingData data, final MovingConfig cc, final IPlayerData pData) {
+        return ScopedValue.where(CONTEXT, new CheckContext()).call(() -> {
+            final boolean blocked = isBoatMoveBlocked(moveInfo.from, moveInfo.to);
+            if (blocked) {
+                CONTEXT.get().tags.add("entity." + vehicle.getType());
+                CONTEXT.get().tags.add("boat_passable");
+                if (pData.isDebugActive(type)) debug(player, "Boat intersects a solid block.");
+            }
+            else if (moveInfo.to.isPassableBox()) {
+                data.vehicleSetBacks.setSafeMediumEntry(moveInfo.to);
+            }
+            return handleViolation(player, data, cc, blocked, moveInfo);
+        });
+    }
+
+    private SetBackEntry handleViolation(final Player player, final MovingData data, final MovingConfig cc,
+            final boolean violation, final VehicleMoveInfo moveInfo) {
         if (violation) {
             data.vehicleEnvelopeVL += 1.0; // Add up one for now.
             final ViolationData vd = new ViolationData(this, player, data.vehicleEnvelopeVL, 1, cc.vehicleEnvelopeActions);
@@ -273,6 +296,32 @@ public class VehicleEnvelope extends Check {
     *
     * @return
     */
+    /** Sweep the boat's body; touching a bank or leaving an existing overlap is allowed. */
+    static boolean isBoatMoveBlocked(final RichEntityLocation from, final RichEntityLocation to) {
+        if (from.isSamePos(to)) return false;
+        final double epsilon = 1.0E-7;
+        final PassableAxisTracing trace = new PassableAxisTracing();
+        trace.setMaxSteps(60);
+        trace.setMargins(from.getBoxMarginVertical() - 2 * epsilon, from.getWidth() / 2 - epsilon);
+        trace.setBlockCache(from.getBlockCache());
+        trace.setIgnoreInitiallyColliding(true);
+        try {
+            // Vanilla resolves vertical motion before the horizontal axes.
+            for (final List<Axis> order : List.of(Axis.AXIS_ORDER_YXZ, Axis.AXIS_ORDER_YZX)) {
+                trace.setAxisOrder(order);
+                trace.set(from.getX(), from.getY() + epsilon, from.getZ(),
+                        to.getX(), to.getY() + epsilon, to.getZ());
+                trace.loop();
+                // A traversal limit alone is not evidence of passing through a block.
+                if (!trace.collides()) return false;
+            }
+            return true;
+        }
+        finally {
+            trace.cleanup();
+        }
+    }
+
     private boolean checkEntity(final Player player, final Entity vehicle, 
                                 final VehicleMoveData thisMove, final boolean isFake, 
                                 final MovingData data, final MovingConfig cc,
@@ -521,7 +570,7 @@ public class VehicleEnvelope extends Check {
      * @param moveInfo Cheating.
      * @param thisMove
      */
-    private void prepareCheckDetails(final Entity vehicle, final VehicleMoveInfo moveInfo, final VehicleMoveData thisMove) {
+    protected void prepareCheckDetails(final Entity vehicle, final VehicleMoveInfo moveInfo, final VehicleMoveData thisMove) {
 
         CONTEXT.get().details.reset();
         // TODO: These properties are for boats, might need to distinguish further.
