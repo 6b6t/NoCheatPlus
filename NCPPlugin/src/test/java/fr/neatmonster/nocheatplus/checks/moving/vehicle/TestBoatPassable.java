@@ -131,6 +131,12 @@ public class TestBoatPassable {
     }
 
     @Test
+    public void tinyStepsCannotEnterTheLiveGrassWall() {
+        blocks.set(-134, 108, -423, Material.GRASS_BLOCK);
+        assertTrue(blocked(-132.3125, 108.2, -422.27, -132.3175, 108.2, -422.27));
+    }
+
+    @Test
     public void freeEndpointsCannotTunnelAcrossAWall() {
         blocks.set(3, 1, 0, Material.STONE);
         assertTrue(blocked(0.5, 1, 0.5, 6.5, 1, 0.5));

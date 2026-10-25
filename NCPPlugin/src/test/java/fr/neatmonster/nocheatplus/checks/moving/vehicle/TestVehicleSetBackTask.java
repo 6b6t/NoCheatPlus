@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -24,6 +25,28 @@ import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 
 public class TestVehicleSetBackTask {
+    private enum Completion { NORMAL, MOVED, UNSCHEDULED, REPLACED, RETIRED }
+
+    @Test
+    public void completionDoesNotAcceptMovementAfterTheCorrection() {
+        correction(true, true, Completion.MOVED);
+    }
+
+    @Test
+    public void unscheduledCompletionReleasesThePendingCorrection() {
+        correction(true, true, Completion.UNSCHEDULED);
+    }
+
+    @Test
+    public void unscheduledStaleCompletionCannotClearANewerCorrection() {
+        correction(true, true, Completion.REPLACED);
+    }
+
+    @Test
+    public void retiredBoatReleasesThePendingCorrection() {
+        correction(true, true, Completion.RETIRED);
+    }
+
     @Test
     public void foliaWaitsForTeleportCompletionWithoutEjectingPassengers() {
         correction(true, true);
@@ -40,6 +63,10 @@ public class TestVehicleSetBackTask {
     }
 
     private void correction(final boolean success, final boolean stillMounted) {
+        correction(success, stillMounted, Completion.NORMAL);
+    }
+
+    private void correction(final boolean success, final boolean stillMounted, final Completion completion) {
         final Entity boat = mock(Entity.class);
         final Player player = mock(Player.class);
         final Plugin plugin = mock(Plugin.class);
@@ -51,6 +78,8 @@ public class TestVehicleSetBackTask {
         final NoCheatPlusAPI api = mock(NoCheatPlusAPI.class);
         final Location destination = new Location(null, 1, 2, 3);
         final CompletableFuture<Boolean> teleport = new CompletableFuture<>();
+        final AtomicReference<Consumer<Object>> callback = new AtomicReference<>();
+        final Object replacement = new Object();
         when(boat.getPassengers()).thenReturn(List.of(player));
         when(boat.getLocation()).thenReturn(destination);
         when(player.getLocation()).thenReturn(destination);
@@ -69,8 +98,17 @@ public class TestVehicleSetBackTask {
                     .thenReturn(teleport);
             folia.when(() -> Folia.runSyncTaskForEntity(eq(boat), eq(plugin), any(), any()))
                     .thenAnswer(call -> {
-                        final Consumer<Object> task = call.getArgument(2);
-                        task.accept(null);
+                        if (completion == Completion.UNSCHEDULED) return null;
+                        if (completion == Completion.REPLACED) {
+                            data.vehicleSetBackTaskId = replacement;
+                            return null;
+                        }
+                        if (completion == Completion.RETIRED) {
+                            final Runnable retired = call.getArgument(3);
+                            retired.run();
+                            return null;
+                        }
+                        callback.set(call.getArgument(2));
                         return new Object();
                     });
             new VehicleSetBackTask(boat, player, destination, false).run();
@@ -79,9 +117,23 @@ public class TestVehicleSetBackTask {
             verifyNoInteractions(aux);
             if (!stillMounted) when(boat.getPassengers()).thenReturn(List.of());
             teleport.complete(success);
+            if (callback.get() != null) {
+                assertTrue(data.isVehicleSetBack);
+                assertSame(teleport, data.vehicleSetBackTaskId);
+                if (completion == Completion.MOVED) {
+                    when(boat.getLocation()).thenReturn(new Location(null, 1.005, 2, 3));
+                }
+                callback.get().accept(null);
+            }
+            if (completion == Completion.REPLACED) {
+                assertTrue(data.isVehicleSetBack);
+                assertSame(replacement, data.vehicleSetBackTaskId);
+                verifyNoInteractions(aux);
+                return;
+            }
             assertFalse(data.isVehicleSetBack);
             assertNull(data.vehicleSetBackTaskId);
-            if (success && stillMounted) {
+            if (success && stillMounted && callback.get() != null) {
                 verify(aux).resetVehiclePositions(boat, destination, data, config);
                 verify(aux).resetPositionsAndMediumProperties(player, destination, data, config);
                 assertEquals(0, data.timeSinceSetBack);

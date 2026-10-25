@@ -87,29 +87,36 @@ public class VehicleSetBackTask implements Runnable{
         final var teleport = Folia.teleportEntityWithPassengersAsync(vehicle, location,
                 BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
         data.vehicleSetBackTaskId = teleport;
-        teleport.whenComplete((success, error) -> Folia.runSyncTaskForEntity(vehicle, plugin, task -> {
-            if (data.vehicleSetBackTaskId != teleport) return;
-            data.vehicleSetBackTaskId = null;
-            data.isVehicleSetBack = false;
-            if (error != null) {
-                StaticLog.logSevere(error);
-                return;
-            }
-            if (!Boolean.TRUE.equals(success)) {
-                StaticLog.logWarning("Vehicle correction failed for " + player.getName());
-                return;
-            }
-            if (!vehicle.getPassengers().contains(player)) return;
-            final MovingConfig config = pData.getGenericInstance(MovingConfig.class);
-            final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
-            aux.resetVehiclePositions(vehicle, vehicle.getLocation(), data, config);
-            aux.resetPositionsAndMediumProperties(player, player.getLocation(), data, config);
-            data.timeSinceSetBack = 0;
-        }, () -> {
-            if (data.vehicleSetBackTaskId == teleport) {
+        teleport.whenComplete((success, error) -> {
+            final Object scheduled = Folia.runSyncTaskForEntity(vehicle, plugin, task -> {
+                if (data.vehicleSetBackTaskId != teleport) return;
+                data.vehicleSetBackTaskId = null;
+                data.isVehicleSetBack = false;
+                if (error != null) {
+                    StaticLog.logSevere(error);
+                    return;
+                }
+                if (!Boolean.TRUE.equals(success)) {
+                    StaticLog.logWarning("Vehicle correction failed for " + player.getName());
+                    return;
+                }
+                if (!vehicle.getPassengers().contains(player)) return;
+                final MovingConfig config = pData.getGenericInstance(MovingConfig.class);
+                final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
+                // A later packet may already have moved the boat past the verified destination.
+                aux.resetVehiclePositions(vehicle, location, data, config);
+                aux.resetPositionsAndMediumProperties(player, player.getLocation(), data, config);
+                data.timeSinceSetBack = 0;
+            }, () -> {
+                if (data.vehicleSetBackTaskId == teleport) {
+                    data.vehicleSetBackTaskId = null;
+                    data.isVehicleSetBack = false;
+                }
+            });
+            if (scheduled == null && data.vehicleSetBackTaskId == teleport) {
                 data.vehicleSetBackTaskId = null;
                 data.isVehicleSetBack = false;
             }
-        }));
+        });
     }
 }
