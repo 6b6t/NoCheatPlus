@@ -157,6 +157,7 @@ public class VehicleEnvelope extends Check {
             CONTEXT.get().debugDetails.clear();
             data.ws.setJustUsedIds(CONTEXT.get().debugDetails); // Add just used workaround ids to this list directly, for now.
         }
+        prepareCheckDetails(vehicle, moveInfo, thisMove);
         // TODO: Need confine more!
         LostGroundVehicle.lostGround(vehicle, moveInfo.from, moveInfo.to, thisMove.hDistance, thisMove.yDistance, false, data.vehicleMoves.getFirstPastMove(), data, cc, null, CONTEXT.get().tags);
         final boolean violation = checkEntity(player, vehicle, thisMove, isFake, data, cc, debug, moveInfo);
@@ -520,7 +521,7 @@ public class VehicleEnvelope extends Check {
      * @param moveInfo Cheating.
      * @param thisMove
      */
-    protected void prepareCheckDetails(final Entity vehicle, final VehicleMoveInfo moveInfo, final VehicleMoveData thisMove) {
+    private void prepareCheckDetails(final Entity vehicle, final VehicleMoveInfo moveInfo, final VehicleMoveData thisMove) {
 
         CONTEXT.get().details.reset();
         // TODO: These properties are for boats, might need to distinguish further.

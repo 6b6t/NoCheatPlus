@@ -31,6 +31,24 @@ public class TestVehicleEnvelopeRegions {
   Field f=VehicleEnvelope.class.getDeclaredField("CONTEXT");f.setAccessible(true);return (ScopedValue<Object>)f.get(null);
  }
  private Object details(Object context) throws Exception {Field f=context.getClass().getDeclaredField("details");f.setAccessible(true);return f.get(context);}
+ @Test public void invocationPreparesBoatPhysicsInsideItsOwnContext() throws Exception {
+  Fixture fixture=new Fixture(EntityType.BOAT);
+  fixture.move.vehicleType=EntityType.BOAT;
+  fixture.move.from.inWater=true;
+  try(var lost=mockStatic(LostGroundVehicle.class)) {
+   lost.when(()->LostGroundVehicle.lostGround(any(),any(),any(),anyDouble(),anyDouble(),anyBoolean(),any(),any(),any(),any(),anyList()))
+    .thenAnswer(call->{
+     Object physics=details(context().get());
+     Field type=physics.getClass().getDeclaredField("simplifiedType");type.setAccessible(true);
+     assertEquals(EntityType.BOAT,type.get(physics));
+     Field medium=physics.getClass().getDeclaredField("fromIsSafeMedium");medium.setAccessible(true);
+     assertTrue(medium.getBoolean(physics));
+     throw new EndFixture();
+    });
+   fixture.run();
+  }
+  assertFalse(context().isBound());
+ }
  @Test public void overlappingVehicleChecksDoNotShareTagsOrPhysicsDetails() throws Exception {
   Fixture a=new Fixture(EntityType.BOAT),b=new Fixture(EntityType.HORSE);
   b.check=a.check; // One registered check instance services both regions.
