@@ -4,6 +4,10 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 import org.bukkit.Material;
+import fr.neatmonster.nocheatplus.actions.ActionList;
+import fr.neatmonster.nocheatplus.actions.Action;
+import fr.neatmonster.nocheatplus.checks.ViolationData;
+import fr.neatmonster.nocheatplus.checks.moving.location.setback.SetBackEntry;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -45,6 +49,79 @@ public class TestBoatPassable {
         final var to = at(x1, y1, z1);
         when(from.isSamePos(to)).thenReturn(x0 == x1 && y0 == y1 && z0 == z1);
         return VehicleEnvelope.isBoatMoveBlocked(from, to);
+    }
+
+    private SetBackEntry correction(final RichEntityLocation from, final RichEntityLocation to,
+            final SetBackEntry fallback) throws Exception {
+        final VehicleMoveInfo info = mock(VehicleMoveInfo.class);
+        for (final String end : new String[]{"from", "to"}) {
+            final var field = MoveInfo.class.getField(end);
+            field.setAccessible(true);
+            field.set(info, end.equals("from") ? from : to);
+        }
+        final MovingData data = mock(MovingData.class);
+        final MovingConfig config = mock(MovingConfig.class);
+        final DefaultSetBackStorage storage = mock(DefaultSetBackStorage.class);
+        when(storage.getValidSafeMediumEntry()).thenReturn(fallback);
+        final var storageField = MovingData.class.getField("vehicleSetBacks");
+        storageField.setAccessible(true);
+        storageField.set(data, storage);
+        final ActionList actions = mock(ActionList.class);
+        doReturn(new Action[0]).when(actions).getActions(anyDouble());
+        final var actionsField = MovingConfig.class.getField("vehicleEnvelopeActions");
+        actionsField.setAccessible(true);
+        actionsField.set(config, actions);
+        final VehicleEnvelope check = mock(VehicleEnvelope.class, CALLS_REAL_METHODS);
+        final ViolationData result = mock(ViolationData.class);
+        when(result.willCancel()).thenReturn(true);
+        doReturn(result).when(check).executeActions(any(ViolationData.class));
+        return check.checkBoatPassable(mock(Player.class), mock(Entity.class), info,
+                data, config, mock(IPlayerData.class));
+    }
+
+    @Test
+    public void correctionStopsAtTheWallInsteadOfAnOldCheckpointAndKeepsTheLook() throws Exception {
+        blocks.set(1, 1, 0, Material.STONE);
+        final var from = at(0, 1, 0.5);
+        when(from.getWorldName()).thenReturn("world");
+        final var to = at(0.5, 1, 0.5);
+        when(to.getYaw()).thenReturn(73f);
+        when(to.getPitch()).thenReturn(-12f);
+        final var old = new SetBackEntry().set("world", -5, 1, 0.5, 0, 0, 1, 0);
+        final var target = correction(from, to, old);
+        assertEquals(0.3125, target.getX(), 0.001);
+        assertEquals(1, target.getY(), 0);
+        assertEquals(73, target.getYaw(), 0);
+        assertEquals(-12, target.getPitch(), 0);
+        assertEquals(-5, old.getX(), 0);
+    }
+
+    @Test
+    public void longDownwardAttemptStopsAtTheFloor() throws Exception {
+        blocks.set(0, 0, 0, Material.STONE);
+        final var from = at(0.5, 3, 0.5);
+        when(from.getWorldName()).thenReturn("world");
+        final var old = new SetBackEntry().set("world", 0.5, 3, 0.5, 0, 0, 1, 0);
+        final var target = correction(from, at(0.5, -7, 0.5), old);
+        assertEquals(1, target.getY(), 0.003);
+        assertTrue("The correction must stay on the clear side of the floor", target.getY() >= 1 - 1.0E-7);
+    }
+
+    @Test
+    public void correctionCannotSelectAClearEndpointBeyondAWall() throws Exception {
+        blocks.set(3, 1, 0, Material.STONE);
+        final var from = at(0.5, 1, 0.5);
+        when(from.getWorldName()).thenReturn("world");
+        final var old = new SetBackEntry().set("world", 0.5, 1, 0.5, 0, 0, 1, 0);
+        assertEquals(2.3125, correction(from, at(6.5, 1, 0.5), old).getX(), 0.002);
+    }
+
+    @Test
+    public void existingOverlapUsesTheVerifiedCheckpoint() throws Exception {
+        blocks.set(0, 1, 0, Material.STONE);
+        blocks.set(3, 1, 0, Material.STONE);
+        final var old = new SetBackEntry().set("world", -3, 1, 0.5, 0, 0, 1, 0);
+        assertSame(old, correction(at(0.5, 1, 0.5), at(3.5, 1, 0.5), old));
     }
 
     @Test

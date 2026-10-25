@@ -164,7 +164,7 @@ public class VehicleChecks extends CheckListener {
             }
             // TODO: Check consistency with assumed/tracked past position, both for from and to. Do something based on result.
         }
-        if (normalVehicles.contains(vehicleType)) {
+        if (normalVehicles.contains(vehicleType) && !MaterialUtil.isBoat(vehicleType)) {
             // Should be the case, as VehicleUpdateEvent always fires.
             // Assume handled.
             return;
@@ -349,6 +349,9 @@ public class VehicleChecks extends CheckListener {
     private void checkVehicleMove(final Entity vehicle, final EntityType vehicleType, 
             final Location from, final Location to, final Player player, final boolean fake, 
             final MovingData data, final IPlayerData pData, boolean debug) {
+        // Do not advance the accepted boat position while its correction is in flight.
+        if (MaterialUtil.isBoat(vehicleType)
+                && (data.isVehicleSetBack || Folia.isTaskScheduled(data.vehicleSetBackTaskId))) return;
         // TODO: Detect teleportation and similar.
         final MovingConfig cc = pData.getGenericInstance(MovingConfig.class);
         // Exclude certain vehicle types.

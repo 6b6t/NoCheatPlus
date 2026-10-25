@@ -184,7 +184,8 @@ public class VehicleEnvelope extends Check {
             else if (moveInfo.to.isPassableBox()) {
                 data.vehicleSetBacks.setSafeMediumEntry(moveInfo.to);
             }
-            return handleViolation(player, data, cc, blocked, moveInfo);
+            final SetBackEntry fallback = handleViolation(player, data, cc, blocked, moveInfo);
+            return blocked && fallback != null ? nearestBoatSetBack(moveInfo.from, moveInfo.to, fallback) : fallback;
         });
     }
 
@@ -296,8 +297,35 @@ public class VehicleEnvelope extends Check {
     *
     * @return
     */
+    private static SetBackEntry nearestBoatSetBack(final RichEntityLocation from, final RichEntityLocation to,
+            final SetBackEntry fallback) {
+        final double epsilon = 1.0E-7;
+        final double halfWidth = from.getWidth() / 2 - epsilon;
+        if (!BlockProperties.isPassableBox(from.getBlockCache(),
+                from.getX() - halfWidth, from.getY() + epsilon, from.getZ() - halfWidth,
+                from.getX() + halfWidth, from.getY() + from.getBoxMarginVertical() - epsilon,
+                from.getZ() + halfWidth)) return fallback;
+        double clear = 0.0;
+        double blocked = 1.0;
+        for (int i = 0; i < 12; i++) {
+            final double fraction = (clear + blocked) / 2;
+            if (isBoatMoveBlocked(from, to, fraction)) blocked = fraction;
+            else clear = fraction;
+        }
+        return new SetBackEntry().set(from.getWorldName(),
+                from.getX() + clear * (to.getX() - from.getX()),
+                from.getY() + clear * (to.getY() - from.getY()),
+                from.getZ() + clear * (to.getZ() - from.getZ()),
+                to.getYaw(), to.getPitch(), fallback.getTime(), fallback.getMsTime());
+    }
+
     /** Sweep the boat's body; touching a bank or leaving an existing overlap is allowed. */
     static boolean isBoatMoveBlocked(final RichEntityLocation from, final RichEntityLocation to) {
+        return isBoatMoveBlocked(from, to, 1.0);
+    }
+
+    private static boolean isBoatMoveBlocked(final RichEntityLocation from, final RichEntityLocation to,
+            final double fraction) {
         if (from.isSamePos(to)) return false;
         final double epsilon = 1.0E-7;
         final PassableAxisTracing trace = new PassableAxisTracing();
@@ -310,7 +338,9 @@ public class VehicleEnvelope extends Check {
             for (final List<Axis> order : List.of(Axis.AXIS_ORDER_YXZ, Axis.AXIS_ORDER_YZX)) {
                 trace.setAxisOrder(order);
                 trace.set(from.getX(), from.getY() + epsilon, from.getZ(),
-                        to.getX(), to.getY() + epsilon, to.getZ());
+                        from.getX() + fraction * (to.getX() - from.getX()),
+                        from.getY() + fraction * (to.getY() - from.getY()) + epsilon,
+                        from.getZ() + fraction * (to.getZ() - from.getZ()));
                 trace.loop();
                 // A traversal limit alone is not evidence of passing through a block.
                 if (!trace.collides()) return false;
