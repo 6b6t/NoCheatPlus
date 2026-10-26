@@ -17,6 +17,7 @@ package fr.neatmonster.nocheatplus.compat;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collection;
+import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -29,6 +30,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
 
 
@@ -38,6 +40,25 @@ import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
  *
  */
 public class BridgeMisc {
+
+    /** Identify authenticated Bedrock connections without requiring Floodgate. */
+    public static boolean isFloodgatePlayer(final UUID playerId) {
+        if (!Bukkit.getPluginManager().isPluginEnabled("floodgate")) {
+            return false;
+        }
+        try {
+            final Class<?> apiClass = ReflectionUtil.getClass("org.geysermc.floodgate.api.FloodgateApi");
+            if (apiClass == null) {
+                return false;
+            }
+            final Object api = apiClass.getMethod("getInstance").invoke(null);
+            return Boolean.TRUE.equals(apiClass.getMethod("isFloodgatePlayer", UUID.class).invoke(api, playerId));
+        }
+        catch (ReflectiveOperationException | LinkageError failure) {
+            StaticLog.logWarning("Could not identify Floodgate player: " + failure);
+            return false;
+        }
+    }
 
     private static GameMode getSpectatorGameMode() {
         try {

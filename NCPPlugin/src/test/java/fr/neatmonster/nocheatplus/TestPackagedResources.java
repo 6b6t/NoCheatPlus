@@ -14,7 +14,7 @@ public class TestPackagedResources {
         PluginDescriptionFile description = new PluginDescriptionFile(in);
         assertEquals("NoCheatPlus", description.getName());
         assertEquals("fr.neatmonster.nocheatplus.NoCheatPlus", description.getMain());
-        assertEquals(java.util.List.of("LuckPerms", "ProtocolLib"), description.getSoftDepend());
+        assertEquals(java.util.List.of("LuckPerms", "ProtocolLib", "floodgate"), description.getSoftDepend());
     }
     @Test public void bukkitParsesProcessedAndPackagedYamlResources() throws Exception {
         String path = System.getProperty("telemetry.packagedJar");

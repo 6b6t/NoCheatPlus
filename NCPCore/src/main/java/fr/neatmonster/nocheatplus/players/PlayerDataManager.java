@@ -580,7 +580,12 @@ public class PlayerDataManager  implements IPlayerDataManager, ComponentWithName
      */
     private void addOnlinePlayer(final Player player) {
         final PlayerData pData = getPlayerData(player, true);
-        if (pData != null) pData.onPlayerOnline(player);
+        if (pData != null) {
+            pData.onPlayerOnline(player);
+            if (BridgeMisc.isFloodgatePlayer(player.getUniqueId())) {
+                pData.setBedrockPlayer(true);
+            }
+        }
         playerMap.updatePlayer(player);
     }
 

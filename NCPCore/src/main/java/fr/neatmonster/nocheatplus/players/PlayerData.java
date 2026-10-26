@@ -170,7 +170,7 @@ public class PlayerData implements IPlayerData {
     // TODO: a per entry typed variant (key - value relation)?
     private final InstanceMapLOW dataCache = new InstanceMapLOW(lock, 24);
 
-    /** If is Bedrock Player. This is set if CompatNoCheatPlus is present. */
+    /** Bedrock connection, identified by Floodgate or CompatNoCheatPlus. */
     private boolean bedrockPlayer = false;
     private boolean requestUpdateInventory = false;
     private final SetBackRequest<Player> setBackRequest = new SetBackRequest<>();
