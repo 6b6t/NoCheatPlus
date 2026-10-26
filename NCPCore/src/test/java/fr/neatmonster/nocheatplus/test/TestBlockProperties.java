@@ -10,9 +10,9 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import org.bukkit.Material;
 import org.junit.Test;
 
+import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties.MaterialBase;
 import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
@@ -44,6 +44,6 @@ public class TestBlockProperties {
 
     @Test
     public void testShelfMushroomIsNotClassifiedAsBed() {
-        assertFalse(MaterialUtil.BEDS.contains(Material.SHELF_MUSHROOM));
+        assertFalse(MaterialUtil.BEDS.contains(BridgeMaterial.get("shelf_mushroom")));
     }
 }
