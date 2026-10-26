@@ -577,6 +577,10 @@ public class MaterialUtil {
                     "legacy"
                     ), "wool"));
 
+    /** Blocks mined faster with shears that use the wool breaking profile. */
+    public static final Set<Material> WOOL_SHEARS_BLOCKS = Collections.unmodifiableSet(join(
+            WOOL_BLOCKS, WOOL_STAIRS, WOOL_SLABS));
+
     ///////////////////////////////
     // Collections of collections
     ///////////////////////////////

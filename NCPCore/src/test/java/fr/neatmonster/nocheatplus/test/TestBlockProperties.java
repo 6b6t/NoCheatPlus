@@ -14,6 +14,7 @@ import org.junit.Test;
 
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties.MaterialBase;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 
 public class TestBlockProperties {
 
@@ -31,5 +32,13 @@ public class TestBlockProperties {
                 MaterialBase.COPPER, MaterialBase.COPPER, true));
         assertFalse(BlockProperties.isRightToolMaterial(null,
                 MaterialBase.IRON, MaterialBase.COPPER, true));
+    }
+
+    @Test
+    public void testWoolShapesUseFastShearsProfileWithoutFullCubeClassification() {
+        assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_STAIRS));
+        assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_SLABS));
+        assertFalse(MaterialUtil.WOOL_BLOCKS.containsAll(MaterialUtil.WOOL_STAIRS));
+        assertFalse(MaterialUtil.WOOL_BLOCKS.containsAll(MaterialUtil.WOOL_SLABS));
     }
 }
