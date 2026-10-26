@@ -248,8 +248,12 @@ public class MaterialUtil {
                     ), "standing_banner"));
 
     public static final Set<Material> BEDS = Collections.unmodifiableSet(addBlocks(
-            BridgeMaterial.getBySuffix("_bed", AlmostBoolean.YES, 
-                    "legacy"), "bed_block"));
+            BridgeMaterial.getBySuffix("_bed", AlmostBoolean.YES,
+                    "legacy", "straw_bed"), "bed_block"));
+
+    /** Beds with 26.3 collision and movement behavior distinct from regular beds. */
+    public static final Set<Material> STRAW_BEDS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("straw_bed", AlmostBoolean.YES));
 
     public static final Set<Material> BOATS;
     public static final Set<Material> ALL_SEEDS;

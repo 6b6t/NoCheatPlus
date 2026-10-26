@@ -53,6 +53,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
     // Blocks that can be fetched automatically from from the Bukkit API
     private static final BukkitShapeModel MODEL_AUTO_FETCH = new BukkitFetchableBounds();
     private static final BukkitShapeModel MODEL_AUTO_FETCH_LEGACY = new BukkitFetchableBound();
+    private static final BukkitShapeModel MODEL_STRAW_BED = new BukkitStrawBed();
 
     // Blocks that are formed from multiple bounding boxes
     private static final BukkitShapeModel MODEL_BREWING_STAND = new BukkitStatic(
@@ -388,6 +389,9 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         // Beds
         for (Material mat : MaterialUtil.BEDS) {
             addModel(mat, fetchShapes ? MODEL_AUTO_FETCH : MODEL_XZ100_HEIGHT16_9);
+        }
+        for (Material mat : MaterialUtil.STRAW_BEDS) {
+            addModel(mat, fetchShapes ? MODEL_AUTO_FETCH : MODEL_STRAW_BED);
         }
 
         // Flower pots.

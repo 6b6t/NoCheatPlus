@@ -10,6 +10,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import org.bukkit.Material;
 import org.junit.Test;
 
 import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
@@ -45,5 +46,14 @@ public class TestBlockProperties {
     @Test
     public void testShelfMushroomIsNotClassifiedAsBed() {
         assertFalse(MaterialUtil.BEDS.contains(BridgeMaterial.get("shelf_mushroom")));
+    }
+
+    @Test
+    public void testStrawBedUsesSeparateShapeClassification() {
+        final Material strawBed = BridgeMaterial.get("straw_bed");
+        if (strawBed != null) {
+            assertFalse(MaterialUtil.BEDS.contains(strawBed));
+            assertTrue(MaterialUtil.STRAW_BEDS.contains(strawBed));
+        }
     }
 }
