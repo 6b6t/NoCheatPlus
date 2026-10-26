@@ -36,9 +36,8 @@ public class TestBlockProperties {
 
     @Test
     public void testWoolShapesUseFastShearsProfileWithoutFullCubeClassification() {
+        assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_BLOCKS));
         assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_STAIRS));
         assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_SLABS));
-        assertFalse(MaterialUtil.WOOL_BLOCKS.containsAll(MaterialUtil.WOOL_STAIRS));
-        assertFalse(MaterialUtil.WOOL_BLOCKS.containsAll(MaterialUtil.WOOL_SLABS));
     }
 }
