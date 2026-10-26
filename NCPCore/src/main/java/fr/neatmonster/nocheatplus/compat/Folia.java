@@ -28,6 +28,7 @@ import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.plugin.Plugin;
 
+import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
 
 import org.bukkit.entity.Entity;
@@ -337,8 +338,13 @@ public class Folia {
                 // The passenger update resets the client's yaw; restore each passenger's own view afterward.
                 if (Boolean.TRUE.equals(success)) {
                     looks.forEach((passenger, look) -> {
-                        if (entity.getPassengers().contains(passenger)) {
-                            passenger.setRotation(look.getYaw(), look.getPitch());
+                        try {
+                            if (entity.getPassengers().contains(passenger)) {
+                                passenger.setRotation(look.getYaw(), look.getPitch());
+                            }
+                        }
+                        catch (RuntimeException e) {
+                            StaticLog.logWarning("Could not restore vehicle passenger view: " + e);
                         }
                     });
                 }

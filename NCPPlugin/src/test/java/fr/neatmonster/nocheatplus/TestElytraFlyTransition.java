@@ -236,15 +236,26 @@ public class TestElytraFlyTransition {
 
     @Test
     public void unequippingAndReequippingCannotSkipAirborneRecovery() {
+        final ItemStack elytra = inventory.getChestplate();
+        final PlayerLocation from = mock(PlayerLocation.class);
+        when(from.isPassableBox()).thenReturn(true);
         data.elytraRelightBlocked = true;
         data.timeSinceSetBack = 1;
+        when(inventory.getChestplate()).thenReturn(null);
+        assertFalse(Bridge1_9.isWearingElytra(player));
         data.updateElytraRelightRecovery(false);
+        assertFalse(MovingUtil.canLiftOffWithElytra(player, from, data));
         assertTrue("Removing the Elytra must not clear the relight block", data.elytraRelightBlocked);
+        when(inventory.getChestplate()).thenReturn(elytra);
+        assertTrue(Bridge1_9.isWearingElytra(player));
         data.updateElytraRelightRecovery(false);
+        assertFalse(MovingUtil.canLiftOffWithElytra(player, from, data));
+        assertFalse(MovingUtil.isGlidingWithElytraValid(player, from, data, config));
         assertTrue("Re-equipping must still require recovery", data.elytraRelightBlocked);
         data.timeSinceSetBack = 10;
         data.updateElytraRelightRecovery(false);
         assertFalse(data.elytraRelightBlocked);
+        assertTrue(MovingUtil.canLiftOffWithElytra(player, from, data));
     }
 
     @Test
