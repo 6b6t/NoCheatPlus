@@ -230,6 +230,10 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         for (final Material mat : MaterialUtil.WOODEN_SHELVES) {
             addModel(mat, MODEL_AUTO_FETCH);
         }
+        // Shelf mushrooms have a state-dependent collision shape and bounce surface.
+        for (final Material mat : BridgeMaterial.getAllBlocks("shelf_mushroom")) {
+            addModel(mat, MODEL_AUTO_FETCH);
+        }
 
         // new flower, and others
         // Keep liquids out of here: they have no collision shape, so auto-fetching leaves them with
