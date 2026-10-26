@@ -108,7 +108,11 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
         //final BlockState state = block.getState();
         //final MaterialData materialData = state.getData();
         //final BlockData blockData = state.getBlockData();
-        Material mat = getType(x, y, z);
+        final Material mat = getType(x, y, z);
+        if (mat == Material.ENDER_CHEST && isBedrockCache()) {
+            // Bedrock ender chests are wider and 0.075 blocks taller than Java's.
+            return new double[] {0.025, 0.0, 0.025, 0.975, 0.95, 0.975};
+        }
 
         final BukkitShapeModel shapeModel = shapeModels.get(mat);
         if (shapeModel == null) {
