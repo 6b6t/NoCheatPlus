@@ -45,6 +45,16 @@ public class BlocksMC26 implements BlockPropertiesSetup {
         BlockProperties.setBlockProps("SULFUR_SPIKE",
                 new BlockProperties.BlockProps(BlockProperties.woodPickaxe, 1.5f));
 
+        BlockInit.setInstantPassable("POPLAR_SAPLING");
+        BlockInit.setInstantPassable("RED_SHRUB");
+        BlockFlags.setBlockFlags("SHELF_MUSHROOM",
+                BlockFlags.SOLID_GROUND | BlockFlags.F_VARIABLE | BlockFlags.F_BED | BlockFlags.F_BOUNCE25);
+        BlockProperties.setBlockProps("SHELF_MUSHROOM", BlockProperties.instantType);
+        // Straw beds have a quarter-block shape and neither bounce nor reduce fall damage.
+        BlockFlags.setBlockFlags("STRAW_BED", BlockFlags.SOLID_GROUND | BlockFlags.F_VARIABLE);
+        BlockProperties.setBlockProps("STRAW_BED",
+                new BlockProperties.BlockProps(BlockProperties.noTool, 0.2f));
+
         final ConfigFile config = ConfigManager.getConfigFile();
         if (config.getBoolean(ConfPaths.BLOCKBREAK_DEBUG,
                 config.getBoolean(ConfPaths.CHECKS_DEBUG, false))) {

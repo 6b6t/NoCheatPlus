@@ -50,7 +50,7 @@ public class MaterialUtil {
     ///////////////////////
 
     private static final List<String> woodTypes = Arrays.asList(
-            "acacia", "birch", "dark_oak", "jungle", "oak", "spruce", "warped", "crimson", "mangrove", "bamboo", "cherry", "pale",
+            "acacia", "birch", "dark_oak", "jungle", "oak", "spruce", "warped", "crimson", "mangrove", "bamboo", "cherry", "pale", "poplar",
             "wood" // Legacy
             );
 
@@ -249,7 +249,7 @@ public class MaterialUtil {
 
     public static final Set<Material> BEDS = Collections.unmodifiableSet(addBlocks(
             BridgeMaterial.getBySuffix("_bed", AlmostBoolean.YES, 
-                    "legacy"), "bed_block"));
+                    "legacy", "straw_bed"), "bed_block"));
 
     public static final Set<Material> BOATS;
     public static final Set<Material> ALL_SEEDS;
@@ -354,7 +354,8 @@ public class MaterialUtil {
                     Collections.singletonList("_leaves"),
                     AlmostBoolean.YES
                     // , ...
-                    ), "leaves", "leaves_2", "azalea_leaves", "flowering_azalea_leaves"));
+                    ), "leaves", "leaves_2", "azalea_leaves", "flowering_azalea_leaves",
+                    "red_poplar_leaves", "orange_poplar_leaves", "yellow_poplar_leaves"));
 
     /** LOGS. */
     public static final Set<Material> LOGS = Collections.unmodifiableSet(addBlocks(
