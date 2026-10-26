@@ -4242,7 +4242,7 @@ public class BlockProperties {
          // TODO: Add getMinGroundHeight, getMaxGroundHeight.
         if (isPassableWorkaround(access, x, y, z, minX - x, minY - y, minZ - z, node, maxX - minX, maxY - minY, maxZ - minZ, 
                                  minX, minY, minZ, maxX, maxY, maxZ, 1.0)) {
-            if ((flags & BlockFlags.F_GROUND_HEIGHT) == 0 || getGroundMinHeight(access, x, y, z, node, flags) > maxY - y) {
+            if ((flags & BlockFlags.F_GROUND_HEIGHT) == 0 || y + getGroundMinHeight(access, x, y, z, node, flags) > maxY) {
                 // Don't break, though could for some cases (?), since a block below still can be ground.
                 return AlmostBoolean.MAYBE;
             }
@@ -4250,7 +4250,8 @@ public class BlockProperties {
 
         // Don't count as ground if a block contains the foot.
         // height >= ?
-        if (getGroundMinHeight(access, x, y, z, node, flags) > maxY - y) {
+        // Compare world heights to avoid cancellation for non-binary heights such as Bedrock's 0.95.
+        if (y + getGroundMinHeight(access, x, y, z, node, flags) > maxY) {
             // Within block, this x and z is no candidate for ground.
             if (isFullBounds(bounds)) {
                 return AlmostBoolean.NO;
