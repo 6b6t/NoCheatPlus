@@ -50,7 +50,7 @@ public class MaterialUtil {
     ///////////////////////
 
     private static final List<String> woodTypes = Arrays.asList(
-            "acacia", "birch", "dark_oak", "jungle", "oak", "spruce", "warped", "crimson", "mangrove", "bamboo", "cherry", "pale",
+            "acacia", "birch", "dark_oak", "jungle", "oak", "spruce", "warped", "crimson", "mangrove", "bamboo", "cherry", "pale", "poplar",
             "wood" // Legacy
             );
 
@@ -249,7 +249,7 @@ public class MaterialUtil {
 
     public static final Set<Material> BEDS = Collections.unmodifiableSet(addBlocks(
             BridgeMaterial.getBySuffix("_bed", AlmostBoolean.YES, 
-                    "legacy"), "bed_block"));
+                    "legacy"), "bed_block", "shelf_mushroom"));
 
     public static final Set<Material> BOATS;
     public static final Set<Material> ALL_SEEDS;
@@ -354,7 +354,8 @@ public class MaterialUtil {
                     Collections.singletonList("_leaves"),
                     AlmostBoolean.YES
                     // , ...
-                    ), "leaves", "leaves_2", "azalea_leaves", "flowering_azalea_leaves"));
+                    ), "leaves", "leaves_2", "azalea_leaves", "flowering_azalea_leaves",
+                    "red_poplar_leaves", "orange_poplar_leaves", "yellow_poplar_leaves"));
 
     /** LOGS. */
     public static final Set<Material> LOGS = Collections.unmodifiableSet(addBlocks(
@@ -387,6 +388,18 @@ public class MaterialUtil {
     public static final Set<Material> SLABS = Collections.unmodifiableSet(addBlocks(
             BridgeMaterial.getBySuffix(Arrays.asList("_slab", "_step"), 
                     AlmostBoolean.YES, "legacy"), "step"));
+
+    public static final Set<Material> WOOL_SLABS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("_wool_slab", AlmostBoolean.YES));
+
+    public static final Set<Material> CONCRETE_SLABS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("_concrete_slab", AlmostBoolean.YES));
+
+    public static final Set<Material> WOOL_STAIRS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("_wool_stairs", AlmostBoolean.YES));
+
+    public static final Set<Material> CONCRETE_STAIRS = Collections.unmodifiableSet(
+            BridgeMaterial.getBySuffix("_concrete_stairs", AlmostBoolean.YES));
 
     public static final Set<Material> SPAWN_EGGS = Collections.unmodifiableSet(add(
             BridgeMaterial.getBySuffix("_spawn_egg", AlmostBoolean.YES, "legacy"),
@@ -589,7 +602,7 @@ public class MaterialUtil {
                     "twisting_vines", "twisting_vines_plant",
                     "mangrove_propagule", "pink_petals", "torchflower", "torchflower_crop",
                     "pitcher_plant", "open_eyeblossom", "closed_eyeblossom", "pale_hanging_moss",
-                    "leaf_litter", "cactus_flower", "short_dry_grass", "tall_dry_grass", "wildflowers",
+                    "leaf_litter", "cactus_flower", "short_dry_grass", "tall_dry_grass", "wildflowers", "red_shrub",
                     "golden_dandelion"
                     ),
             new HashSet<Material>(Arrays.asList(BridgeMaterial.TALL_GRASS, 
