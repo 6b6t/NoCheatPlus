@@ -10,6 +10,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import org.bukkit.Material;
 import org.junit.Test;
 
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
@@ -39,5 +40,10 @@ public class TestBlockProperties {
         assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_BLOCKS));
         assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_STAIRS));
         assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_SLABS));
+    }
+
+    @Test
+    public void testShelfMushroomIsNotClassifiedAsBed() {
+        assertFalse(MaterialUtil.BEDS.contains(Material.SHELF_MUSHROOM));
     }
 }

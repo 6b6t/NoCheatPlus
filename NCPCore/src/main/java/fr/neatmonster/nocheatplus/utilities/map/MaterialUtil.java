@@ -249,7 +249,7 @@ public class MaterialUtil {
 
     public static final Set<Material> BEDS = Collections.unmodifiableSet(addBlocks(
             BridgeMaterial.getBySuffix("_bed", AlmostBoolean.YES, 
-                    "legacy"), "bed_block", "shelf_mushroom"));
+                    "legacy"), "bed_block"));
 
     public static final Set<Material> BOATS;
     public static final Set<Material> ALL_SEEDS;

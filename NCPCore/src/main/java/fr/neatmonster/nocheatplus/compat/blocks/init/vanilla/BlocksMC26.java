@@ -60,11 +60,11 @@ public class BlocksMC26 implements BlockPropertiesSetup {
             BlockInit.setPropsAs(material, Material.WHITE_CONCRETE);
         }
         // Straw beds are mined faster with a hoe; shelf mushrooms break instantly
-        // while retaining the bouncy ground behavior assigned by MaterialUtil.BEDS.
+        // and have bouncy ground behavior without being treated as beds.
         BlockProperties.setBlockProps("STRAW_BED",
                 new BlockProperties.BlockProps(BlockProperties.woodHoe, 0.2f));
         BlockProperties.setBlockProps("SHELF_MUSHROOM", BlockProperties.instantType);
-        BlockFlags.addFlags("SHELF_MUSHROOM", BlockFlags.F_VARIABLE);
+        BlockFlags.addFlags("SHELF_MUSHROOM", BlockFlags.F_VARIABLE | BlockFlags.F_BOUNCE25);
 
         final ConfigFile config = ConfigManager.getConfigFile();
         if (config.getBoolean(ConfPaths.BLOCKBREAK_DEBUG,
