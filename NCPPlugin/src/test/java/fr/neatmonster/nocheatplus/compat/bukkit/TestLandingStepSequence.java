@@ -136,6 +136,32 @@ public class TestLandingStepSequence {
     @Test public void recordedBoatLandingWithSmallHorizontalMove() { reportLanding(0.04); }
     @Test public void recordedBoatLandingWithLargerHorizontalMove() { reportLanding(0.20); }
 
+    @Test
+    public void recordedShelfBounceAfterNearGroundMove() {
+        final Material shelf = Material.matchMaterial("SHELF_MUSHROOM");
+        org.junit.Assume.assumeNotNull(shelf);
+        ServerVersion.setMinecraftVersion("26.3");
+        blocks.set(0, 64, 0, shelf, new double[]{
+                0.25, 0.375, 0.625, 0.75, 0.6875, 1.0,
+                0.0625, 0.5, 0.375, 0.25, 0.6875, 1.0,
+                0.25, 0.5, 0.375, 0.9375, 0.6875, 0.625,
+                0.75, 0.5, 0.625, 0.9375, 0.6875, 1.0});
+        resetData(64.6875);
+        final PlayerLocation falling = position(0.5, 64.69775088439046, true);
+        acceptedHistory(falling, -0.1552320045166016, 0.0);
+        final PlayerLocation top = position(0.5, 64.6875, true);
+        assertNull("Actual landing after tolerant ground detection", move(falling, top));
+        assertEquals(0.09349927047421, data.sfBedBounceRise, 1.0E-10);
+        data.playerMoves.finishCurrentMove();
+        PlayerLocation from = top;
+        for (final double rise : new double[]{0.09349927047421, 0.0132292853222, -0.0654353016578}) {
+            final PlayerLocation to = position(0.5, from.getY() + rise, false);
+            assertNull("Recorded bounce must not trigger lowjump", move(from, to));
+            data.playerMoves.finishCurrentMove();
+            from = to;
+        }
+    }
+
     private void reportLanding(double horizontal) {
         platform(Material.GLASS, 10.0, false);
         PlayerLocation at = position(-0.3, 10.0, true);
