@@ -53,6 +53,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
     // Blocks that can be fetched automatically from from the Bukkit API
     private static final BukkitShapeModel MODEL_AUTO_FETCH = new BukkitFetchableBounds();
     private static final BukkitShapeModel MODEL_AUTO_FETCH_LEGACY = new BukkitFetchableBound();
+    private static final BukkitShapeModel MODEL_STRAW_BED = new BukkitStrawBed();
 
     // Blocks that are formed from multiple bounding boxes
     private static final BukkitShapeModel MODEL_BREWING_STAND = new BukkitStatic(
@@ -229,6 +230,10 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         for (final Material mat : MaterialUtil.WOODEN_SHELVES) {
             addModel(mat, MODEL_AUTO_FETCH);
         }
+        // Shelf mushrooms have a state-dependent collision shape and bounce surface.
+        for (final Material mat : BridgeMaterial.getAllBlocks("shelf_mushroom")) {
+            addModel(mat, MODEL_AUTO_FETCH);
+        }
 
         // new flower, and others
         // Keep liquids out of here: they have no collision shape, so auto-fetching leaves them with
@@ -388,6 +393,9 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
         // Beds
         for (Material mat : MaterialUtil.BEDS) {
             addModel(mat, fetchShapes ? MODEL_AUTO_FETCH : MODEL_XZ100_HEIGHT16_9);
+        }
+        for (Material mat : MaterialUtil.STRAW_BEDS) {
+            addModel(mat, fetchShapes ? MODEL_AUTO_FETCH : MODEL_STRAW_BED);
         }
 
         // Flower pots.

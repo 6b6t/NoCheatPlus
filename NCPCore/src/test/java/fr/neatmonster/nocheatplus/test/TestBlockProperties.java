@@ -10,10 +10,13 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import org.bukkit.Material;
 import org.junit.Test;
 
+import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties.MaterialBase;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 
 public class TestBlockProperties {
 
@@ -31,5 +34,26 @@ public class TestBlockProperties {
                 MaterialBase.COPPER, MaterialBase.COPPER, true));
         assertFalse(BlockProperties.isRightToolMaterial(null,
                 MaterialBase.IRON, MaterialBase.COPPER, true));
+    }
+
+    @Test
+    public void testWoolShapesUseFastShearsProfileWithoutFullCubeClassification() {
+        assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_BLOCKS));
+        assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_STAIRS));
+        assertTrue(MaterialUtil.WOOL_SHEARS_BLOCKS.containsAll(MaterialUtil.WOOL_SLABS));
+    }
+
+    @Test
+    public void testShelfMushroomIsNotClassifiedAsBed() {
+        assertFalse(MaterialUtil.BEDS.contains(BridgeMaterial.get("shelf_mushroom")));
+    }
+
+    @Test
+    public void testStrawBedUsesSeparateShapeClassification() {
+        final Material strawBed = BridgeMaterial.get("straw_bed");
+        if (strawBed != null) {
+            assertFalse(MaterialUtil.BEDS.contains(strawBed));
+            assertTrue(MaterialUtil.STRAW_BEDS.contains(strawBed));
+        }
     }
 }

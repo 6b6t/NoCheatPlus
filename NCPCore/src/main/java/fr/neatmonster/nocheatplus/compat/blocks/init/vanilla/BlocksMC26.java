@@ -45,6 +45,30 @@ public class BlocksMC26 implements BlockPropertiesSetup {
         BlockProperties.setBlockProps("SULFUR_SPIKE",
                 new BlockProperties.BlockProps(BlockProperties.woodPickaxe, 1.5f));
 
+        // 26.3 wool/concrete stairs and slabs retain their source material's
+        // breaking profile; shape flags are supplied by the generic stair/slab setup.
+        for (final Material material : MaterialUtil.WOOL_STAIRS) {
+            BlockInit.setPropsAs(material, Material.WHITE_WOOL);
+        }
+        for (final Material material : MaterialUtil.WOOL_SLABS) {
+            BlockInit.setPropsAs(material, Material.WHITE_WOOL);
+        }
+        for (final Material material : MaterialUtil.CONCRETE_STAIRS) {
+            BlockInit.setPropsAs(material, Material.WHITE_CONCRETE);
+        }
+        for (final Material material : MaterialUtil.CONCRETE_SLABS) {
+            BlockInit.setPropsAs(material, Material.WHITE_CONCRETE);
+        }
+        // Straw beds are mined faster with a hoe. Keep their support shape
+        // variable, but out of the bed flags so they do not bounce or reduce falls.
+        BlockProperties.setBlockProps("STRAW_BED",
+                new BlockProperties.BlockProps(BlockProperties.woodHoe, 0.2f));
+        BlockFlags.setBlockFlags("STRAW_BED",
+                BlockFlags.F_GROUND | BlockFlags.F_SOLID | BlockFlags.F_VARIABLE);
+        // Shelf mushrooms break instantly and bounce without being treated as beds.
+        BlockProperties.setBlockProps("SHELF_MUSHROOM", BlockProperties.instantType);
+        BlockFlags.addFlags("SHELF_MUSHROOM", BlockFlags.F_VARIABLE | BlockFlags.F_BOUNCE25);
+
         final ConfigFile config = ConfigManager.getConfigFile();
         if (config.getBoolean(ConfPaths.BLOCKBREAK_DEBUG,
                 config.getBoolean(ConfPaths.CHECKS_DEBUG, false))) {
