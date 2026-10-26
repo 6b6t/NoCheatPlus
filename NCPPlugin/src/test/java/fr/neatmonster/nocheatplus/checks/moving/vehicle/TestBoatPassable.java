@@ -80,7 +80,7 @@ public class TestBoatPassable {
     }
 
     @Test
-    public void correctionStopsAtTheWallInsteadOfAnOldCheckpointAndKeepsTheLook() throws Exception {
+    public void horizontalCorrectionStopsAtTheAcceptedPositionAndKeepsTheLook() throws Exception {
         blocks.set(1, 1, 0, Material.STONE);
         final var from = at(0, 1, 0.5);
         when(from.getWorldName()).thenReturn("world");
@@ -89,11 +89,36 @@ public class TestBoatPassable {
         when(to.getPitch()).thenReturn(-12f);
         final var old = new SetBackEntry().set("world", -5, 1, 0.5, 0, 0, 1, 0);
         final var target = correction(from, to, old);
-        assertEquals(0.3125, target.getX(), 0.001);
+        assertEquals(0, target.getX(), 0);
         assertEquals(1, target.getY(), 0);
         assertEquals(73, target.getYaw(), 0);
         assertEquals(-12, target.getPitch(), 0);
         assertEquals(-5, old.getX(), 0);
+    }
+
+    @Test
+    public void diagonalCollisionStopsBothHorizontalComponents() throws Exception {
+        for (int z = -2; z <= 3; z++) blocks.set(1, 1, z, Material.STONE);
+        final var from = at(0, 1, 0.5);
+        when(from.getWorldName()).thenReturn("world");
+        final var old = new SetBackEntry().set("world", -5, 1, 0.5, 0, 0, 1, 0);
+        final var target = correction(from, at(0.5, 1, 1), old);
+        assertEquals(from.getX(), target.getX(), 0);
+        assertEquals(from.getZ(), target.getZ(), 0);
+    }
+
+    @Test
+    public void floorCollisionAlsoStopsHorizontalDrift() throws Exception {
+        for (int x = -2; x <= 3; x++) {
+            for (int z = -2; z <= 3; z++) blocks.set(x, 0, z, Material.STONE);
+        }
+        final var from = at(0.5, 1.1, 0.5);
+        when(from.getWorldName()).thenReturn("world");
+        final var old = new SetBackEntry().set("world", 0.5, 1.1, 0.5, 0, 0, 1, 0);
+        final var target = correction(from, at(1, 0.8, 1), old);
+        assertEquals(from.getX(), target.getX(), 0);
+        assertEquals(1, target.getY(), 0.001);
+        assertEquals(from.getZ(), target.getZ(), 0);
     }
 
     @Test
@@ -113,7 +138,7 @@ public class TestBoatPassable {
         final var from = at(0.5, 1, 0.5);
         when(from.getWorldName()).thenReturn("world");
         final var old = new SetBackEntry().set("world", 0.5, 1, 0.5, 0, 0, 1, 0);
-        assertEquals(2.3125, correction(from, at(6.5, 1, 0.5), old).getX(), 0.002);
+        assertEquals(from.getX(), correction(from, at(6.5, 1, 0.5), old).getX(), 0);
     }
 
     @Test

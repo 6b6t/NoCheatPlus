@@ -306,16 +306,19 @@ public class VehicleEnvelope extends Check {
                 from.getX() + halfWidth, from.getY() + from.getBoxMarginVertical() - epsilon,
                 from.getZ() + halfWidth)) return fallback;
         double clear = 0.0;
-        double blocked = 1.0;
-        for (int i = 0; i < 12; i++) {
-            final double fraction = (clear + blocked) / 2;
-            if (isBoatMoveBlocked(from, to, fraction)) blocked = fraction;
-            else clear = fraction;
+        if (from.getY() != to.getY()) {
+            double blocked = 1.0;
+            for (int i = 0; i < 12; i++) {
+                final double fraction = (clear + blocked) / 2;
+                if (isBoatMoveBlocked(from, to, fraction)) blocked = fraction;
+                else clear = fraction;
+            }
         }
+        // Stop both horizontal components together instead of deflecting a diagonal clip.
         return new SetBackEntry().set(from.getWorldName(),
-                from.getX() + clear * (to.getX() - from.getX()),
+                from.getX(),
                 from.getY() + clear * (to.getY() - from.getY()),
-                from.getZ() + clear * (to.getZ() - from.getZ()),
+                from.getZ(),
                 to.getYaw(), to.getPitch(), fallback.getTime(), fallback.getMsTime());
     }
 
