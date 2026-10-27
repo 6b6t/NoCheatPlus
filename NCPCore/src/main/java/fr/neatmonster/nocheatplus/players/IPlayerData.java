@@ -312,6 +312,11 @@ public interface IPlayerData extends IData, IBaseDataAccess, IGetGenericInstance
      */
     public boolean isBedrockPlayer();
 
+    /** Client game version reported by Floodgate, or null when unavailable. */
+    public default String getBedrockVersion() {
+        return null;
+    }
+
     /**
      * Set the state player connect through geysermc
      * 
