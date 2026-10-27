@@ -27,6 +27,7 @@ import fr.neatmonster.nocheatplus.compat.BridgeMaterial;
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.PluginTests;
 import fr.neatmonster.nocheatplus.compat.MCAccess;
+import fr.neatmonster.nocheatplus.components.NoCheatPlusAPI;
 import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.test.BlockTests;
 import fr.neatmonster.nocheatplus.utilities.map.BlockFlags;
@@ -100,14 +101,16 @@ public class TestVanillaShapes {
     @SuppressWarnings("unchecked")
     @Test
     public void modelsForTheChangedBlocks() throws Exception {
+        final NoCheatPlusAPI previousAPI = NCPAPIProvider.getNoCheatPlusAPI();
         StaticLog.setUseLogManager(false);
-        PluginTests.setUnitTestNoCheatPlusAPI(true);
         final MCAccessBukkitModern access;
         // No server here: the constructor's NMS reflection helpers are mocked (not used by the block setup).
-        try (org.mockito.MockedConstruction<?> a = org.mockito.Mockito.mockConstruction(fr.neatmonster.nocheatplus.compat.cbreflect.reflect.ReflectBase.class);
+        try (org.mockito.MockedStatic<NCPAPIProvider> api = org.mockito.Mockito.mockStatic(NCPAPIProvider.class);
+             org.mockito.MockedConstruction<?> a = org.mockito.Mockito.mockConstruction(fr.neatmonster.nocheatplus.compat.cbreflect.reflect.ReflectBase.class);
              org.mockito.MockedConstruction<?> b = org.mockito.Mockito.mockConstruction(fr.neatmonster.nocheatplus.compat.cbreflect.reflect.ReflectDamageSource.class);
              org.mockito.MockedConstruction<?> c = org.mockito.Mockito.mockConstruction(fr.neatmonster.nocheatplus.compat.cbreflect.reflect.ReflectLivingEntity.class);
              org.mockito.MockedConstruction<?> d = org.mockito.Mockito.mockConstruction(fr.neatmonster.nocheatplus.compat.cbreflect.reflect.ReflectDamageSources.class)) {
+            api.when(NCPAPIProvider::getNoCheatPlusAPI).thenReturn(new PluginTests.UnitTestNoCheatPlusAPI());
             access = new MCAccessBukkitModern();
             StaticLog.setUseLogManager(false);
             NCPAPIProvider.getNoCheatPlusAPI().registerGenericInstance(MCAccess.class, access);
@@ -152,5 +155,6 @@ public class TestVanillaShapes {
             assertTrue(mat + " is passable", (BlockFlags.getBlockFlags(mat) & BlockFlags.F_IGN_PASSABLE) != 0);
             assertEquals(mat + " is not ground", 0L, BlockFlags.getBlockFlags(mat) & BlockFlags.SOLID_GROUND);
         }
+        assertSame("Block setup must preserve the shared API", previousAPI, NCPAPIProvider.getNoCheatPlusAPI());
     }
 }

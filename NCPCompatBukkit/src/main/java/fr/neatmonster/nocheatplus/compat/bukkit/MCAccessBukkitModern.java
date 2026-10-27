@@ -243,7 +243,7 @@ public class MCAccessBukkitModern extends MCAccessBukkit {
             "sculk_sensor", "frogspawn", "sniffer_egg", "decorated_pot", "pitcher_crop",
             "calibrated_sculk_sensor", "closed_eyeblossom", "open_eyeblossom",
             "pale_hanging_moss", "resin_clump", "cactus_flower", "short_dry_grass",
-            "tall_dry_grass", "golden_dandelion", "red_shrub", "poplar_sapling")) {
+            "tall_dry_grass", "golden_dandelion")) {
             addModel(mat, MODEL_AUTO_FETCH);
         }
         
