@@ -2742,7 +2742,8 @@ public class BlockProperties {
         final int bx = Location.locToBlock(x);
         final int by = Location.locToBlock(y);
         final int bz = Location.locToBlock(z);
-        if (node.hasNonNullBounds() == AlmostBoolean.NO
+        if (isPassableBedrock(access, bx, by, bz, x, y, z, x, y, z)
+            || node.hasNonNullBounds() == AlmostBoolean.NO
             || !collidesBlock(access, x, y, z, x, y, z, bx, by, bz, node, nodeAbove, BlockFlags.getBlockFlags(id))) {
             return true;
         }
@@ -2797,7 +2798,8 @@ public class BlockProperties {
         }
         final double fx = x - bx;
         final double fz = z - bz;
-        return isPassableWorkaround(access, bx, by, bz, fx, fy, fz, nodeBelow, 0, 0, 0, 0);
+        return isPassableBedrock(access, bx, by, bz, x, y, z, x, y, z)
+                || isPassableWorkaround(access, bx, by, bz, fx, fy, fz, nodeBelow, 0, 0, 0, 0);
     }
 
     /**
@@ -2832,6 +2834,14 @@ public class BlockProperties {
         return isPassableExact(access, loc.getX(), loc.getY(), loc.getZ());
     }
 
+
+    // Passability alone may use client-free space; ground must retain Geyser-corrected Java support.
+    private static boolean isPassableBedrock(final BlockCache access, final int x, final int y, final int z,
+            final double minX, final double minY, final double minZ,
+            final double maxX, final double maxY, final double maxZ) {
+        final double[] bounds = access.getBedrockBounds(x, y, z);
+        return bounds != null && !BedrockCollision.intersects(bounds, x, y, z, minX, minY, minZ, maxX, maxY, maxZ);
+    }
 
     /**
      * Requires the hit-box of the block is hit (...): this checks for special
@@ -2884,9 +2894,6 @@ public class BlockProperties {
                                                      final double minX, final double minY, final double minZ,
                                                      final double maxX, final double maxY, final double maxZ,
                                                      final double dT) {
-        final double[] bedrock = access.getBedrockBounds(bx, by, bz);
-        if (bedrock != null && !BedrockCollision.intersects(
-                bedrock, bx, by, bz, minX, minY, minZ, maxX, maxY, maxZ)) return true;
         // Note: Since this is only called if the bounding box collides, out-of-bounds checks should not be necessary.
         // TODO: Add a flag if a workaround exists (!), might store the type of workaround extra (generic!), or extra flags.
         final Material id = node.getType();
@@ -4711,7 +4718,8 @@ public class BlockProperties {
             maxZ = dZ * dT + oZ + blockZ;
             minZ = oZ + blockZ;
         }
-        if (!collidesBlock(access, minX, minY, minZ, maxX, maxY, maxZ, blockX, blockY, blockZ, node, null, BlockFlags.getBlockFlags(node.getType()) | BlockFlags.F_COLLIDE_EDGES)) {
+        if (isPassableBedrock(access, blockX, blockY, blockZ, minX, minY, minZ, maxX, maxY, maxZ)
+                || !collidesBlock(access, minX, minY, minZ, maxX, maxY, maxZ, blockX, blockY, blockZ, node, null, BlockFlags.getBlockFlags(node.getType()) | BlockFlags.F_COLLIDE_EDGES)) {
             // TODO: Might check for fence too, here.
             return true;
         }
@@ -4769,7 +4777,8 @@ public class BlockProperties {
             return true;
         }
         // (Coordinates are already passed in an ordered form.)
-        if (!collidesBlock(access, minX, minY, minZ, maxX, maxY, maxZ, blockX, blockY, blockZ, node, null, BlockFlags.getBlockFlags(id) | BlockFlags.F_COLLIDE_EDGES)) {
+        if (isPassableBedrock(access, blockX, blockY, blockZ, minX, minY, minZ, maxX, maxY, maxZ)
+                || !collidesBlock(access, minX, minY, minZ, maxX, maxY, maxZ, blockX, blockY, blockZ, node, null, BlockFlags.getBlockFlags(id) | BlockFlags.F_COLLIDE_EDGES)) {
             return true;
         }
 

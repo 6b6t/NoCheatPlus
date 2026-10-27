@@ -69,6 +69,7 @@ import fr.neatmonster.nocheatplus.utilities.CheckUtils;
 import fr.neatmonster.nocheatplus.utilities.PotionUtil;
 import fr.neatmonster.nocheatplus.utilities.StringUtil;
 import fr.neatmonster.nocheatplus.utilities.ds.count.ActionAccumulator;
+import fr.neatmonster.nocheatplus.utilities.collision.BedrockCollision;
 import fr.neatmonster.nocheatplus.utilities.collision.CollisionUtil;
 import fr.neatmonster.nocheatplus.utilities.location.LocUtil;
 import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
@@ -329,6 +330,13 @@ public class SurvivalFly extends Check {
         if ((from.getBlockFlags() & BlockFlags.F_ALLOW_LOWJUMP) != 0) {
             data.sfNoLowJump = true;
         } 
+
+        if (pData.isBedrockPlayer() && fromOnGround && yDistance > 0.0
+                && BedrockCollision.isSupportCorrection(from.getBlockCache(), from.getMinX(), from.getMinZ(),
+                        from.getMaxX(), from.getMaxZ(), from.getY(), to.getY())) {
+            data.sfNoLowJump = true;
+            context.tags.add("bedrock_support");
+        }
 
         // Vanilla bed bounce after a short fall (see BedBounce): the hop right after an accepted landing
         // on a bed is no low jump, if it rises no more than the vanilla bounce. Only for this one move.
@@ -782,7 +790,7 @@ public class SurvivalFly extends Check {
         if (toOnGround && !fromOnGround) {
             final double bedBounceRise = BedBounce.riseAfterLanding(lastMove.toIsValid, lastMove.to.onGround,
                     lastMove.yDistance, fromOnGround, toOnGround, isReallySneaking(player) && player.isSneaking(),
-                    BedBounce.isOnBedTop(to.getBlockCache(), to.getMinX(), to.getMinZ(), to.getMaxX(), to.getMaxZ(), to.getY()));
+                    BedBounce.isOnBedTop(to.getBlockCache(), to.getMinX(), to.getMinZ(), to.getMaxX(), to.getMaxZ(), to.getY()), pData.isBedrockPlayer());
             if (bedBounceRise > 0.0) {
                 data.sfBedBounceRise = bedBounceRise;
                 data.sfBedBounceMove = data.getPlayerMoveCount();

@@ -22,6 +22,7 @@ import org.junit.Before;
 import org.junit.Test;
 import org.mockito.MockedStatic;
 
+import fr.neatmonster.nocheatplus.checks.combined.Improbable;
 import fr.neatmonster.nocheatplus.PluginTests;
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.ViolationData;
@@ -71,6 +72,7 @@ public class TestLandingStepSequence {
     @Before
     public void setup() throws Exception {
         StaticLog.setUseLogManager(false);
+        PluginTests.setUnitTestNoCheatPlusAPI(true);
         BlockTests.initBlockProperties();
         StaticLog.setUseLogManager(true);
         // Match production carpet flags, which the minimal block test bootstrap does not install.
@@ -115,7 +117,7 @@ public class TestLandingStepSequence {
         folia.when(() -> Folia.isOwnedByCurrentRegion(any(Entity.class))).thenReturn(true);
         nativeAccess = mockStatic(NativeLandingAccess.class);
         nativeAccess.when(() -> NativeLandingAccess.canCollide(any(Player.class), any(Entity.class))).thenReturn(true);
-        blocks = new FakeBlockCache();
+        blocks = new FakeBlockCache() { { minBlockY = -64; maxBlockY = 319; } };
         entities = new BlockCacheBukkitModern(Collections.emptyMap());
         try (MockedStatic<DataManager> ignored = mockStatic(DataManager.class)) { check = spy(new SurvivalFly()); }
         final ViolationData actions = mock(ViolationData.class);
@@ -131,10 +133,61 @@ public class TestLandingStepSequence {
         ServerVersion.setMinecraftVersion(oldVersion);
         blocks.cleanup();
         entities.cleanup();
+        PluginTests.setUnitTestNoCheatPlusAPI(true);
     }
 
     @Test public void recordedBoatLandingWithSmallHorizontalMove() { reportLanding(0.04); }
     @Test public void recordedBoatLandingWithLargerHorizontalMove() { reportLanding(0.20); }
+
+    @Test
+    public void recordedBedrockShortBedBounceDoesNotCountAsLowJump() {
+        when(playerData.isBedrockPlayer()).thenReturn(true);
+        final long flags = BlockFlags.getBlockFlags(Material.BLUE_BED);
+        BlockFlags.setBlockFlags(Material.BLUE_BED, BlockFlags.SOLID_GROUND | BlockFlags.F_BED | BlockFlags.F_BOUNCE25);
+        try (MockedStatic<Improbable> ignored = mockStatic(Improbable.class)) {
+            for (int x = -2; x < 8; x++) blocks.set(x, -60, 0, Material.BLUE_BED,
+                    new double[] {0, 0, 0, 1, 0.5625, 1});
+            resetData(-59.4375);
+            PlayerLocation from = position(0.8, -59.25053, false);
+            acceptedHistory(from, -0.12087, 0.1);
+            // Bedrock trace, 27 Oct 16:41:40: clipped landing, immediate bounce, apex, descent.
+            for (final double y : new double[] {-59.4375, -59.30733, -59.25816, -59.28838}) {
+                final PlayerLocation to = position(from.getX() + 0.1, y, y == -59.4375);
+                assertNull("Recorded bed bounce at " + y, move(from, to));
+                data.playerMoves.finishCurrentMove();
+                from = to;
+            }
+            assertFalse(data.sfLowJump);
+        } finally { BlockFlags.setBlockFlags(Material.BLUE_BED, flags); }
+    }
+
+    @Test
+    public void recordedBedrockChestEdgeCorrectionDoesNotCountAsJump() {
+        when(playerData.isBedrockPlayer()).thenReturn(true);
+        blocks = new FakeBlockCache() {
+            { minBlockY = -64; maxBlockY = 319; }
+            @Override public double[] getBedrockBounds(final int x, final int y, final int z) {
+                return x == 1 && y == -60 && z == 0 ? new double[] {0.025, 0, 0.025, 0.975, 0.95, 1} : null;
+            }
+        };
+        final long flags = BlockFlags.getBlockFlags(Material.CHEST);
+        BlockFlags.setBlockFlags(Material.CHEST, BlockFlags.SOLID_GROUND);
+        blocks.set(1, -60, 0, Material.CHEST, new double[] {0.0625, 0, 0.0625, 0.9375, 0.875, 1});
+        try (MockedStatic<Improbable> ignored = mockStatic(Improbable.class)) {
+            resetData(-59.125);
+            PlayerLocation from = position(1.1876, -58.92871, false);
+            acceptedHistory(from, -0.374, 0.1);
+            // Bedrock trace, 27 Oct 16:43:17: native landing, delayed client-height correction past the edge, fall.
+            final double[][] moves = {{0.89423, -59.125}, {0.5025, -59.05}, {0.16388, -59.1284}};
+            for (final double[] point : moves) {
+                final PlayerLocation to = position(point[0], point[1], point[1] == -59.125);
+                assertNull("Recorded chest edge at " + point[1], move(from, to));
+                data.playerMoves.finishCurrentMove();
+                from = to;
+            }
+            assertFalse(data.sfLowJump);
+        } finally { BlockFlags.setBlockFlags(Material.CHEST, flags); }
+    }
 
     private void reportLanding(double horizontal) {
         platform(Material.GLASS, 10.0, false);

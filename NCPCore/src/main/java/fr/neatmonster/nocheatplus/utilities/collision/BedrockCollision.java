@@ -14,9 +14,35 @@
  */
 package fr.neatmonster.nocheatplus.utilities.collision;
 
+import org.bukkit.Location;
+
+import fr.neatmonster.nocheatplus.utilities.map.BlockCache;
+
 /** Exact additional Bedrock contacts; Java/Geyser-corrected contacts remain valid. */
 public final class BedrockCollision {
     private BedrockCollision() {}
+
+    /** A client-height correction from an actual Java support face is not a jump. */
+    public static boolean isSupportCorrection(final BlockCache cache,
+            final double minX, final double minZ, final double maxX, final double maxZ,
+            final double fromY, final double toY) {
+        if (!(toY > fromY) || !Double.isFinite(fromY) || !Double.isFinite(toY)) return false;
+        final double epsilon = 1.0E-5;
+        for (int x = Location.locToBlock(minX); x <= Location.locToBlock(maxX); x++) {
+            for (int y = Location.locToBlock(fromY) - 1; y <= Location.locToBlock(fromY); y++) {
+                for (int z = Location.locToBlock(minZ); z <= Location.locToBlock(maxZ); z++) {
+                    final double[] client = cache.getBedrockBounds(x, y, z);
+                    if (client == null) continue;
+                    final double[] server = cache.getBounds(x, y, z);
+                    if (server != null && supports(server, x, y, z,
+                            minX, fromY - epsilon, minZ, maxX, fromY + epsilon, maxZ)
+                            && supports(client, x, y, z,
+                                    minX, toY - epsilon, minZ, maxX, toY + epsilon, maxZ)) return true;
+                }
+            }
+        }
+        return false;
+    }
 
     public static boolean intersects(final double[] boxes, final int x, final int y, final int z,
             final double minX, final double minY, final double minZ,
