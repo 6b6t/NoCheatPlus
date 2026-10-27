@@ -60,6 +60,23 @@ public class BridgeMisc {
         }
     }
 
+    /** Version of an authenticated Floodgate client; absence keeps native collision behavior. */
+    public static String getFloodgatePlayerVersion(final UUID playerId) {
+        try {
+            final Class<?> apiClass = ReflectionUtil.getClass("org.geysermc.floodgate.api.FloodgateApi");
+            if (apiClass == null) return null;
+            final Object api = apiClass.getMethod("getInstance").invoke(null);
+            final Method lookup = apiClass.getMethod("getPlayer", UUID.class);
+            final Object player = lookup.invoke(api, playerId);
+            if (player == null) return null;
+            final Object version = lookup.getReturnType().getMethod("getVersion").invoke(player);
+            return version instanceof String ? (String) version : null;
+        } catch (ReflectiveOperationException | LinkageError failure) {
+            StaticLog.logWarning("Could not read Floodgate client version: " + failure);
+            return null;
+        }
+    }
+
     private static GameMode getSpectatorGameMode() {
         try {
             return GameMode.SPECTATOR;

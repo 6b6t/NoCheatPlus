@@ -14,7 +14,7 @@ public class TestPackagedResources {
         PluginDescriptionFile description = new PluginDescriptionFile(in);
         assertEquals("NoCheatPlus", description.getName());
         assertEquals("fr.neatmonster.nocheatplus.NoCheatPlus", description.getMain());
-        assertEquals(java.util.List.of("LuckPerms", "ProtocolLib", "floodgate"), description.getSoftDepend());
+        assertEquals(java.util.List.of("LuckPerms", "ProtocolLib", "floodgate", "Geyser-Spigot"), description.getSoftDepend());
     }
     @Test public void bukkitParsesProcessedAndPackagedYamlResources() throws Exception {
         String path = System.getProperty("telemetry.packagedJar");
@@ -25,6 +25,7 @@ public class TestPackagedResources {
         int yaml = 0;
         try (JarFile jar = new JarFile(path)) {
             assertNotNull(jar.getJarEntry("plugin.yml"));
+            assertNotNull("Bedrock geometry must survive shading", jar.getJarEntry("bedrock/collisions-26.50.tsv.gz"));
             for (var entry : java.util.Collections.list(jar.entries())) {
                 if (entry.isDirectory() || !(entry.getName().endsWith(".yml") || entry.getName().endsWith(".yaml"))) continue;
                 yaml++;

@@ -62,6 +62,7 @@ import fr.neatmonster.nocheatplus.logging.Streams;
 import fr.neatmonster.nocheatplus.utilities.PotionUtil;
 import fr.neatmonster.nocheatplus.utilities.StringUtil;
 import fr.neatmonster.nocheatplus.utilities.collision.BlockPositionContainer;
+import fr.neatmonster.nocheatplus.utilities.collision.BedrockCollision;
 import fr.neatmonster.nocheatplus.utilities.collision.ICollidePassable;
 import fr.neatmonster.nocheatplus.utilities.collision.PassableAxisTracing;
 import fr.neatmonster.nocheatplus.utilities.collision.PassableRayTracing;
@@ -2883,6 +2884,9 @@ public class BlockProperties {
                                                      final double minX, final double minY, final double minZ,
                                                      final double maxX, final double maxY, final double maxZ,
                                                      final double dT) {
+        final double[] bedrock = access.getBedrockBounds(bx, by, bz);
+        if (bedrock != null && !BedrockCollision.intersects(
+                bedrock, bx, by, bz, minX, minY, minZ, maxX, maxY, maxZ)) return true;
         // Note: Since this is only called if the bounding box collides, out-of-bounds checks should not be necessary.
         // TODO: Add a flag if a workaround exists (!), might store the type of workaround extra (generic!), or extra flags.
         final Material id = node.getType();
@@ -4214,6 +4218,18 @@ public class BlockProperties {
         // TODO: Relevant methods called here should be changed to use IBlockCacheNode (node, nodeAbove). 
         final Material id = node.getType(); // TODO: Pass on the node (signatures...).
         final long flags = BlockFlags.getBlockFlags(id);
+        if ((flags & ignoreFlags) == 0) {
+            final double[] bedrock = access.getBedrockBounds(x, y, z);
+            if (bedrock != null && BedrockCollision.supports(
+                    bedrock, x, y, z, minX, minY, minZ, maxX, maxY, maxZ)) {
+                if (nodeAbove == null) nodeAbove = access.getOrCreateBlockCacheNode(x, y + 1, z, false);
+                final double[] clientAbove = access.getBedrockBounds(x, y + 1, z);
+                final double[] above = clientAbove == null ? nodeAbove.getBounds(access, x, y + 1, z) : clientAbove;
+                if (clientAbove == null && isPassable(nodeAbove.getType())
+                        || above != null && !BedrockCollision.containsFeet(
+                        above, x, y + 1, z, minX, maxY, minZ, maxX, maxZ)) return AlmostBoolean.YES;
+            }
+        }
         // TODO: LIQUID could be a quick return as well.
         // (IGN_PASSABLE might still allow standing on.)
         if ((flags & BlockFlags.F_GROUND) == 0 || (flags & ignoreFlags) != 0) {

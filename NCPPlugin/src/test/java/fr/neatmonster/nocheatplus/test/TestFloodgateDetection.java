@@ -26,6 +26,8 @@ public class TestFloodgateDetection {
             when(plugins.isPluginEnabled("floodgate")).thenReturn(true);
             reflection.when(() -> ReflectionUtil.getClass(API)).thenReturn(FloodgateApi.class);
             assertTrue(BridgeMisc.isFloodgatePlayer(BEDROCK));
+            assertEquals("1.26.52", BridgeMisc.getFloodgatePlayerVersion(BEDROCK));
+            assertNull(BridgeMisc.getFloodgatePlayerVersion(UUID.randomUUID()));
             assertFalse("UUID format alone cannot identify Bedrock", BridgeMisc.isFloodgatePlayer(
                     UUID.fromString("00000000-0000-0000-0009-000000000001")));
 
@@ -44,6 +46,7 @@ public class TestFloodgateDetection {
             assertFalse(BridgeMisc.isFloodgatePlayer(BEDROCK));
             reflection.when(() -> ReflectionUtil.getClass(API)).thenReturn(String.class);
             assertFalse(BridgeMisc.isFloodgatePlayer(BEDROCK));
+            assertNull(BridgeMisc.getFloodgatePlayerVersion(BEDROCK));
             reflection.when(() -> ReflectionUtil.getClass(API)).thenReturn(FailingApi.class);
             assertFalse(BridgeMisc.isFloodgatePlayer(BEDROCK));
         }
@@ -57,6 +60,14 @@ public class TestFloodgateDetection {
         public boolean isFloodgatePlayer(final UUID playerId) {
             return BEDROCK.equals(playerId);
         }
+
+        public FloodgatePlayer getPlayer(final UUID playerId) {
+            return BEDROCK.equals(playerId) ? new FloodgatePlayer() : null;
+        }
+    }
+
+    public static class FloodgatePlayer {
+        public String getVersion() { return "1.26.52"; }
     }
 
     public static class FailingApi {
