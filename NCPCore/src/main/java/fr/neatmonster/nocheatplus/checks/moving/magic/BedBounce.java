@@ -25,7 +25,8 @@ import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
  * <p>
  * A player who lands on a bed without sneaking has the vertical speed of the
  * landing tick reversed and scaled by 0.66. After gravity and drag the next
- * move rises by {@code (-impact * 0.66 - 0.08) * 0.98}. A fall of more than one
+ * Java move rises by {@code (-impact * 0.66 - 0.08) * 0.98}; Bedrock sends the
+ * reflected impulse before that gravity step. A fall of more than one
  * block is handled by the prepared bounce in MovingListener (velocity). Shorter
  * falls get no such velocity, so the small hop that follows was judged as a
  * jump and the change to descending counted as a "low jump" (set back). This
@@ -60,15 +61,17 @@ public final class BedBounce {
      * @param lastYDistance
      *            yDistance of the full in-air move before the landing move,
      *            i.e. the vertical speed the landing tick started from.
+     * @param bedrock Whether the authenticated client uses Bedrock physics.
      * @return The vanilla rise of the following move, or 0.0 if there is no
      *         visible bounce.
      */
-    public static double firstRise(final double lastYDistance) {
+    public static double firstRise(final double lastYDistance, final boolean bedrock) {
         if (!(lastYDistance < 0.0) || Double.isNaN(lastYDistance) || Double.isInfinite(lastYDistance)) {
             return 0.0;
         }
         final double impact = (lastYDistance - GRAVITY) * DRAG;
-        final double rise = (-impact * BOUNCE_FACTOR - GRAVITY) * DRAG;
+        // Bedrock sends the reflected impulse before the next gravity step.
+        final double rise = bedrock ? -impact * BOUNCE_FACTOR : (-impact * BOUNCE_FACTOR - GRAVITY) * DRAG;
         return rise > 0.0 ? rise : 0.0;
     }
 
@@ -91,16 +94,17 @@ public final class BedBounce {
      *            Really sneaking (vanilla: no bounce).
      * @param toOnBedTop
      *            The feet end on the top face of a bed.
+     * @param bedrock Whether the authenticated client uses Bedrock physics.
      * @return The rise of the next move, or 0.0 if no bounce is expected.
      */
     public static double riseAfterLanding(final boolean lastToValid, final boolean lastToOnGround,
                                           final double lastYDistance, final boolean fromOnGround,
                                           final boolean toOnGround, final boolean sneaking,
-                                          final boolean toOnBedTop) {
+                                          final boolean toOnBedTop, final boolean bedrock) {
         if (!lastToValid || lastToOnGround || fromOnGround || !toOnGround || sneaking || !toOnBedTop) {
             return 0.0;
         }
-        return firstRise(lastYDistance);
+        return firstRise(lastYDistance, bedrock);
     }
 
     /**

@@ -3,9 +3,32 @@ package fr.neatmonster.nocheatplus.test;
 import static org.junit.Assert.*;
 
 import org.junit.Test;
+import org.bukkit.Material;
+import fr.neatmonster.nocheatplus.utilities.map.FakeBlockCache;
 import fr.neatmonster.nocheatplus.utilities.collision.BedrockCollision;
 
 public class TestBedrockCollision {
+    @Test
+    public void supportCorrectionRequiresBothExactFacesOfTheSameBlock() {
+        final var cache = new FakeBlockCache() {
+            @Override public double[] getBedrockBounds(final int x, final int y, final int z) {
+                return isBedrockCache() && x == 0 && y == 64 && z == 0
+                        ? new double[] {0.025, 0, 0.025, 0.975, 0.95, 0.975} : null;
+            }
+        };
+        cache.set(0, 64, 0, Material.CHEST, new double[] {0.0625, 0, 0.0625, 0.9375, 0.875, 0.9375});
+        assertFalse("Java cache", BedrockCollision.isSupportCorrection(cache, 0.2, 0.2, 0.8, 0.8, 64.875, 64.95));
+        cache.setBedrockCache(true);
+        assertTrue(BedrockCollision.isSupportCorrection(cache, 0.2, 0.2, 0.8, 0.8, 64.875, 64.95));
+        assertTrue("Float packet rounding", BedrockCollision.isSupportCorrection(cache, 0.2, 0.2, 0.8, 0.8, 64.875, 64.950005));
+        assertFalse("Ordinary low hop", BedrockCollision.isSupportCorrection(cache, 0.2, 0.2, 0.8, 0.8, 64.875, 64.98));
+        assertFalse("Not standing on Java support", BedrockCollision.isSupportCorrection(cache, 0.2, 0.2, 0.8, 0.8, 64.8, 64.95));
+        assertFalse("Outside block", BedrockCollision.isSupportCorrection(cache, -0.7, 0.2, -0.1, 0.8, 64.875, 64.95));
+        assertFalse("No rise", BedrockCollision.isSupportCorrection(cache, 0.2, 0.2, 0.8, 0.8, 64.95, 64.875));
+        assertFalse("Invalid source", BedrockCollision.isSupportCorrection(cache, 0.2, 0.2, 0.8, 0.8, Double.NEGATIVE_INFINITY, 64.95));
+        cache.cleanup();
+    }
+
     @Test
     public void fractionalSupportAtWorldHeightsHasNoExtraTolerance() {
         for (final double top : new double[] {0.1825, 0.45, 0.5, 0.899999, 0.95, 1.5}) {

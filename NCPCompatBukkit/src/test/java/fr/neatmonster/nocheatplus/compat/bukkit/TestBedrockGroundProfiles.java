@@ -70,6 +70,21 @@ public class TestBedrockGroundProfiles {
     }
 
     @Test
+    public void shorterClientShapeStillKeepsTranslatedJavaGround() {
+        final long flags = BlockFlags.getBlockFlags(Material.STONE);
+        BlockFlags.setBlockFlags(Material.STONE, BlockFlags.SOLID_GROUND | BlockFlags.FULL_BOUNDS);
+        try {
+            final var cache = cache(new double[] {0.1, 0, 0.1, 0.9, 0.5, 0.9}, 64, false);
+            assertTrue(ground(cache, 65));
+            cache.setBedrockCache(true);
+            assertTrue("Shorter Bedrock geometry cannot remove Geyser-corrected Java support", ground(cache, 65));
+            assertTrue("Client support remains valid too", ground(cache, 64.5));
+            assertTrue("Client-free body volume is still passable", BlockProperties.isPassableBox(cache,
+                    0, 64, 0, 0.2, 64.6, 0.2, 0.8, 64.9, 0.8));
+        } finally { BlockFlags.setBlockFlags(Material.STONE, flags); }
+    }
+
+    @Test
     public void translatedJavaContactsStayValidAndAnObstructingBlockStillBlocks() {
         final long flags = BlockFlags.getBlockFlags(Material.STONE);
         BlockFlags.setBlockFlags(Material.STONE, BlockFlags.SOLID_GROUND | BlockFlags.FULL_BOUNDS);
