@@ -708,6 +708,15 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
                 event.setCancelled(true);
                 return;
             }
+            if (damageCause == DamageCause.ENTITY_ATTACK && weaponType != null && weaponType == BridgeMaterial.MACE
+                    && isInvalidMaceSmash(player, attackerPData)) {
+                if (attackerPData.isDebugActive(checkType)) {
+                    debug(player, "Prevent mace smash damage, due to an impossible glide dive.");
+                }
+                fr.neatmonster.nocheatplus.telemetry.Telemetry.setback(player, "fight-mace-invalid-fall");
+                event.setCancelled(true);
+                return;
+            }
             // Actual fight checks.
             if (damageCause == DamageCause.ENTITY_ATTACK) {
                 // TODO: Might/should skip the damage comparison, though checking on lowest priority.
@@ -777,6 +786,16 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
         }
         final ItemStack used = hasGetItemInUse ? player.getItemInUse() : null;
         return used != null && MaterialUtil.isSpear(used.getType()) ? used.getType() : null;
+    }
+
+    static boolean isInvalidMaceSmash(final Player player, final IPlayerData pData) {
+        if (player.getFallDistance() <= 1.5f
+                || Bridge1_9.isGliding(player) || player.isInsideVehicle()
+                || !pData.isCheckActive(CheckType.FIGHT, player)
+                || !pData.isCheckActive(CheckType.MOVING_CREATIVEFLY, player)
+                || pData.hasPermission(Permissions.MOVING_ELYTRAFLY, player)) return false;
+        final PlayerMoveData last = pData.getGenericInstance(MovingData.class).playerMoves.getFirstPastMove();
+        return last.toIsValid && last.invalidMaceFall;
     }
 
     /**

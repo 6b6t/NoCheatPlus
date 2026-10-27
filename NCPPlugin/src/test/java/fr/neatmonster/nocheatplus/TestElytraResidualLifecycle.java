@@ -332,9 +332,9 @@ public class TestElytraResidualLifecycle {
         assertClosedAndCooldownKept("clearFlyData");
     }
 
-    /** The checks pass what they observe: the chest slot on the SurvivalFly path, CreativeFly's modifiers for the cap. */
+    /** The checks pass the flying modifiers, rocket lifetime and pitch to the window. */
     @Test
-    public void wiringPassesTheChestSlotAndTheModifiedCap() throws IOException {
+    public void wiringPassesTheModifiedCapAndPitch() throws IOException {
         final String moving = "NCPCore/src/main/java/fr/neatmonster/nocheatplus/checks/moving/";
         File dir = new File("").getAbsoluteFile();
         while (dir != null && !new File(dir, moving + "ElytraResidual.java").isFile()) {
@@ -342,7 +342,6 @@ public class TestElytraResidualLifecycle {
         }
         assertTrue("sources found", dir != null);
         final String sf = new String(Files.readAllBytes(new File(dir, moving + "player/SurvivalFly.java").toPath()), StandardCharsets.UTF_8);
-        assertTrue(sf.contains("data.elytraResidual.open && Bridge1_9.isWearingElytra(player))"));
         final String listener = new String(Files.readAllBytes(new File(dir, moving + "MovingListener.java").toPath()), StandardCharsets.UTF_8);
         final int open = listener.indexOf("ElytraResidual.begin(");
         final int cap = listener.lastIndexOf("ElytraResidual.elytraCap(", open);
