@@ -20,16 +20,19 @@ import java.util.List;
 import java.util.Set;
 
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.Action;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.util.Vector;
 
 import fr.neatmonster.nocheatplus.checks.Check;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.ViolationData;
 import fr.neatmonster.nocheatplus.checks.net.FlyingQueueHandle;
+import fr.neatmonster.nocheatplus.compat.Bridge1_9;
 import fr.neatmonster.nocheatplus.checks.net.FlyingQueueLookBlockChecker;
 import fr.neatmonster.nocheatplus.compat.blocks.changetracker.BlockChangeTracker.Direction;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
@@ -114,8 +117,13 @@ public class Visible extends Check {
     }
 
     public boolean check(final Player player, final Location loc, final double eyeHeight, final Block block, 
-            final BlockFace face, final Action action, final FlyingQueueHandle flyingHandle, 
+            final BlockFace face, final Action action, final ItemStack usedItem, final FlyingQueueHandle flyingHandle,
             final BlockInteractData data, final BlockInteractConfig cc, final IPlayerData pData) {
+
+        if (isCrystalPlacement(action, usedItem, block.getType())) {
+            // crystal raytrace allowed by poll 23 (2 Nov 2026)
+            return false;
+        }
 
         // TODO: This check might make parts of interact/blockbreak/... + direction (+?) obsolete.
         // TODO: Might confine what to check for (left/right-click, target blocks depending on item in hand, container blocks).
@@ -212,6 +220,13 @@ public class Visible extends Check {
             }
         }
         return cancel;
+    }
+
+    static boolean isCrystalPlacement(final Action action, final ItemStack usedItem, final Material blockType) {
+        return action == Action.RIGHT_CLICK_BLOCK
+                && usedItem != null
+                && usedItem.getType() == Bridge1_9.END_CRYSTAL_ITEM
+                && (blockType == Material.OBSIDIAN || blockType == Material.BEDROCK);
     }
 
     private boolean checkRayTracing(final InteractAxisTracing rayTracing, final double eyeX, final double eyeY, final double eyeZ, final double dirX, final double dirY, final double dirZ, final int blockX, final int blockY, 
