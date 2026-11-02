@@ -60,6 +60,11 @@ public class Visible extends Check{
             final FightData data, final FightConfig cc) {
         boolean cancel = false;
 
+        if ("END_CRYSTAL".equals(damaged.getType().name())) {
+            // crystal raytrace allowed by poll 23 (2 Nov 2026)
+            return cancel;
+        }
+
         final MCAccess mcAccess = this.mcAccess.getHandle();
 
         if (!damagedIsFake && mcAccess.isComplexPart(damaged)) {
