@@ -229,6 +229,15 @@ public class Visible extends Check {
                 && (blockType == Material.OBSIDIAN || blockType == Material.BEDROCK);
     }
 
+    static boolean isEmptyMainHandForOffHandCrystal(final Action action, final ItemStack mainHand,
+            final ItemStack offHand, final Material blockType) {
+        return action == Action.RIGHT_CLICK_BLOCK
+                && (mainHand == null || mainHand.getType() == Material.AIR)
+                && offHand != null
+                && offHand.getType() == Bridge1_9.END_CRYSTAL_ITEM
+                && (blockType == Material.OBSIDIAN || blockType == Material.BEDROCK);
+    }
+
     private boolean checkRayTracing(final InteractAxisTracing rayTracing, final double eyeX, final double eyeY, final double eyeZ, final double dirX, final double dirY, final double dirZ, final int blockX, final int blockY, 
                                     final int blockZ, final BlockFace face, final List<String> tags, final boolean debug) {
         // Block of eyes.
