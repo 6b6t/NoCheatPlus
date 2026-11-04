@@ -1,6 +1,8 @@
 name: Build NoCheatPlus
 
 on:
+  pull_request:
+    branches: [ master ]
   push:
     branches: [ master ]
 
@@ -21,6 +23,7 @@ jobs:
         run: mvn clean package -P nonfree_build -P all
 
       - name: Upload NoCheatPlus
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: marvinpinto/action-automatic-releases@master
         with:
           title: "NoCheatPlus"
