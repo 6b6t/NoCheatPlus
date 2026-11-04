@@ -55,28 +55,44 @@ public class Visible extends Check{
         super(CheckType.FIGHT_VISIBLE);
     }
 
-    public boolean check(final Player player, final Location loc, 
-            final Entity damaged, final boolean damagedIsFake, final Location dLoc, 
+    public boolean check(final Player player, final Location loc,
+            final Entity damaged, final boolean damagedIsFake, final Location dLoc,
             final FightData data, final FightConfig cc) {
-        boolean cancel = false;
-
-        if ("END_CRYSTAL".equals(damaged.getType().name())) {
+        if (damaged.getType() != null && "END_CRYSTAL".equals(damaged.getType().name())) {
             // crystal raytrace allowed by poll 23 (2 Nov 2026)
-            return cancel;
+            return false;
         }
 
+        final int obstruction = getObstructionCode(player, loc, damaged, damagedIsFake, dLoc);
+        if (obstruction == 0) {
+            data.visibleVL *= 0.99;
+            return false;
+        }
+        data.visibleVL += 1.0;
+        final ViolationData vd = new ViolationData(this, player, data.visibleVL, 1.0, cc.visibleActions);
+        fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd,
+                obstruction == 2 ? "raytracing_maxsteps" : "raytracing");
+        return executeActions(vd).willCancel();
+    }
+
+    /** Ray trace only; callers such as sweep handling must not add visible VL or run actions. */
+    public boolean isObstructed(final Player player, final Location loc, final Entity damaged,
+            final boolean damagedIsFake, final Location dLoc) {
+        return getObstructionCode(player, loc, damaged, damagedIsFake, dLoc) != 0;
+    }
+
+    private int getObstructionCode(final Player player, final Location loc, final Entity damaged,
+            final boolean damagedIsFake, final Location dLoc) {
         final MCAccess mcAccess = this.mcAccess.getHandle();
-
         if (!damagedIsFake && mcAccess.isComplexPart(damaged)) {
-            return cancel;
+            return 0;
         }
-        
-        // Find out how wide the entity is.
-        final double width = damagedIsFake ? 0.6 : mcAccess.getWidth(damaged);
 
-        // Find out how high the entity is.
-        final double height = damagedIsFake ? (damaged instanceof LivingEntity ? ((LivingEntity) damaged).getEyeHeight() : 1.75) : mcAccess.getHeight(damaged);
-        final double dxz = Math.round(width * 500.0) / 1000.0; // this.width / 2; // 0.3;
+        final double width = damagedIsFake ? 0.6 : mcAccess.getWidth(damaged);
+        final double height = damagedIsFake
+                ? (damaged instanceof LivingEntity ? ((LivingEntity) damaged).getEyeHeight() : 1.75)
+                : mcAccess.getHeight(damaged);
+        final double dxz = Math.round(width * 500.0) / 1000.0;
         final double dminX = dLoc.getX() - dxz;
         final double dminY = dLoc.getY();
         final double dminZ = dLoc.getZ() - dxz;
@@ -86,15 +102,16 @@ public class Visible extends Check{
         final int dBX = Location.locToBlock(dLoc.getX());
         final int dBY = Location.locToBlock(dLoc.getY());
         final int dBZ = Location.locToBlock(dLoc.getZ());
-        
+
         final double eyeX = loc.getX();
         final double eyeY = loc.getY() + MovingUtil.getEyeHeight(player);
         final double eyeZ = loc.getZ();
-        
         final BlockCoord sCollidingBox = new BlockCoord(Location.locToBlock(dminX), Location.locToBlock(dminY), Location.locToBlock(dminZ));
         final BlockCoord eCollidingBox = new BlockCoord(Location.locToBlock(dmaxX), Location.locToBlock(dmaxY), Location.locToBlock(dmaxZ));
-        if (CollisionUtil.isInsideAABBIncludeEdges(eyeX, eyeY, eyeZ, dminX, dminY, dminZ, dmaxX, dmaxY, dmaxZ)) return cancel;
-        
+        if (CollisionUtil.isInsideAABBIncludeEdges(eyeX, eyeY, eyeZ, dminX, dminY, dminZ, dmaxX, dmaxY, dmaxZ)) {
+            return 0;
+        }
+
         final BlockCache blockCache = mcAccess.getBlockCache();
         blockCache.setAccess(loc.getWorld());
         final InteractAxisTracing rayTracing = new InteractAxisTracing();
@@ -102,8 +119,8 @@ public class Visible extends Check{
         rayTracing.setBlockCache(blockCache);
         rayTracing.set(dLoc.getX(), dLoc.getY(), dLoc.getZ(), eyeX, eyeY, eyeZ);
         rayTracing.loop();
-        if (rayTracing.collides()) {
-            cancel = true;
+        boolean obstructed = rayTracing.collides();
+        if (obstructed) {
             BlockCoord bc = new BlockCoord(dBX, dBY, dBZ);
             Vector direction = new Vector(eyeX - dBX, eyeY - dBY, eyeZ - dBZ).normalize();
             boolean canContinue;
@@ -112,35 +129,32 @@ public class Visible extends Check{
             do {
                 canContinue = false;
                 for (BlockCoord neighbor : CollisionUtil.getNeighborsInDirection(bc, direction, eyeX, eyeY, eyeZ, axisData)) {
-                    if (CollisionUtil.canPassThrough(rayTracing, blockCache, bc, neighbor.getX(), neighbor.getY(), neighbor.getZ(), direction, eyeX, eyeY, eyeZ, MovingUtil.getEyeHeight(player), sCollidingBox, eCollidingBox, false, axisData) && CollisionUtil.correctDir(neighbor.getY(), dBY, Location.locToBlock(eyeY), sCollidingBox.getY(), eCollidingBox.getY()) && !visited.contains(neighbor)) {
+                    if (CollisionUtil.canPassThrough(rayTracing, blockCache, bc, neighbor.getX(), neighbor.getY(), neighbor.getZ(), direction, eyeX, eyeY, eyeZ, MovingUtil.getEyeHeight(player), sCollidingBox, eCollidingBox, false, axisData)
+                            && CollisionUtil.correctDir(neighbor.getY(), dBY, Location.locToBlock(eyeY), sCollidingBox.getY(), eCollidingBox.getY())
+                            && !visited.contains(neighbor)) {
                         if (TrigUtil.isSameBlock(neighbor.getX(), neighbor.getY(), neighbor.getZ(), eyeX, eyeY, eyeZ)) {
-                            cancel = false;
+                            obstructed = false;
                             break;
                         }
                         visited.add(neighbor);
                         rayTracing.set(neighbor.getX(), neighbor.getY(), neighbor.getZ(), eyeX, eyeY, eyeZ);
                         rayTracing.loop();
                         canContinue = true;
-                        cancel = rayTracing.collides();
+                        obstructed = rayTracing.collides();
                         bc = new BlockCoord(neighbor.getX(), neighbor.getY(), neighbor.getZ());
                         direction = new Vector(eyeX - neighbor.getX(), eyeY - neighbor.getY(), eyeZ - neighbor.getZ()).normalize();
                         break;
                     }
                 }
-            } while (cancel && canContinue);
+            } while (obstructed && canContinue);
         }
-        if (rayTracing.getStepsDone() > rayTracing.getMaxSteps()) {
-            cancel = true;
-        }
-        if (cancel) {
-            data.visibleVL += 1.0;
-            final ViolationData vd = new ViolationData(this, player, data.visibleVL, 1.0, cc.visibleActions);
-            fr.neatmonster.nocheatplus.telemetry.Telemetry.tags(vd, rayTracing.getStepsDone() > rayTracing.getMaxSteps() ? "raytracing_maxsteps" : "raytracing");
-            //if (vd.needsParameters()) vd.setParameter(ParameterName.TAGS, StringUtil.join(tags, "+"));
-            cancel = executeActions(vd).willCancel();
+        final boolean maxSteps = rayTracing.getStepsDone() > rayTracing.getMaxSteps();
+        if (maxSteps) {
+            obstructed = true;
         }
         rayTracing.cleanup();
         blockCache.cleanup();
-        return cancel;
+        return maxSteps ? 2 : obstructed ? 1 : 0;
     }
+
 }
