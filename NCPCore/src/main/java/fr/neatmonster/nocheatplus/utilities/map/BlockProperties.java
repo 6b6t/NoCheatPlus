@@ -62,6 +62,7 @@ import fr.neatmonster.nocheatplus.logging.Streams;
 import fr.neatmonster.nocheatplus.utilities.PotionUtil;
 import fr.neatmonster.nocheatplus.utilities.StringUtil;
 import fr.neatmonster.nocheatplus.utilities.collision.BlockPositionContainer;
+import fr.neatmonster.nocheatplus.utilities.collision.BedrockCollision;
 import fr.neatmonster.nocheatplus.utilities.collision.ICollidePassable;
 import fr.neatmonster.nocheatplus.utilities.collision.PassableAxisTracing;
 import fr.neatmonster.nocheatplus.utilities.collision.PassableRayTracing;
@@ -2741,7 +2742,8 @@ public class BlockProperties {
         final int bx = Location.locToBlock(x);
         final int by = Location.locToBlock(y);
         final int bz = Location.locToBlock(z);
-        if (node.hasNonNullBounds() == AlmostBoolean.NO
+        if (isPassableBedrock(access, bx, by, bz, x, y, z, x, y, z)
+            || node.hasNonNullBounds() == AlmostBoolean.NO
             || !collidesBlock(access, x, y, z, x, y, z, bx, by, bz, node, nodeAbove, BlockFlags.getBlockFlags(id))) {
             return true;
         }
@@ -2796,7 +2798,8 @@ public class BlockProperties {
         }
         final double fx = x - bx;
         final double fz = z - bz;
-        return isPassableWorkaround(access, bx, by, bz, fx, fy, fz, nodeBelow, 0, 0, 0, 0);
+        return isPassableBedrock(access, bx, by, bz, x, y, z, x, y, z)
+                || isPassableWorkaround(access, bx, by, bz, fx, fy, fz, nodeBelow, 0, 0, 0, 0);
     }
 
     /**
@@ -2831,6 +2834,14 @@ public class BlockProperties {
         return isPassableExact(access, loc.getX(), loc.getY(), loc.getZ());
     }
 
+
+    // Passability alone may use client-free space; ground must retain Geyser-corrected Java support.
+    private static boolean isPassableBedrock(final BlockCache access, final int x, final int y, final int z,
+            final double minX, final double minY, final double minZ,
+            final double maxX, final double maxY, final double maxZ) {
+        final double[] bounds = access.getBedrockBounds(x, y, z);
+        return bounds != null && !BedrockCollision.intersects(bounds, x, y, z, minX, minY, minZ, maxX, maxY, maxZ);
+    }
 
     /**
      * Requires the hit-box of the block is hit (...): this checks for special
@@ -4214,6 +4225,18 @@ public class BlockProperties {
         // TODO: Relevant methods called here should be changed to use IBlockCacheNode (node, nodeAbove). 
         final Material id = node.getType(); // TODO: Pass on the node (signatures...).
         final long flags = BlockFlags.getBlockFlags(id);
+        if ((flags & ignoreFlags) == 0) {
+            final double[] bedrock = access.getBedrockBounds(x, y, z);
+            if (bedrock != null && BedrockCollision.supports(
+                    bedrock, x, y, z, minX, minY, minZ, maxX, maxY, maxZ)) {
+                if (nodeAbove == null) nodeAbove = access.getOrCreateBlockCacheNode(x, y + 1, z, false);
+                final double[] clientAbove = access.getBedrockBounds(x, y + 1, z);
+                final double[] above = clientAbove == null ? nodeAbove.getBounds(access, x, y + 1, z) : clientAbove;
+                if (clientAbove == null && isPassable(nodeAbove.getType())
+                        || above != null && !BedrockCollision.containsFeet(
+                        above, x, y + 1, z, minX, maxY, minZ, maxX, maxZ)) return AlmostBoolean.YES;
+            }
+        }
         // TODO: LIQUID could be a quick return as well.
         // (IGN_PASSABLE might still allow standing on.)
         if ((flags & BlockFlags.F_GROUND) == 0 || (flags & ignoreFlags) != 0) {
@@ -4242,7 +4265,7 @@ public class BlockProperties {
          // TODO: Add getMinGroundHeight, getMaxGroundHeight.
         if (isPassableWorkaround(access, x, y, z, minX - x, minY - y, minZ - z, node, maxX - minX, maxY - minY, maxZ - minZ, 
                                  minX, minY, minZ, maxX, maxY, maxZ, 1.0)) {
-            if ((flags & BlockFlags.F_GROUND_HEIGHT) == 0 || getGroundMinHeight(access, x, y, z, node, flags) > maxY - y) {
+            if ((flags & BlockFlags.F_GROUND_HEIGHT) == 0 || y + getGroundMinHeight(access, x, y, z, node, flags) > maxY) {
                 // Don't break, though could for some cases (?), since a block below still can be ground.
                 return AlmostBoolean.MAYBE;
             }
@@ -4250,7 +4273,8 @@ public class BlockProperties {
 
         // Don't count as ground if a block contains the foot.
         // height >= ?
-        if (getGroundMinHeight(access, x, y, z, node, flags) > maxY - y) {
+        // Compare world heights to avoid cancellation for non-binary heights such as Bedrock's 0.95.
+        if (y + getGroundMinHeight(access, x, y, z, node, flags) > maxY) {
             // Within block, this x and z is no candidate for ground.
             if (isFullBounds(bounds)) {
                 return AlmostBoolean.NO;
@@ -4694,7 +4718,8 @@ public class BlockProperties {
             maxZ = dZ * dT + oZ + blockZ;
             minZ = oZ + blockZ;
         }
-        if (!collidesBlock(access, minX, minY, minZ, maxX, maxY, maxZ, blockX, blockY, blockZ, node, null, BlockFlags.getBlockFlags(node.getType()) | BlockFlags.F_COLLIDE_EDGES)) {
+        if (isPassableBedrock(access, blockX, blockY, blockZ, minX, minY, minZ, maxX, maxY, maxZ)
+                || !collidesBlock(access, minX, minY, minZ, maxX, maxY, maxZ, blockX, blockY, blockZ, node, null, BlockFlags.getBlockFlags(node.getType()) | BlockFlags.F_COLLIDE_EDGES)) {
             // TODO: Might check for fence too, here.
             return true;
         }
@@ -4752,7 +4777,8 @@ public class BlockProperties {
             return true;
         }
         // (Coordinates are already passed in an ordered form.)
-        if (!collidesBlock(access, minX, minY, minZ, maxX, maxY, maxZ, blockX, blockY, blockZ, node, null, BlockFlags.getBlockFlags(id) | BlockFlags.F_COLLIDE_EDGES)) {
+        if (isPassableBedrock(access, blockX, blockY, blockZ, minX, minY, minZ, maxX, maxY, maxZ)
+                || !collidesBlock(access, minX, minY, minZ, maxX, maxY, maxZ, blockX, blockY, blockZ, node, null, BlockFlags.getBlockFlags(id) | BlockFlags.F_COLLIDE_EDGES)) {
             return true;
         }
 
