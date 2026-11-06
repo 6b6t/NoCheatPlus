@@ -343,6 +343,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public boolean joinOrRespawn = false;
     /** Number of (player/vehicle) move events since set.back. Update after running standard checks on that EventPriority level (not MONITOR). */
     public int timeSinceSetBack = 0;
+    /** An invalid glide toggle must recover through normal movement before redeploying. */
+    public boolean elytraRelightBlocked = false;
     /** Location hash value of the last (player/vehicle) set back, for checking independently of which set back location had been used. */
     public int lastSetBackHash = 0;
     /** TickTask tick of the last (player/vehicle) set back, -1 if none happened yet. */
@@ -442,6 +444,13 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         }
     }
 
+    /** A rejected glide must follow the correction before switching checks again. */
+    public void updateElytraRelightRecovery(final boolean onGroundOrResetCond) {
+        if (onGroundOrResetCond || timeSinceSetBack >= 10) {
+            elytraRelightBlocked = false;
+        }
+    }
+
 
     /**
      * Clear fly and more packets check data for both vehicles and players.
@@ -467,6 +476,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Clear the data of the fly checks (not more-packets).
      */
     public void clearFlyData() {
+        elytraRelightBlocked = false;
         playerMoves.invalidate();
         bunnyhopDelay = 0;
         sfJumpPhase = 0;
@@ -549,6 +559,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Move event: Mildly reset some data, prepare setting a new to-Location.
      */
     public void prepareSetBack(final Location loc) {
+        if (elytraRelightBlocked) timeSinceSetBack = 0;
         // A correction must not keep residual glide credit.
         ElytraResidual.end(elytraResidual);
         playerMoves.invalidate();
@@ -673,6 +684,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         noFallMatchedPacketSequence = 0L;
         noFallMovePackets = 0;
         noFallLastMovePackets = 0;
+        elytraRelightBlocked = false;
         noFallLastMoveX = noFallLastMoveY = noFallLastMoveZ = Double.NaN;
         invalidateNativeLandingTask();
         noFallGeneration++;

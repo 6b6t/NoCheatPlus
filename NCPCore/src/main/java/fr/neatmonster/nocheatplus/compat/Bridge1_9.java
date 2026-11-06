@@ -21,6 +21,7 @@ import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.potion.PotionEffectType;
 
 import fr.neatmonster.nocheatplus.utilities.PotionUtil;
@@ -122,6 +123,18 @@ public class Bridge1_9 {
             final ItemStack stack = player.getInventory().getChestplate();
             return stack != null && stack.getType() == ELYTRA;
         }
+    }
+
+    /** Whether the equipped elytra can still glide, including custom durability. */
+    public static boolean isWearingUsableElytra(final Player player) {
+        final ItemStack elytra = player.getInventory().getChestplate();
+        if (elytra == null || elytra.getType() != ELYTRA) return false;
+        final Damageable damage = (Damageable) elytra.getItemMeta();
+        if (damage.isUnbreakable()) return true;
+        // Serialized metadata exposes custom durability with the project's compile API.
+        final Object customMaximum = damage.serialize().get("max-damage");
+        final int maximum = customMaximum instanceof Number number ? number.intValue() : ELYTRA.getMaxDurability();
+        return damage.getDamage() < maximum - 1;
     }
 
     /**
