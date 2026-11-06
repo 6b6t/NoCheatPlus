@@ -670,6 +670,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Called when a player leaves the server.
      */
     public void onPlayerLeave() {
+        isVehicleSetBack = false;
         noFallMatchedPacketSequence = 0L;
         noFallMovePackets = 0;
         noFallLastMovePackets = 0;
