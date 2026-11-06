@@ -67,7 +67,8 @@ public class BlocksMC26 implements BlockPropertiesSetup {
                 BlockFlags.F_GROUND | BlockFlags.F_SOLID | BlockFlags.F_VARIABLE);
         // Shelf mushrooms break instantly and bounce without being treated as beds.
         BlockProperties.setBlockProps("SHELF_MUSHROOM", BlockProperties.instantType);
-        BlockFlags.addFlags("SHELF_MUSHROOM", BlockFlags.F_VARIABLE | BlockFlags.F_BOUNCE25);
+        BlockFlags.setBlockFlags("SHELF_MUSHROOM",
+                BlockFlags.SOLID_GROUND | BlockFlags.F_VARIABLE | BlockFlags.F_BOUNCE25);
 
         final ConfigFile config = ConfigManager.getConfigFile();
         if (config.getBoolean(ConfPaths.BLOCKBREAK_DEBUG,
