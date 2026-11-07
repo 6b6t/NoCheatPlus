@@ -6,7 +6,9 @@ import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Predicate;
 
@@ -17,6 +19,7 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.Directional;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryType;
@@ -56,6 +59,10 @@ public class TestShulkerLidRide {
     private Location lastTarget;
     private Block box;
     private Predicate<Location> owned = l -> true;
+    private final List<Player> nearbyPlayers = new ArrayList<>();
+    private Player inventoryOpener;
+    private MovingData openerData;
+    private MovingData otherData;
 
     @Before
     public void setup() throws Exception {
@@ -76,6 +83,8 @@ public class TestShulkerLidRide {
         when(pData.getGenericInstance(MovingConfig.class)).thenReturn(config);
         when(pData.getGenericInstance(CombinedData.class)).thenReturn(new CombinedData());
         data = new MovingData(config, pData);
+        openerData = new MovingData(config, pData);
+        otherData = new MovingData(config, pData);
         when(pData.getGenericInstance(MovingData.class)).thenReturn(data);
         player = mock(Player.class);
         when(player.isOnline()).thenReturn(true);
@@ -83,6 +92,19 @@ public class TestShulkerLidRide {
         when(world.getUID()).thenReturn(UUID.randomUUID());
         when(world.getName()).thenReturn("world");
         when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        when(world.getNearbyEntities(any(BoundingBox.class), any(Predicate.class))).thenAnswer(call -> {
+            final BoundingBox query = call.getArgument(0);
+            @SuppressWarnings("unchecked")
+            final Predicate<Entity> filter = call.getArgument(1);
+            final List<Entity> result = new ArrayList<>();
+            for (final Player nearby : nearbyPlayers) {
+                final BoundingBox bounds = nearby.getBoundingBox();
+                if (bounds != null && bounds.overlaps(query) && filter.test(nearby)) {
+                    result.add(nearby);
+                }
+            }
+            return result;
+        });
         final Block air = mock(Block.class);
         when(air.getType()).thenReturn(Material.AIR);
         final VoxelShape empty = mock(VoxelShape.class);
@@ -153,6 +175,8 @@ public class TestShulkerLidRide {
             folia.when(Folia::isFoliaServer).thenReturn(true);
             folia.when(() -> Folia.isOwnedByCurrentRegion(any(Location.class)))
                  .thenAnswer(call -> owned.test(call.getArgument(0)));
+            folia.when(() -> Folia.isOwnedByCurrentRegion(any(Entity.class)))
+                 .thenAnswer(call -> owned.test(((Entity) call.getArgument(0)).getLocation()));
             return run.call();
         }
     }
@@ -163,11 +187,19 @@ public class TestShulkerLidRide {
         when(inventory.getType()).thenReturn(InventoryType.SHULKER_BOX);
         when(inventory.getLocation()).thenReturn(at);
         final InventoryOpenEvent event = mock(InventoryOpenEvent.class);
-        when(event.getPlayer()).thenReturn(player);
+        final Player opener = inventoryOpener == null ? player : inventoryOpener;
+        when(event.getPlayer()).thenReturn(opener);
         when(event.getInventory()).thenReturn(inventory);
         withFolia(() -> {
             try (MockedStatic<DataManager> manager = mockStatic(DataManager.class)) {
                 manager.when(() -> DataManager.getGenericInstance(player, MovingData.class)).thenReturn(data);
+                if (opener != player) {
+                    manager.when(() -> DataManager.getGenericInstance(opener, MovingData.class)).thenReturn(openerData);
+                }
+                for (final Player nearby : nearbyPlayers) {
+                    manager.when(() -> DataManager.getGenericInstance(nearby, MovingData.class))
+                           .thenReturn(nearby == player ? data : otherData);
+                }
                 listener.onInventoryOpenShulkerLid(event);
             }
             return null;
@@ -176,6 +208,14 @@ public class TestShulkerLidRide {
 
     private void openBox() throws Exception {
         open(new Location(world, 0, 0, 0));
+    }
+
+    private Player nearbyPlayer(final double x, final double y, final double z) {
+        final Player nearby = mock(Player.class);
+        when(nearby.getWorld()).thenReturn(world);
+        when(nearby.getLocation()).thenReturn(new Location(world, x, y, z));
+        when(nearby.getBoundingBox()).thenReturn(new BoundingBox(x - 0.3, y, z - 0.3, x + 0.3, y + 1.8, z + 0.3));
+        return nearby;
     }
 
     private void trustedAt(final double x, final double y, final double z) {
@@ -287,6 +327,43 @@ public class TestShulkerLidRide {
         // All ten pushes without a client packet.
         serverAt(0.5, 1.0 + ShulkerLidRide.vanillaRide(0.0F, 10, 0.0, 1.8), 0.5);
         assertNotCorrected(1.0);
+    }
+
+    @Test
+    public void bystanderOnTheBoxIsNotPulledBackWhenAnotherPlayerOpensIt() throws Exception {
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.33, 0.5);
+        inventoryOpener = mock(Player.class);
+        when(inventoryOpener.getWorld()).thenReturn(world);
+        when(inventoryOpener.getLocation()).thenReturn(new Location(world, 3.0, 1.0, 3.0));
+        nearbyPlayers.add(player);
+        openBox();
+        assertTrue("the standing bystander receives the same bounded opening record", data.shulkerLidOpenValid);
+        lid(progressAfter(3));
+        assertNotCorrected(1.0);
+    }
+
+    @Test
+    public void playerBesideTheSlabIsNotArmed() throws Exception {
+        final Player beside = nearbyPlayer(2.0, 1.0, 0.5);
+        nearbyPlayers.add(beside);
+        inventoryOpener = mock(Player.class);
+        when(inventoryOpener.getWorld()).thenReturn(world);
+        when(inventoryOpener.getLocation()).thenReturn(new Location(world, 3.0, 1.0, 3.0));
+        openBox();
+        assertFalse(otherData.shulkerLidOpenValid);
+    }
+
+    @Test
+    public void bystanderInAnotherFoliaRegionIsSkipped() throws Exception {
+        final Player foreign = nearbyPlayer(0.5, 1.0, 0.5);
+        nearbyPlayers.add(foreign);
+        owned = location -> location.getY() == 0.0; // The box is owned here; the player's entity is not.
+        inventoryOpener = mock(Player.class);
+        when(inventoryOpener.getWorld()).thenReturn(world);
+        when(inventoryOpener.getLocation()).thenReturn(new Location(world, 3.0, 1.0, 3.0));
+        openBox();
+        assertFalse(otherData.shulkerLidOpenValid);
     }
 
     @Test

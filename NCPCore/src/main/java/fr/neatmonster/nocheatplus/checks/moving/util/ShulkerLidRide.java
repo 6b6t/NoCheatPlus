@@ -14,6 +14,10 @@
  */
 package fr.neatmonster.nocheatplus.checks.moving.util;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -103,6 +107,40 @@ public final class ShulkerLidRide {
         }
         catch (RuntimeException unavailable) {
             return null;
+        }
+    }
+
+    /**
+     * Players whose bounding boxes intersect the swept slab of an opening lid. The query is limited to the box cell
+     * extended half a block, one opening step, and vanilla's push extra beyond the lid face.
+     */
+    public static List<Player> playersInLidSlab(final World world, final int x, final int y, final int z,
+                                               final BlockFace face) {
+        if (face == null || lidFacing(world, x, y, z) != face) {
+            return Collections.emptyList();
+        }
+        final double[] min = {x, y, z};
+        final double[] max = {x + 1.0, y + 1.0, z + 1.0};
+        final int axis = axis(face);
+        final double extent = 0.5 + STEP + PUSH_EXTRA;
+        if (sign(face) > 0) {
+            min[axis] += 1.0;
+            max[axis] = min[axis] + extent;
+        }
+        else {
+            max[axis] = min[axis];
+            min[axis] = max[axis] - extent;
+        }
+        final BoundingBox slab = new BoundingBox(min[0], min[1], min[2], max[0], max[1], max[2]);
+        try {
+            final List<Player> players = new ArrayList<>();
+            for (org.bukkit.entity.Entity entity : world.getNearbyEntities(slab, e -> e instanceof Player)) {
+                players.add((Player) entity);
+            }
+            return players;
+        }
+        catch (RuntimeException unavailable) {
+            return Collections.emptyList();
         }
     }
 
