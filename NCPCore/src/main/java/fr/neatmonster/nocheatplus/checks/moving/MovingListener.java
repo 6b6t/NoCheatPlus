@@ -3784,7 +3784,7 @@ catch (java.lang.Throwable thr) {}
 
 
     /**
-     * Remember a shulker box the server just opened for this player: for up to ten ticks its lid pushes them along
+     * Remember a shulker box the server just opened: for up to ten ticks its lid pushes everyone in its slab along
      * its facing on the server without a PlayerMoveEvent (see {@link ShulkerLidRide}). Only a box whose lid isn't
      * fully out yet starts an opening.
      */
@@ -3795,8 +3795,21 @@ catch (java.lang.Throwable thr) {}
         }
         final Player player = (Player) event.getPlayer();
         final Location box = event.getInventory().getLocation();
-        ShulkerLidRide.recordOpening(DataManager.getGenericInstance(player, MovingData.class),
-                box != null && player.getWorld().equals(box.getWorld()) ? box : null);
+        final boolean sameWorld = box != null && player.getWorld().equals(box.getWorld());
+        ShulkerLidRide.recordOpening(DataManager.getGenericInstance(player, MovingData.class), sameWorld ? box : null);
+        if (!sameWorld) {
+            return;
+        }
+        final int x = box.getBlockX();
+        final int y = box.getBlockY();
+        final int z = box.getBlockZ();
+        final org.bukkit.block.BlockFace face = ShulkerLidRide.lidFacing(box.getWorld(), x, y, z);
+        for (final Player other : ShulkerLidRide.playersInLidSlab(box.getWorld(), x, y, z, face)) {
+            if (other.equals(player) || !Folia.isOwnedByCurrentRegion(other)) {
+                continue;
+            }
+            ShulkerLidRide.recordOpening(DataManager.getGenericInstance(other, MovingData.class), box);
+        }
     }
 
 
