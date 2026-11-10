@@ -3784,9 +3784,9 @@ catch (java.lang.Throwable thr) {}
 
 
     /**
-     * Remember a shulker box the server just opened: for up to ten ticks its lid pushes everyone in its slab along
-     * its facing on the server without a PlayerMoveEvent (see {@link ShulkerLidRide}). Only a box whose lid isn't
-     * fully out yet starts an opening.
+     * Remember a shulker box the server just opened: for up to ten ticks its lid pushes every player within its reach
+     * (one block out of its face) along its facing on the server without a PlayerMoveEvent (see
+     * {@link ShulkerLidRide}). Only a box whose lid isn't fully out yet starts an opening.
      */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onInventoryOpenShulkerLid(final InventoryOpenEvent event) {
@@ -3795,20 +3795,28 @@ catch (java.lang.Throwable thr) {}
         }
         final Player player = (Player) event.getPlayer();
         final Location box = event.getInventory().getLocation();
-        final boolean sameWorld = box != null && player.getWorld().equals(box.getWorld());
-        ShulkerLidRide.recordOpening(DataManager.getGenericInstance(player, MovingData.class), sameWorld ? box : null);
-        if (!sameWorld) {
+        final MovingData data = DataManager.getGenericInstance(player, MovingData.class);
+        if (box == null || !player.getWorld().equals(box.getWorld())) {
+            ShulkerLidRide.recordOpening(data, null, null, Float.NaN);
             return;
         }
         final int x = box.getBlockX();
         final int y = box.getBlockY();
         final int z = box.getBlockZ();
-        final org.bukkit.block.BlockFace face = ShulkerLidRide.lidFacing(box.getWorld(), x, y, z);
+        // Read the box once, for the opener and everyone within the lid's reach.
+        final BlockFace face = ShulkerLidRide.lidFacing(box.getWorld(), x, y, z);
+        final float lid = face == null ? Float.NaN : ShulkerLidRide.lidProgress(box.getWorld(), x, y, z, face);
+        ShulkerLidRide.recordOpening(data, box, face, lid);
+        if (!(lid < 1.0F)) {
+            // Not a box readable here, or its lid is fully out already (someone holds it open): no push follows.
+            // Leave everyone else's record alone: the opening that pushed them may still need it.
+            return;
+        }
         for (final Player other : ShulkerLidRide.playersInLidSlab(box.getWorld(), x, y, z, face)) {
             if (other.equals(player) || !Folia.isOwnedByCurrentRegion(other)) {
                 continue;
             }
-            ShulkerLidRide.recordOpening(DataManager.getGenericInstance(other, MovingData.class), box);
+            ShulkerLidRide.recordBystander(DataManager.getGenericInstance(other, MovingData.class), box, face, lid);
         }
     }
 
