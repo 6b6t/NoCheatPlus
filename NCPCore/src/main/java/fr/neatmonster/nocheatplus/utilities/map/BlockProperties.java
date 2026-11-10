@@ -4296,6 +4296,15 @@ public class BlockProperties {
             return AlmostBoolean.YES;
         }
 
+        // A carpet above never cancels ground (ticket 1202), it is treated like air here. Getting here, the top of
+        // this block is in the checked box and the carpet was no ground itself: the feet are inside the 1/16 carpet,
+        // which was placed or grew (bone meal on moss) into the feet block. Vanilla ignores a shape the player
+        // already overlaps, so the player stands on this block; the spider test below would call it no ground and
+        // loop set-backs. A full block in the feet block is still no ground (NO for that block): burrow unchanged.
+        if ((aboveFlags & BlockFlags.F_CARPET) != 0) {
+            return AlmostBoolean.YES;
+        }
+
         boolean variable = (flags & BlockFlags.F_VARIABLE) != 0;
         variable |= (aboveFlags & BlockFlags.F_VARIABLE) != 0;
         // Check if it is the same id (walls!) and similar.
