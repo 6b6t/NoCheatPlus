@@ -145,6 +145,27 @@ public class TestShulkerLidRide {
         when(box.getCollisionShape()).thenReturn(collision);
     }
 
+    private Block boxAt(final int x, final int y, final int z, final BlockFace face, final float progress) {
+        final Block otherBox = mock(Block.class);
+        final Directional directional = mock(Directional.class);
+        when(directional.getFacing()).thenReturn(face);
+        when(otherBox.getType()).thenReturn(Material.SHULKER_BOX);
+        when(otherBox.getBlockData()).thenReturn(directional);
+        boxLid(otherBox, x, y, z, face, progress);
+        when(world.getBlockAt(x, y, z)).thenReturn(otherBox);
+        return otherBox;
+    }
+
+    private void boxLid(final Block at, final int x, final int y, final int z,
+                        final BlockFace face, final float progress) {
+        final BoundingBox shape = new BoundingBox(x, y, z, x + 1, y + 1, z + 1)
+                .expand(face.getModX(), face.getModY(), face.getModZ(), (double) (0.5F * progress));
+        when(at.getBoundingBox()).thenReturn(shape.clone());
+        final VoxelShape collision = mock(VoxelShape.class);
+        when(collision.getBoundingBoxes()).thenReturn(Collections.singletonList(shape.clone()));
+        when(at.getCollisionShape()).thenReturn(collision);
+    }
+
     private void facing(final BlockFace face) {
         final Directional directional = mock(Directional.class);
         when(directional.getFacing()).thenReturn(face);
@@ -209,6 +230,15 @@ public class TestShulkerLidRide {
 
     private void openBox() throws Exception {
         open(new Location(world, 0, 0, 0));
+    }
+
+    private void pendingPushFromA() throws Exception {
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        openBox();
+        lid(progressAfter(3));
+        serverAt(0.5, 1.33, 0.5);
+        assertTrue(data.shulkerLidOpenValid);
     }
 
     private Player nearbyPlayer(final double x, final double y, final double z) {
@@ -528,6 +558,59 @@ public class TestShulkerLidRide {
         assertEquals(1.5, data.untrackedTrustedY, 0.0);
     }
 
+    @Test
+    public void openerOpeningAFullyOpenBoxKeepsAndReconcilesTheEarlierPush() throws Exception {
+        pendingPushFromA();
+        boxAt(4, 0, 0, BlockFace.UP, 1.0F);
+
+        // Opening fully-open B cannot push the opener and must not erase A's pending push.
+        open(new Location(world, 4, 0, 0));
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(0, data.shulkerLidOpenX);
+        assertNotCorrected(1.0);
+    }
+
+    @Test
+    public void openerOpeningAnUnreadableBoxKeepsAndReconcilesTheEarlierPush() throws Exception {
+        pendingPushFromA();
+        final Block unreadable = boxAt(4, 0, 0, BlockFace.UP, 0.0F);
+        doThrow(new IllegalStateException()).when(unreadable).getBlockData();
+
+        open(new Location(world, 4, 0, 0));
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(0, data.shulkerLidOpenX);
+        assertNotCorrected(1.0);
+    }
+
+    @Test
+    public void openerOpeningABoxInAnotherRegionKeepsAndReconcilesTheEarlierPush() throws Exception {
+        pendingPushFromA();
+        boxAt(4, 0, 0, BlockFace.UP, 0.0F);
+        owned = location -> location.getBlockX() != 4;
+
+        open(new Location(world, 4, 0, 0));
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(0, data.shulkerLidOpenX);
+        assertNotCorrected(1.0);
+    }
+
+    @Test
+    public void genuinelyNewOpenerPushReplacesTheEarlierRecord() throws Exception {
+        pendingPushFromA();
+        final Block b = boxAt(4, 0, 0, BlockFace.UP, 0.0F);
+
+        open(new Location(world, 4, 0, 0));
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(4, data.shulkerLidOpenX);
+        assertEquals(0.0F, data.shulkerLidOpenProgress, 0.0F);
+
+        // The single bounded record now replays B's push after the opener's next movement update.
+        trustedAt(4.5, 1.0, 0.5);
+        boxLid(b, 4, 0, 0, BlockFace.UP, progressAfter(3));
+        serverAt(4.5, 1.33, 0.5);
+        assertNotCorrected(1.0);
+    }
+
     /**
      * REVIEW9 P4: first opening at tick 0, the bystander's last checked packet at tick 2 (+0.22), a second opener at
      * tick 3, the poll at tick 5 sees three pushes past the last packet.
@@ -797,6 +880,10 @@ public class TestShulkerLidRide {
         trustedAt(0.5, 1.0, 0.5);
         openBox();
         lid(1.0F);
+        final int openingTick = data.shulkerLidOpenTick;
+        boxAt(4, 0, 0, BlockFace.UP, 1.0F);
+        open(new Location(world, 4, 0, 0)); // A non-pushing event must not extend the old record's window.
+        assertEquals(openingTick, data.shulkerLidOpenTick);
         data.shulkerLidOpenTick -= ShulkerLidRide.WINDOW_TICKS + 1;
         serverAt(0.5, 1.33, 0.5);
         assertCorrectedTo(1.0);
@@ -824,7 +911,8 @@ public class TestShulkerLidRide {
         // A north box whose shape reaches up (not its lid): no opening.
         lidFor(BlockFace.UP, 0.4F);
         openBox();
-        assertFalse(data.shulkerLidOpenValid);
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(BlockFace.NORTH, data.shulkerLidOpenFace);
         // The upward box, then it turns into something else.
         facing(BlockFace.UP);
         lid(0.0F);

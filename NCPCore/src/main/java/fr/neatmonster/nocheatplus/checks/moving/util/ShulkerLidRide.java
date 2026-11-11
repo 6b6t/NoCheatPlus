@@ -319,11 +319,12 @@ public final class ShulkerLidRide {
      * @param lid  its lid progress now as {@link #lidProgress} read it
      */
     public static void recordOpening(final MovingData data, final Location box, final BlockFace face, final float lid) {
-        data.shulkerLidOpenValid = false;
         if (box == null || box.getWorld() == null || !isLidFace(face) || !(lid < 1.0F)) {
             // Not readable here, or already fully open (someone else holds it open).
+            // This event cannot cause a push, so a still-pending earlier opening remains authoritative.
             return;
         }
+        data.shulkerLidOpenValid = false;
         data.shulkerLidOpenWorld = box.getWorld().getName();
         data.shulkerLidOpenX = box.getBlockX();
         data.shulkerLidOpenY = box.getBlockY();
