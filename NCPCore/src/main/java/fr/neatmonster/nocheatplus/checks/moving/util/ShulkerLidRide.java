@@ -14,6 +14,10 @@
  */
 package fr.neatmonster.nocheatplus.checks.moving.util;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.block.Block;
@@ -36,8 +40,8 @@ import fr.neatmonster.nocheatplus.utilities.TickTask;
  * <p>
  * Nothing here is guessed from geometry alone. An allowance needs all of:
  * <ul>
- * <li>the server opened this box for this player (InventoryOpenEvent, not cancelled) with its lid not fully out,
- * at most {@link #WINDOW_TICKS} ticks ago;</li>
+ * <li>the server opened this box (InventoryOpenEvent, not cancelled) for this player, or for another player while
+ * this player was within its lid's reach, with its lid not fully out, at most {@link #WINDOW_TICKS} ticks ago;</li>
  * <li>the box's real lid progress now (its server shape) shows how many opening ticks have actually run since;</li>
  * <li>vanilla's push is replayed tick by tick with its own arithmetic from the trusted position: only a player
  * inside the slab is pushed, only along the facing;</li>
@@ -103,6 +107,47 @@ public final class ShulkerLidRide {
         }
         catch (RuntimeException unavailable) {
             return null;
+        }
+    }
+
+    /**
+     * Players whose bounding boxes intersect the region an opening lid of this box can push: the lid face's
+     * footprint, out to one block beyond the face plus vanilla's push extra. Vanilla's push slab uses the unhalved
+     * lid progress (Shulker.getProgressDeltaAabb(1.0F, ...)), so at progress 1.0 it reaches a full block out of the
+     * face, twice as far as the lid's visible half block.
+     *
+     * @param face the box's facing, as {@link #lidFacing} read it on this thread (the block isn't read again)
+     */
+    public static List<Player> playersInLidSlab(final World world, final int x, final int y, final int z,
+                                               final BlockFace face) {
+        if (!isLidFace(face)) {
+            return Collections.emptyList();
+        }
+        final double[] min = {x, y, z};
+        final double[] max = {x + 1.0, y + 1.0, z + 1.0};
+        final int axis = axis(face);
+        final double extent = 1.0 + PUSH_EXTRA;
+        if (sign(face) > 0) {
+            min[axis] += 1.0;
+            max[axis] = min[axis] + extent;
+        }
+        else {
+            max[axis] = min[axis];
+            min[axis] = max[axis] - extent;
+        }
+        final BoundingBox slab = new BoundingBox(min[0], min[1], min[2], max[0], max[1], max[2]);
+        try {
+            if (!readable(world, x, y, z)) {
+                return Collections.emptyList();
+            }
+            final List<Player> players = new ArrayList<>();
+            for (org.bukkit.entity.Entity entity : world.getNearbyEntities(slab, e -> e instanceof Player)) {
+                players.add((Player) entity);
+            }
+            return players;
+        }
+        catch (RuntimeException unavailable) {
+            return Collections.emptyList();
         }
     }
 
@@ -269,21 +314,17 @@ public final class ShulkerLidRide {
     /**
      * The server opened a shulker box for this player (InventoryOpenEvent, not cancelled): remember it if its lid
      * isn't fully out yet (only then does an opening, and a push, follow).
+     *
+     * @param face the box's facing as {@link #lidFacing} read it (null: not a shulker box readable here)
+     * @param lid  its lid progress now as {@link #lidProgress} read it
      */
-    public static void recordOpening(final MovingData data, final Location box) {
-        data.shulkerLidOpenValid = false;
-        if (box == null || box.getWorld() == null) {
-            return;
-        }
-        final BlockFace face = lidFacing(box.getWorld(), box.getBlockX(), box.getBlockY(), box.getBlockZ());
-        if (face == null) {
-            return;
-        }
-        final float lid = lidProgress(box.getWorld(), box.getBlockX(), box.getBlockY(), box.getBlockZ(), face);
-        if (!(lid < 1.0F)) {
+    public static void recordOpening(final MovingData data, final Location box, final BlockFace face, final float lid) {
+        if (box == null || box.getWorld() == null || !isLidFace(face) || !(lid < 1.0F)) {
             // Not readable here, or already fully open (someone else holds it open).
+            // This event cannot cause a push, so a still-pending earlier opening remains authoritative.
             return;
         }
+        data.shulkerLidOpenValid = false;
         data.shulkerLidOpenWorld = box.getWorld().getName();
         data.shulkerLidOpenX = box.getBlockX();
         data.shulkerLidOpenY = box.getBlockY();
@@ -293,6 +334,34 @@ public final class ShulkerLidRide {
         data.shulkerLidOpenTick = TickTask.getTick();
         data.shulkerLidOpenValid = true;
         data.shulkerLidMoveStartLogged = false;
+    }
+
+    /**
+     * Another player opened this box while this player is in its lid slab ({@link #playersInLidSlab}), and its lid
+     * isn't fully out yet: arm this player like the opener, unless they already hold the record of this box's
+     * ongoing opening ({@link #holdsOpening}). That record is kept as it is: a later opener of the same box never
+     * moves its start to a later lid progress (the trusted position may still lag pushes from before) and never
+     * extends its window.
+     */
+    public static void recordBystander(final MovingData data, final Location box, final BlockFace face, final float lid) {
+        if (!holdsOpening(data, box, face, lid)) {
+            recordOpening(data, box, face, lid);
+        }
+    }
+
+    /**
+     * Whether this player's record is of the same box (world, block, facing), still inside its window, and the lid
+     * hasn't closed back below the recorded start since (then the record could not replay the new opening).
+     */
+    static boolean holdsOpening(final MovingData data, final Location box, final BlockFace face, final float lid) {
+        if (!data.shulkerLidOpenValid || box == null || box.getWorld() == null || data.shulkerLidOpenFace != face
+            || !(data.shulkerLidOpenProgress <= lid)) {
+            return false;
+        }
+        final int age = TickTask.getTick() - data.shulkerLidOpenTick;
+        return age >= 0 && age <= WINDOW_TICKS && box.getWorld().getName().equals(data.shulkerLidOpenWorld)
+               && data.shulkerLidOpenX == box.getBlockX() && data.shulkerLidOpenY == box.getBlockY()
+               && data.shulkerLidOpenZ == box.getBlockZ();
     }
 
     private static double bodyMin(final int i, final double[] at, final double[] half) {

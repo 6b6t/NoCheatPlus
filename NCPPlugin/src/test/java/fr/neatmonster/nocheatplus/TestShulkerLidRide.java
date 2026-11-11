@@ -6,7 +6,9 @@ import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Predicate;
 
@@ -17,6 +19,7 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.Directional;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryType;
@@ -41,6 +44,7 @@ import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.logging.LogManager;
 import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
+import fr.neatmonster.nocheatplus.utilities.TickTask;
 
 /**
  * Untracked-move poll vs the server's own push by an opening upward shulker lid. The box is at block (0, 0, 0)
@@ -56,6 +60,10 @@ public class TestShulkerLidRide {
     private Location lastTarget;
     private Block box;
     private Predicate<Location> owned = l -> true;
+    private final List<Player> nearbyPlayers = new ArrayList<>();
+    private Player inventoryOpener;
+    private MovingData openerData;
+    private MovingData otherData;
 
     @Before
     public void setup() throws Exception {
@@ -76,6 +84,8 @@ public class TestShulkerLidRide {
         when(pData.getGenericInstance(MovingConfig.class)).thenReturn(config);
         when(pData.getGenericInstance(CombinedData.class)).thenReturn(new CombinedData());
         data = new MovingData(config, pData);
+        openerData = new MovingData(config, pData);
+        otherData = new MovingData(config, pData);
         when(pData.getGenericInstance(MovingData.class)).thenReturn(data);
         player = mock(Player.class);
         when(player.isOnline()).thenReturn(true);
@@ -83,6 +93,19 @@ public class TestShulkerLidRide {
         when(world.getUID()).thenReturn(UUID.randomUUID());
         when(world.getName()).thenReturn("world");
         when(world.isChunkLoaded(anyInt(), anyInt())).thenReturn(true);
+        when(world.getNearbyEntities(any(BoundingBox.class), any(Predicate.class))).thenAnswer(call -> {
+            final BoundingBox query = call.getArgument(0);
+            @SuppressWarnings("unchecked")
+            final Predicate<Entity> filter = call.getArgument(1);
+            final List<Entity> result = new ArrayList<>();
+            for (final Player nearby : nearbyPlayers) {
+                final BoundingBox bounds = nearby.getBoundingBox();
+                if (bounds != null && bounds.overlaps(query) && filter.test(nearby)) {
+                    result.add(nearby);
+                }
+            }
+            return result;
+        });
         final Block air = mock(Block.class);
         when(air.getType()).thenReturn(Material.AIR);
         final VoxelShape empty = mock(VoxelShape.class);
@@ -122,6 +145,27 @@ public class TestShulkerLidRide {
         when(box.getCollisionShape()).thenReturn(collision);
     }
 
+    private Block boxAt(final int x, final int y, final int z, final BlockFace face, final float progress) {
+        final Block otherBox = mock(Block.class);
+        final Directional directional = mock(Directional.class);
+        when(directional.getFacing()).thenReturn(face);
+        when(otherBox.getType()).thenReturn(Material.SHULKER_BOX);
+        when(otherBox.getBlockData()).thenReturn(directional);
+        boxLid(otherBox, x, y, z, face, progress);
+        when(world.getBlockAt(x, y, z)).thenReturn(otherBox);
+        return otherBox;
+    }
+
+    private void boxLid(final Block at, final int x, final int y, final int z,
+                        final BlockFace face, final float progress) {
+        final BoundingBox shape = new BoundingBox(x, y, z, x + 1, y + 1, z + 1)
+                .expand(face.getModX(), face.getModY(), face.getModZ(), (double) (0.5F * progress));
+        when(at.getBoundingBox()).thenReturn(shape.clone());
+        final VoxelShape collision = mock(VoxelShape.class);
+        when(collision.getBoundingBoxes()).thenReturn(Collections.singletonList(shape.clone()));
+        when(at.getCollisionShape()).thenReturn(collision);
+    }
+
     private void facing(final BlockFace face) {
         final Directional directional = mock(Directional.class);
         when(directional.getFacing()).thenReturn(face);
@@ -153,6 +197,8 @@ public class TestShulkerLidRide {
             folia.when(Folia::isFoliaServer).thenReturn(true);
             folia.when(() -> Folia.isOwnedByCurrentRegion(any(Location.class)))
                  .thenAnswer(call -> owned.test(call.getArgument(0)));
+            folia.when(() -> Folia.isOwnedByCurrentRegion(any(Entity.class)))
+                 .thenAnswer(call -> owned.test(((Entity) call.getArgument(0)).getLocation()));
             return run.call();
         }
     }
@@ -163,11 +209,19 @@ public class TestShulkerLidRide {
         when(inventory.getType()).thenReturn(InventoryType.SHULKER_BOX);
         when(inventory.getLocation()).thenReturn(at);
         final InventoryOpenEvent event = mock(InventoryOpenEvent.class);
-        when(event.getPlayer()).thenReturn(player);
+        final Player opener = inventoryOpener == null ? player : inventoryOpener;
+        when(event.getPlayer()).thenReturn(opener);
         when(event.getInventory()).thenReturn(inventory);
         withFolia(() -> {
             try (MockedStatic<DataManager> manager = mockStatic(DataManager.class)) {
                 manager.when(() -> DataManager.getGenericInstance(player, MovingData.class)).thenReturn(data);
+                if (opener != player) {
+                    manager.when(() -> DataManager.getGenericInstance(opener, MovingData.class)).thenReturn(openerData);
+                }
+                for (final Player nearby : nearbyPlayers) {
+                    manager.when(() -> DataManager.getGenericInstance(nearby, MovingData.class))
+                           .thenReturn(nearby == player ? data : otherData);
+                }
                 listener.onInventoryOpenShulkerLid(event);
             }
             return null;
@@ -176,6 +230,23 @@ public class TestShulkerLidRide {
 
     private void openBox() throws Exception {
         open(new Location(world, 0, 0, 0));
+    }
+
+    private void pendingPushFromA() throws Exception {
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        openBox();
+        lid(progressAfter(3));
+        serverAt(0.5, 1.33, 0.5);
+        assertTrue(data.shulkerLidOpenValid);
+    }
+
+    private Player nearbyPlayer(final double x, final double y, final double z) {
+        final Player nearby = mock(Player.class);
+        when(nearby.getWorld()).thenReturn(world);
+        when(nearby.getLocation()).thenReturn(new Location(world, x, y, z));
+        when(nearby.getBoundingBox()).thenReturn(new BoundingBox(x - 0.3, y, z - 0.3, x + 0.3, y + 1.8, z + 0.3));
+        return nearby;
     }
 
     private void trustedAt(final double x, final double y, final double z) {
@@ -287,6 +358,407 @@ public class TestShulkerLidRide {
         // All ten pushes without a client packet.
         serverAt(0.5, 1.0 + ShulkerLidRide.vanillaRide(0.0F, 10, 0.0, 1.8), 0.5);
         assertNotCorrected(1.0);
+    }
+
+    @Test
+    public void bystanderOnTheBoxIsNotPulledBackWhenAnotherPlayerOpensIt() throws Exception {
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        anotherPlayerOpens();
+        nearbyPlayers.add(player);
+        openBox();
+        assertTrue("the standing bystander receives the same bounded opening record", data.shulkerLidOpenValid);
+        lid(progressAfter(3));
+        serverAt(0.5, 1.33, 0.5);
+        assertNotCorrected(1.0);
+    }
+
+    @Test
+    public void playerBesideTheSlabIsNotArmed() throws Exception {
+        anotherPlayerOpens();
+        // Body x 1.0 .. 1.6: touching the box's side, not over its lid face (strict overlap, like vanilla's query).
+        nearbyPlayers.add(nearbyPlayer(1.3, 1.0, 0.5));
+        openBox();
+        assertFalse(otherData.shulkerLidOpenValid);
+        // 0.01 over the lid face's footprint: armed.
+        nearbyPlayers.clear();
+        nearbyPlayers.add(nearbyPlayer(1.29, 1.0, 0.5));
+        openBox();
+        assertTrue(otherData.shulkerLidOpenValid);
+    }
+
+    @Test
+    public void bystanderInAnotherFoliaRegionIsSkipped() throws Exception {
+        final Player foreign = nearbyPlayer(0.5, 1.0, 0.5);
+        nearbyPlayers.add(foreign);
+        owned = location -> location.getY() == 0.0; // The box is owned here; the player's entity is not.
+        anotherPlayerOpens();
+        openBox();
+        assertFalse(otherData.shulkerLidOpenValid);
+    }
+
+    // ---------------------------------------------------------------- bystanders: reach, facings, several openers
+
+    private void anotherPlayerOpens() {
+        inventoryOpener = mock(Player.class);
+        when(inventoryOpener.getWorld()).thenReturn(world);
+        when(inventoryOpener.getLocation()).thenReturn(new Location(world, 3.0, 1.0, 3.0));
+    }
+
+    /** Whether the player, standing at the given server position, is armed when another player opens the box. */
+    private boolean armedAt(final double x, final double y, final double z) throws Exception {
+        data.shulkerLidOpenValid = false;
+        serverAt(x, y, z);
+        openBox();
+        return data.shulkerLidOpenValid;
+    }
+
+    @Test
+    public void bystandersAreArmedAsFarAsTheLidPushes() throws Exception {
+        anotherPlayerOpens();
+        nearbyPlayers.add(player);
+        // Near side of the body this far out of the lid face; vanilla's push slab reaches 1.0 (unhalved progress).
+        final double[] armed = {0.0, 0.3, 0.6, 0.7, 0.9, 0.99};
+        final double[] beyond = {1.01, 1.2, 2.0};
+        for (final BlockFace face : new BlockFace[] {BlockFace.UP, BlockFace.NORTH, BlockFace.DOWN}) {
+            facing(face);
+            lidFor(face, 0.0F);
+            final double size = face == BlockFace.UP || face == BlockFace.DOWN ? 1.8 : 0.6;
+            for (final double near : armed) {
+                assertTrue(face + " near side " + near + " is pushed", ShulkerLidRide.vanillaRide(0.0F, 10, near, size) > 0.0);
+                assertTrue(face + " near side " + near + " is armed", armedAt(face, near));
+                assertEquals(face, data.shulkerLidOpenFace);
+            }
+            for (final double near : beyond) {
+                assertEquals(0.0, ShulkerLidRide.vanillaRide(0.0F, 10, near, size), 0.0);
+                assertFalse(face + " near side " + near + " is not armed", armedAt(face, near));
+            }
+        }
+    }
+
+    /** {@link #armedAt} for a body centred on the box, its near side this far out of the lid face of {@code face}. */
+    private boolean armedAt(final BlockFace face, final double near) throws Exception {
+        switch (face) {
+            case UP: return armedAt(0.5, 1.0 + near, 0.5);
+            case NORTH: return armedAt(0.5, 0.0, -near - 0.3);
+            case DOWN: return armedAt(0.5, -near - 1.8, 0.5);
+            default: throw new IllegalArgumentException(face.name());
+        }
+    }
+
+    @Test
+    public void bystanderMidJumpOverAnUpwardBoxIsNotPulledBack() throws Exception {
+        // REVIEW9 P1: feet 0.7 above the closed box when another player opens it; the slab reaches them at tick 7.
+        trustedAt(0.5, 1.7, 0.5);
+        serverAt(0.5, 1.7, 0.5);
+        anotherPlayerOpens();
+        nearbyPlayers.add(player);
+        openBox();
+        assertTrue(data.shulkerLidOpenValid);
+        for (int tick = 1; tick <= 10; tick++) {
+            lid(progressAfter(tick));
+            serverAt(0.5, 1.7 + ShulkerLidRide.vanillaRide(0.0F, tick, 0.7, 1.8), 0.5);
+            assertNotCorrected(1.7);
+        }
+        assertEquals(0.33, ShulkerLidRide.vanillaRide(0.0F, 10, 0.7, 1.8), 1e-6);
+        // Still nothing beyond vanilla's push.
+        serverAt(0.5, 1.7 + 0.33 + 0.12, 0.5);
+        assertCorrectedTo(1.7);
+    }
+
+    @Test
+    public void bystanderInFrontOfASidewaysBoxIsNotPulledBack() throws Exception {
+        // REVIEW9 P2: a box in a wall, a player standing with the centre 1.0 in front of it (near side 0.7).
+        facing(BlockFace.NORTH);
+        lidFor(BlockFace.NORTH, 0.0F);
+        trustedAt(0.5, 0.0, -1.0);
+        serverAt(0.5, 0.0, -1.0);
+        anotherPlayerOpens();
+        nearbyPlayers.add(player);
+        openBox();
+        assertTrue(data.shulkerLidOpenValid);
+        for (int tick = 1; tick <= 10; tick++) {
+            lidFor(BlockFace.NORTH, progressAfter(tick));
+            trustedAt(0.5, 0.0, -1.0);
+            final double ride = ShulkerLidRide.vanillaRide(0.0F, tick, 0.7, 0.6);
+            serverAt(0.5, 0.0, -1.0 - ride);
+            assertEquals("tick " + tick, 0, pollSetBacks());
+            assertEquals(-1.0 - ride, data.untrackedTrustedZ, 1e-9);
+        }
+        // The start of a split move (a lagging bystander's next move event) on the push: not checked, like the opener's.
+        trustedAt(0.5, 0.0, -1.0);
+        assertEquals(0.33, moveStart(0.5, 0.0, -1.0, 0.5, 0.0, -1.33), 1e-6);
+        assertTrue(Double.isNaN(moveStart(0.5, 0.0, -1.0, 0.5, 0.0, -1.45)));
+    }
+
+    @Test
+    public void bystanderUnderADownwardBoxIsNotPulledBack() throws Exception {
+        facing(BlockFace.DOWN);
+        for (final double headroom : new double[] {0.2, 0.7}) {
+            data.shulkerLidOpenValid = false;
+            lidFor(BlockFace.DOWN, 0.0F);
+            final double feet = -1.8 - headroom;
+            trustedAt(0.5, feet, 0.5);
+            serverAt(0.5, feet, 0.5);
+            anotherPlayerOpens();
+            nearbyPlayers.clear();
+            nearbyPlayers.add(player);
+            openBox();
+            assertTrue("head " + headroom + " below", data.shulkerLidOpenValid);
+            lidFor(BlockFace.DOWN, 1.0F);
+            final double ride = ShulkerLidRide.vanillaRide(0.0F, 10, headroom, 1.8);
+            assertTrue(ride > 0.3);
+            serverAt(0.5, feet - ride, 0.5);
+            assertEquals("head " + headroom + " below", 0, pollSetBacks());
+            assertEquals(feet - ride, data.untrackedTrustedY, 1e-9);
+        }
+    }
+
+    @Test
+    public void secondOpenerOfAFullyOpenBoxLeavesTheBystandersRecord() throws Exception {
+        // REVIEW9 P3: the lid is fully out at tick 10, a third player opens the box at tick 12, the bystander's client
+        // lags (no move event carried the trusted position up to the lid top yet).
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        anotherPlayerOpens();
+        nearbyPlayers.add(player);
+        openBox();
+        data.shulkerLidOpenTick -= 12;
+        lid(1.0F);
+        serverAt(0.5, 1.5, 0.5);
+        anotherPlayerOpens();
+        openBox();
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(-12, data.shulkerLidOpenTick - TickTask.getTick());
+        assertEquals(0.0F, data.shulkerLidOpenProgress, 0.0F);
+        assertEquals(0, pollSetBacks());
+        assertEquals(1.5, data.untrackedTrustedY, 0.0);
+        // No push follows from a fully open box, so not even a record of another box is touched.
+        data.shulkerLidOpenX = 7;
+        openBox();
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(7, data.shulkerLidOpenX);
+    }
+
+    @Test
+    public void friendOpeningAFullyOpenBoxLeavesTheOpenersOwnRecord() throws Exception {
+        // The player opened the box they stand on; a friend opens it too, 0.6 s later.
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        nearbyPlayers.add(player);
+        openBox();
+        assertTrue(data.shulkerLidOpenValid);
+        data.shulkerLidOpenTick -= 12;
+        lid(1.0F);
+        serverAt(0.5, 1.5, 0.5);
+        anotherPlayerOpens();
+        openBox();
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(0, pollSetBacks());
+        assertEquals(1.5, data.untrackedTrustedY, 0.0);
+    }
+
+    @Test
+    public void openerOpeningAFullyOpenBoxKeepsAndReconcilesTheEarlierPush() throws Exception {
+        pendingPushFromA();
+        boxAt(4, 0, 0, BlockFace.UP, 1.0F);
+
+        // Opening fully-open B cannot push the opener and must not erase A's pending push.
+        open(new Location(world, 4, 0, 0));
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(0, data.shulkerLidOpenX);
+        assertNotCorrected(1.0);
+    }
+
+    @Test
+    public void openerOpeningAnUnreadableBoxKeepsAndReconcilesTheEarlierPush() throws Exception {
+        pendingPushFromA();
+        final Block unreadable = boxAt(4, 0, 0, BlockFace.UP, 0.0F);
+        doThrow(new IllegalStateException()).when(unreadable).getBlockData();
+
+        open(new Location(world, 4, 0, 0));
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(0, data.shulkerLidOpenX);
+        assertNotCorrected(1.0);
+    }
+
+    @Test
+    public void openerOpeningABoxInAnotherRegionKeepsAndReconcilesTheEarlierPush() throws Exception {
+        pendingPushFromA();
+        boxAt(4, 0, 0, BlockFace.UP, 0.0F);
+        owned = location -> location.getBlockX() != 4;
+
+        open(new Location(world, 4, 0, 0));
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(0, data.shulkerLidOpenX);
+        assertNotCorrected(1.0);
+    }
+
+    @Test
+    public void genuinelyNewOpenerPushReplacesTheEarlierRecord() throws Exception {
+        pendingPushFromA();
+        final Block b = boxAt(4, 0, 0, BlockFace.UP, 0.0F);
+
+        open(new Location(world, 4, 0, 0));
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(4, data.shulkerLidOpenX);
+        assertEquals(0.0F, data.shulkerLidOpenProgress, 0.0F);
+
+        // The single bounded record now replays B's push after the opener's next movement update.
+        trustedAt(4.5, 1.0, 0.5);
+        boxLid(b, 4, 0, 0, BlockFace.UP, progressAfter(3));
+        serverAt(4.5, 1.33, 0.5);
+        assertNotCorrected(1.0);
+    }
+
+    /**
+     * REVIEW9 P4: first opening at tick 0, the bystander's last checked packet at tick 2 (+0.22), a second opener at
+     * tick 3, the poll at tick 5 sees three pushes past the last packet.
+     */
+    private void secondOpenerDuringTheOpening(final boolean playerOpensFirst) throws Exception {
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        nearbyPlayers.add(player);
+        if (!playerOpensFirst) {
+            anotherPlayerOpens();
+        }
+        openBox();
+        assertTrue(data.shulkerLidOpenValid);
+        data.shulkerLidOpenTick -= 3;
+        data.shulkerLidMoveStartLogged = true;
+        lid(progressAfter(2));
+        trustedAt(0.5, 1.22, 0.5);
+        lid(progressAfter(3));
+        serverAt(0.5, 1.33, 0.5);
+        anotherPlayerOpens();
+        openBox();
+        // The record of the ongoing opening is kept as it was: start, tick, logged flag.
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(0.0F, data.shulkerLidOpenProgress, 0.0F);
+        assertEquals(-3, data.shulkerLidOpenTick - TickTask.getTick());
+        assertTrue(data.shulkerLidMoveStartLogged);
+        lid(progressAfter(5));
+        serverAt(0.5, 1.55, 0.5);
+        assertNotCorrected(1.22);
+        // Never past what that opening's replay allows.
+        serverAt(0.5, 1.22 + 0.33 + 0.12, 0.5);
+        assertCorrectedTo(1.22);
+    }
+
+    @Test
+    public void secondOpenerDuringTheOpeningKeepsTheBystandersEarlierRecord() throws Exception {
+        secondOpenerDuringTheOpening(false);
+    }
+
+    @Test
+    public void friendOpeningDuringTheOpeningKeepsTheOpenersOwnRecord() throws Exception {
+        secondOpenerDuringTheOpening(true);
+    }
+
+    @Test
+    public void aNewOpeningReplacesOnlyARecordThatCannotReplayIt() throws Exception {
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        anotherPlayerOpens();
+        nearbyPlayers.add(player);
+        // The window is over: a new opening (lid 0.3 now) is recorded afresh.
+        openBox();
+        data.shulkerLidOpenTick -= ShulkerLidRide.WINDOW_TICKS + 1;
+        lid(progressAfter(3));
+        openBox();
+        assertEquals(progressAfter(3), data.shulkerLidOpenProgress, 1e-6F);
+        assertEquals(0, data.shulkerLidOpenTick - TickTask.getTick());
+        // The record is of another box.
+        data.shulkerLidOpenX = 7;
+        openBox();
+        assertEquals(0, data.shulkerLidOpenX);
+        // The lid closed back below the recorded start before this opening: replaying from it would miss pushes.
+        lid(0.5F);
+        data.shulkerLidOpenValid = false;
+        openBox();
+        assertEquals(0.5F, data.shulkerLidOpenProgress, 1e-6F);
+        lid(progressAfter(2));
+        openBox();
+        assertEquals(progressAfter(2), data.shulkerLidOpenProgress, 1e-6F);
+        // A player out of the lid's reach keeps whatever record they hold.
+        nearbyPlayers.clear();
+        data.shulkerLidOpenX = 7;
+        openBox();
+        assertEquals(7, data.shulkerLidOpenX);
+    }
+
+    @Test
+    public void altSpamOverAnUpwardBoxNeverLiftsABystanderPastTheLid() throws Exception {
+        // REVIEW9 P6: an alt opens and closes the box over and over while a (hacked) client stands on it.
+        trustedAt(0.5, 1.0, 0.5);
+        anotherPlayerOpens();
+        nearbyPlayers.add(player);
+        for (int cycle = 0; cycle < 20; cycle++) {
+            serverAt(0.5, data.untrackedTrustedY, 0.5);
+            if (cycle > 0) {
+                // Reopened within the window (the lid closed one step): no new record, no new window.
+                final int tick = data.shulkerLidOpenTick;
+                final float from = data.shulkerLidOpenProgress;
+                lid(0.9F);
+                openBox();
+                assertEquals(tick, data.shulkerLidOpenTick);
+                assertEquals(from, data.shulkerLidOpenProgress, 0.0F);
+                // Reopened after the window: armed again, from the lid's progress.
+                data.shulkerLidOpenTick -= ShulkerLidRide.WINDOW_TICKS + 1;
+            }
+            lid(cycle == 0 ? 0.0F : 0.9F);
+            openBox();
+            assertTrue(data.shulkerLidOpenValid);
+            lid(1.0F);
+            final double t = data.untrackedTrustedY;
+            double maxTolerated = t;
+            for (int i = 0; i <= 150; i++) {
+                final double y = t + i * 0.01;
+                serverAt(0.5, y, 0.5);
+                if (pollSetBacks() == 0) {
+                    maxTolerated = Math.max(maxTolerated, y);
+                }
+                assertTrue("trusted never above the real lid top", data.untrackedTrustedY <= 1.5 + 1e-9);
+                data.untrackedTrustedY = t; // each probe on its own
+            }
+            // First opening: vanilla's own full push (1.10) plus the margin. Later ones: one push above the lid top.
+            final double cap = cycle == 0 ? 1.0 + 1.11 : 1.5 + 0.21;
+            assertTrue("cycle " + cycle + " tolerated " + maxTolerated, maxTolerated <= cap + 1e-6);
+            assertTrue(maxTolerated <= 1.0 + 1.11 + 1e-6);
+            // The legit outcome: resting on the lid top is taken.
+            serverAt(0.5, 1.5, 0.5);
+            assertEquals(0, pollSetBacks());
+            assertEquals(1.5, data.untrackedTrustedY, 1e-9);
+        }
+    }
+
+    @Test
+    public void altSpamBesideASidewaysBoxNeverPushesABystanderPastTheLidsReach() throws Exception {
+        // REVIEW9 P5: the server pushes as far as the replay allows (at least one push) every cycle.
+        facing(BlockFace.NORTH);
+        trustedAt(0.5, 0.0, -0.301);
+        anotherPlayerOpens();
+        nearbyPlayers.add(player);
+        double minZ = 0.0;
+        for (int cycle = 0; cycle < 40; cycle++) {
+            final double tz = data.untrackedTrustedZ;
+            serverAt(0.5, 0.0, tz);
+            lidFor(BlockFace.NORTH, cycle == 0 ? 0.0F : 0.9F);
+            if (cycle > 0 && cycle % 2 == 0) {
+                data.shulkerLidOpenTick -= ShulkerLidRide.WINDOW_TICKS + 1;
+            }
+            openBox();
+            lidFor(BlockFace.NORTH, 1.0F);
+            final float from = data.shulkerLidOpenProgress;
+            final double ride = data.shulkerLidOpenValid
+                    ? ShulkerLidRide.vanillaRide(from, ShulkerLidRide.openingTicks(from, 1.0F), -(tz + 0.3), 0.6) : 0.0;
+            serverAt(0.5, 0.0, tz - Math.max(ride, 0.11));
+            pollSetBacks();
+            minZ = Math.min(minZ, data.untrackedTrustedZ);
+            assertTrue("cycle " + cycle, -(minZ + 0.3) <= 1.11 + 1e-6);
+        }
+        // Taken once (the first opening's full push), never ratcheted further.
+        assertEquals(-1.401, minZ, 1e-9);
     }
 
     @Test
@@ -408,6 +880,10 @@ public class TestShulkerLidRide {
         trustedAt(0.5, 1.0, 0.5);
         openBox();
         lid(1.0F);
+        final int openingTick = data.shulkerLidOpenTick;
+        boxAt(4, 0, 0, BlockFace.UP, 1.0F);
+        open(new Location(world, 4, 0, 0)); // A non-pushing event must not extend the old record's window.
+        assertEquals(openingTick, data.shulkerLidOpenTick);
         data.shulkerLidOpenTick -= ShulkerLidRide.WINDOW_TICKS + 1;
         serverAt(0.5, 1.33, 0.5);
         assertCorrectedTo(1.0);
@@ -435,7 +911,8 @@ public class TestShulkerLidRide {
         // A north box whose shape reaches up (not its lid): no opening.
         lidFor(BlockFace.UP, 0.4F);
         openBox();
-        assertFalse(data.shulkerLidOpenValid);
+        assertTrue(data.shulkerLidOpenValid);
+        assertEquals(BlockFace.NORTH, data.shulkerLidOpenFace);
         // The upward box, then it turns into something else.
         facing(BlockFace.UP);
         lid(0.0F);
