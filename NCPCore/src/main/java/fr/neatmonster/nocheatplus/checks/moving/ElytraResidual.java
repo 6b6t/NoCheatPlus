@@ -15,7 +15,7 @@
 package fr.neatmonster.nocheatplus.checks.moving;
 
 /**
- * Short in-memory window after an elytra is unequipped mid-glide.
+ * Short in-memory window after an elytra is unequipped or depleted mid-glide.
  * <p>
  * The client keeps gliding until the server's equipment update reaches it, then
  * coasts with vanilla air drag. SurvivalFly alone sets that back. The window has
@@ -41,7 +41,7 @@ package fr.neatmonster.nocheatplus.checks.moving;
  * </ul>
  * In both phases the player may not drop more than {@link #Y_DESCEND_SLACK} below
  * the last accepted vertical speed, and no move is faster than the elytra cap.
- * Any move outside the limits, ground, liquid, climbable or an elytra back in
+ * Any move outside the limits, ground, liquid, climbable or a usable elytra back in
  * the chest slot ends the window. A new window can
  * open at most once per {@link #REARM_MOVES} moves. State lives only in
  * {@link MovingData}.
@@ -289,12 +289,12 @@ public final class ElytraResidual {
     /**
      * Count one move and judge it against the open window. Returns true when the
      * move is inside the window. Ground, reset conditions (liquid, climbable and
-     * similar), an elytra in the chest slot again and any move outside the limits
+     * similar), a usable elytra in the chest slot again and any move outside the limits
      * end the window.
      */
     public static boolean allow(final State state, final double hDistance, final double yDistance,
-                                final boolean onGround, final boolean resetCond, final boolean wearingElytra) {
-        return allow(state, hDistance, yDistance, Double.NaN, onGround, resetCond, wearingElytra);
+                                final boolean onGround, final boolean resetCond, final boolean wearingUsableElytra) {
+        return allow(state, hDistance, yDistance, Double.NaN, onGround, resetCond, wearingUsableElytra);
     }
 
     /**
@@ -305,12 +305,12 @@ public final class ElytraResidual {
      */
     public static boolean allow(final State state, final double hDistance, final double yDistance,
                                 final double pitch, final boolean onGround, final boolean resetCond,
-                                final boolean wearingElytra) {
+                                final boolean wearingUsableElytra) {
         countMove(state);
         if (!state.open) {
             return false;
         }
-        if (wearingElytra || onGround || resetCond || !Double.isFinite(hDistance) || !Double.isFinite(yDistance)
+        if (wearingUsableElytra || onGround || resetCond || !Double.isFinite(hDistance) || !Double.isFinite(yDistance)
                 || hDistance < 0.0) {
             end(state);
             return false;
