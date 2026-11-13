@@ -548,6 +548,11 @@ public abstract class BlockCache {
         return minBlockY;
     }
 
+    /** Additional client collision geometry, or null when no verified Bedrock profile applies. */
+    public double[] getBedrockBounds(final int x, final int y, final int z) {
+        return null;
+    }
+
     public boolean isBedrockCache() {
         return isBedrockCache;
     }

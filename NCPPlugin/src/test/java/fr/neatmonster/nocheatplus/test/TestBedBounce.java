@@ -38,7 +38,7 @@ public class TestBedBounce {
     @Test
     public void testRiseMatchesLab() {
         // Last in-air move before the step-up landing: 0.39 -> 0.1892.
-        final double rise = BedBounce.firstRise(0.1892 - 0.39);
+        final double rise = BedBounce.firstRise(0.1892 - 0.39, false);
         assertEquals("Lab bounce rise 0.6621 - 0.5625", 0.6621 - 0.5625, rise, 0.0005);
         // The following moves of the lab trace follow ordinary gravity and drag.
         final double second = (rise - 0.08) * (double) 0.98F;
@@ -49,24 +49,34 @@ public class TestBedBounce {
     @Test
     public void testRiseValues() {
         for (final double lastDy : new double[] {-0.0784, -0.1552, -0.2305, -0.3, -0.5, -1.0, -3.0}) {
-            assertEquals("lastDy " + lastDy, vanillaRise(lastDy), BedBounce.firstRise(lastDy), 1e-12);
-            assertTrue("Visible bounce for lastDy " + lastDy, BedBounce.firstRise(lastDy) > 0.0);
+            assertEquals("lastDy " + lastDy, vanillaRise(lastDy), BedBounce.firstRise(lastDy, false), 1e-12);
+            assertTrue("Visible bounce for lastDy " + lastDy, BedBounce.firstRise(lastDy, false) > 0.0);
         }
         // One tick of falling off an edge (-0.0784): a 0.022 hop, as in the field low-jump pattern 0.58 -> 0.53.
-        assertEquals(0.022, BedBounce.firstRise(-0.0784), 0.001);
+        assertEquals(0.022, BedBounce.firstRise(-0.0784, false), 0.001);
         // Slow landings do not bounce visibly (impact above -0.1212).
         for (final double lastDy : new double[] {-0.04, -0.01, 0.0, 0.1, 0.42, Double.NaN,
                 Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY}) {
-            assertEquals("No rise for lastDy " + lastDy, 0.0, BedBounce.firstRise(lastDy), 0.0);
+            assertEquals("No rise for lastDy " + lastDy, 0.0, BedBounce.firstRise(lastDy, false), 0.0);
         }
         // Never more than a jump for falls of up to a few blocks.
-        assertTrue(BedBounce.firstRise(-0.6) < 0.42);
+        assertTrue(BedBounce.firstRise(-0.6, false) < 0.42);
+    }
+
+    @Test
+    public void testRecordedBedrockRisesAndOrdinaryJumpLimit() {
+        for (final double[] trace : new double[][] {{-0.12087, 0.13017}, {-0.22791, 0.19889}}) {
+            final double rise = BedBounce.riseAfterLanding(true, false, trace[0], false, true, false, true, true);
+            assertEquals(trace[1], rise, BedBounce.RISE_MARGIN);
+            assertTrue(BedBounce.isBounceLiftOff(rise, 1, 2, true, trace[1], true));
+            assertFalse(BedBounce.isBounceLiftOff(rise, 1, 2, true, 0.42, true));
+        }
     }
 
     @Test
     public void testLabSequence() {
         // Landing move: from in air (0.1892) to the bed top, last move 0.39 -> 0.1892 in air.
-        final double armed = BedBounce.riseAfterLanding(true, false, 0.1892 - 0.39, false, true, false, true);
+        final double armed = BedBounce.riseAfterLanding(true, false, 0.1892 - 0.39, false, true, false, true, false);
         assertTrue(armed > 0.0);
         // Next move: 0.5625 -> 0.6621 from the bed top.
         assertTrue(BedBounce.isBounceLiftOff(armed, 100, 101, true, 0.6621 - 0.5625, true));
@@ -75,18 +85,20 @@ public class TestBedBounce {
     @Test
     public void testNotArmed() {
         final double dy = -0.2;
-        assertEquals("Last move invalid", 0.0, BedBounce.riseAfterLanding(false, false, dy, false, true, false, true), 0.0);
-        assertEquals("Last move ended on ground (truncated)", 0.0, BedBounce.riseAfterLanding(true, true, dy, false, true, false, true), 0.0);
-        assertEquals("Not a landing (from ground)", 0.0, BedBounce.riseAfterLanding(true, false, dy, true, true, false, true), 0.0);
-        assertEquals("Not on ground", 0.0, BedBounce.riseAfterLanding(true, false, dy, false, false, false, true), 0.0);
-        assertEquals("Sneaking suppresses the bounce", 0.0, BedBounce.riseAfterLanding(true, false, dy, false, true, true, true), 0.0);
-        assertEquals("Not on a bed", 0.0, BedBounce.riseAfterLanding(true, false, dy, false, true, false, false), 0.0);
-        assertEquals("Rising, no fall", 0.0, BedBounce.riseAfterLanding(true, false, 0.2, false, true, false, true), 0.0);
+        for (final boolean bedrock : new boolean[] {false, true}) {
+            assertEquals("Last move invalid", 0.0, BedBounce.riseAfterLanding(false, false, dy, false, true, false, true, bedrock), 0.0);
+            assertEquals("Last move ended on ground (truncated)", 0.0, BedBounce.riseAfterLanding(true, true, dy, false, true, false, true, bedrock), 0.0);
+            assertEquals("Not a landing (from ground)", 0.0, BedBounce.riseAfterLanding(true, false, dy, true, true, false, true, bedrock), 0.0);
+            assertEquals("Not on ground", 0.0, BedBounce.riseAfterLanding(true, false, dy, false, false, false, true, bedrock), 0.0);
+            assertEquals("Sneaking suppresses the bounce", 0.0, BedBounce.riseAfterLanding(true, false, dy, false, true, true, true, bedrock), 0.0);
+            assertEquals("Not on a bed", 0.0, BedBounce.riseAfterLanding(true, false, dy, false, true, false, false, bedrock), 0.0);
+            assertEquals("Rising, no fall", 0.0, BedBounce.riseAfterLanding(true, false, 0.2, false, true, false, true, bedrock), 0.0);
+        }
     }
 
     @Test
     public void testLiftOffLimits() {
-        final double rise = BedBounce.firstRise(-0.2);
+        final double rise = BedBounce.firstRise(-0.2, false);
         assertTrue(BedBounce.isBounceLiftOff(rise, 7, 8, true, rise, true));
         assertTrue("Lower than vanilla", BedBounce.isBounceLiftOff(rise, 7, 8, true, rise / 2.0, true));
         assertFalse("Higher than vanilla", BedBounce.isBounceLiftOff(rise, 7, 8, true, rise + 0.01, true));
