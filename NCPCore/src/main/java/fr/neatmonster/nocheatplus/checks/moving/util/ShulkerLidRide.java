@@ -457,15 +457,14 @@ public final class ShulkerLidRide {
         final float lidNow = lidProgress(world, b[0], b[1], b[2], face);
         // The lid may have started closing after the server pushed the player but before a lagged client/poll
         // observes that position. Never infer progress: use only the highest server shape seen at open/close/poll.
-        if (!(lidNow > data.shulkerLidOpenProgress)) {
-            return Double.NaN;
-        }
         float replayTo = lidNow;
         if (data.shulkerLidOpenedByPlayer) {
             if (lidNow > data.shulkerLidOpenMaxProgress) {
                 data.shulkerLidOpenMaxProgress = lidNow;
             }
             replayTo = data.shulkerLidOpenMaxProgress;
+        } else if (!(lidNow > data.shulkerLidOpenProgress)) {
+            return Double.NaN;
         }
         final int ticks = openingTicks(data.shulkerLidOpenProgress, replayTo);
         if (ticks <= 0) {

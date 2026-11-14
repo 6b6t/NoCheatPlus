@@ -283,6 +283,63 @@ public class TestShulkerLidRide {
         assertCorrectedTo(1.0);
     }
 
+    @Test
+    public void selfCloseFullyShutAtTickSixStillReplaysTheObservedPeakOnly() throws Exception {
+        assertClosedSelfClosePollAtAge(6);
+    }
+
+    @Test
+    public void selfCloseFullyShutAtTickEightStillReplaysTheObservedPeakOnly() throws Exception {
+        assertClosedSelfClosePollAtAge(8);
+    }
+
+    private void assertClosedSelfClosePollAtAge(final int age) throws Exception {
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        openBox();
+        lid(progressAfter(3));
+        data.shulkerLidOpenTick -= 3;
+        closeBox();
+        data.shulkerLidOpenTick -= age - 3;
+
+        // The lid has fully shut before the lagged untracked poll reads its shape.
+        lid(progressAfter(0));
+        serverAt(0.5, 1.33, 0.5);
+        assertNotCorrected(1.0);
+
+        // The remembered server peak accepts only the real three-step push plus the existing margin.
+        serverAt(0.5, 1.45, 0.5);
+        assertCorrectedTo(1.0);
+    }
+
+    @Test
+    public void selfCloseFullyShutAfterTheReplayWindowIsCorrected() throws Exception {
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        openBox();
+        lid(progressAfter(3));
+        data.shulkerLidOpenTick -= 3;
+        closeBox();
+        data.shulkerLidOpenTick -= ShulkerLidRide.WINDOW_TICKS + 1;
+
+        lid(progressAfter(0));
+        serverAt(0.5, 1.33, 0.5);
+        assertCorrectedTo(1.0);
+    }
+
+    @Test
+    public void selfOpenWithoutCloseSnapshotCannotReplayAfterLidFullyShuts() throws Exception {
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        openBox();
+        data.shulkerLidOpenTick -= 6;
+
+        // No close snapshot or earlier poll observed an opening peak.
+        lid(progressAfter(0));
+        serverAt(0.5, 1.33, 0.5);
+        assertCorrectedTo(1.0);
+    }
+
     private Player nearbyPlayer(final double x, final double y, final double z) {
         final Player nearby = mock(Player.class);
         when(nearby.getWorld()).thenReturn(world);
@@ -889,7 +946,9 @@ public class TestShulkerLidRide {
         assertCorrectedTo(1.0);
         serverAt(0.5, 1.33, 0.5);
         lid(progressAfter(0));
-        assertCorrectedTo(1.0); // lid not out: no opening tick ran
+        assertNotCorrected(1.0); // the earlier poll observed this real peak before the lid shut
+        serverAt(0.5, 1.45, 0.5);
+        assertCorrectedTo(1.0);
     }
 
     @Test
