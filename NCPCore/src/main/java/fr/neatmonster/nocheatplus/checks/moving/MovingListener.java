@@ -45,6 +45,7 @@ import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPortalEnterEvent;
 import org.bukkit.event.entity.EntityToggleGlideEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.event.player.PlayerBedEnterEvent;
@@ -3818,6 +3819,22 @@ catch (java.lang.Throwable thr) {}
             }
             ShulkerLidRide.recordBystander(DataManager.getGenericInstance(other, MovingData.class), box, face, lid);
         }
+    }
+
+    /**
+     * Capture the real lid progress before the just-closed inventory starts its closing animation. A lagged client's
+     * next packet/poll can arrive after the lid has already turned, while the server's opening push is still pending.
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onInventoryCloseShulkerLid(final InventoryCloseEvent event) {
+        if (!(event.getPlayer() instanceof Player) || event.getInventory().getType() != InventoryType.SHULKER_BOX) {
+            return;
+        }
+        final Location box = event.getInventory().getLocation();
+        if (box == null) {
+            return;
+        }
+        ShulkerLidRide.recordClosing(DataManager.getGenericInstance((Player) event.getPlayer(), MovingData.class), box);
     }
 
 

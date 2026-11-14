@@ -21,6 +21,7 @@ import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.Directional;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.inventory.InventoryType;
 import org.bukkit.inventory.Inventory;
@@ -232,6 +233,23 @@ public class TestShulkerLidRide {
         open(new Location(world, 0, 0, 0));
     }
 
+    /** The player's own close event, before the shulker lid begins animating shut. */
+    private void closeBox() throws Exception {
+        final Inventory inventory = mock(Inventory.class);
+        when(inventory.getType()).thenReturn(InventoryType.SHULKER_BOX);
+        when(inventory.getLocation()).thenReturn(new Location(world, 0, 0, 0));
+        final InventoryCloseEvent event = mock(InventoryCloseEvent.class);
+        when(event.getPlayer()).thenReturn(player);
+        when(event.getInventory()).thenReturn(inventory);
+        withFolia(() -> {
+            try (MockedStatic<DataManager> manager = mockStatic(DataManager.class)) {
+                manager.when(() -> DataManager.getGenericInstance(player, MovingData.class)).thenReturn(data);
+                listener.onInventoryCloseShulkerLid(event);
+            }
+            return null;
+        });
+    }
+
     private void pendingPushFromA() throws Exception {
         trustedAt(0.5, 1.0, 0.5);
         serverAt(0.5, 1.0, 0.5);
@@ -239,6 +257,30 @@ public class TestShulkerLidRide {
         lid(progressAfter(3));
         serverAt(0.5, 1.33, 0.5);
         assertTrue(data.shulkerLidOpenValid);
+    }
+
+    @Test
+    public void selfCloseAfterThreeTicksAt200msLagReplaysTheObservedPeakOnly() throws Exception {
+        trustedAt(0.5, 1.0, 0.5);
+        serverAt(0.5, 1.0, 0.5);
+        openBox(); // Tick 0: own box opens; the lid begins at 0.0.
+
+        // Ticks 1..3: three vanilla opening steps, each pushing 0.11 (0.33 total).
+        lid(progressAfter(3));
+        data.shulkerLidOpenTick -= 3;
+        closeBox(); // At tick 3 the player closes the window, before the lid starts closing.
+        assertEquals(progressAfter(3), data.shulkerLidOpenMaxProgress, 0.0F);
+
+        // A ~200 ms round trip leaves the server at tick 4 before the client confirms the push. The lid has
+        // already reversed by one step (0.2), which explains only 0.22 if current progress is replayed.
+        data.shulkerLidOpenTick -= 1;
+        lid(progressAfter(2));
+        serverAt(0.5, 1.33, 0.5);
+        assertNotCorrected(1.0);
+
+        // The saved peak does not grow the allowance: 0.12 beyond the actual three-tick push still sets back.
+        serverAt(0.5, 1.45, 0.5);
+        assertCorrectedTo(1.0);
     }
 
     private Player nearbyPlayer(final double x, final double y, final double z) {

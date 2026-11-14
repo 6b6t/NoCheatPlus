@@ -379,6 +379,10 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public int shulkerLidOpenY;
     public int shulkerLidOpenZ;
     public float shulkerLidOpenProgress;
+    /** Whether this player opened the inventory (the close-event progress snapshot is only for this case). */
+    public boolean shulkerLidOpenedByPlayer;
+    /** Highest server-observed progress during this opening, retained if the lid starts closing before the poll. */
+    public float shulkerLidOpenMaxProgress;
     /** TickTask tick of the opening. */
     public int shulkerLidOpenTick;
     /** The unchecked start of a split move has been logged for this opening. */
