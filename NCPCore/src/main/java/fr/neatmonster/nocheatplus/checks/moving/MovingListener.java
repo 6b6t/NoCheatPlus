@@ -542,7 +542,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
             final IPlayerData pData = DataManager.getPlayerData(player);
             final MovingData data = pData.getGenericInstance(MovingData.class);
             if (!pData.isCheckActive(CheckType.MOVING_SURVIVALFLY, player)) {
-                data.elytraRelightBlocked = false;
+                data.clearElytraRelightBlock();
             }
             final boolean res = !MovingUtil.canLiftOffWithElytra(player, info.from, data);
             info.cleanup();
@@ -1470,7 +1470,7 @@ catch (java.lang.Throwable thr) {}
                 thisMove.flyCheck = CheckType.MOVING_SURVIVALFLY;
                 newTo = survivalFly.check(player, pFrom, pTo, multiMoveCount, data, cc, pData, tick, time, useBlockChangeTracker);
                 if (newTo != null && isAirborneElytraToggle(player, thisMove, lastMove)) {
-                    data.elytraRelightBlocked = true;
+                    data.blockElytraRelight(tick);
                 }
             }
 
@@ -1605,7 +1605,7 @@ catch (java.lang.Throwable thr) {}
             // Increase time since set back.
             data.timeSinceSetBack ++;
             if (data.elytraRelightBlocked) {
-                data.updateElytraRelightRecovery(thisMove.to.onGroundOrResetCond);
+                data.updateElytraRelightRecovery(thisMove.to.onGroundOrResetCond, tick);
             }
             return false;
         }

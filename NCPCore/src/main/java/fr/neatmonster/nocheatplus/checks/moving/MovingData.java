@@ -345,6 +345,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public int timeSinceSetBack = 0;
     /** An invalid glide toggle must recover through normal movement before redeploying. */
     public boolean elytraRelightBlocked = false;
+    /** Tick when the current elytra relight block began, or -1 when clear. */
+    public int elytraRelightBlockedTick = -1;
     /** Location hash value of the last (player/vehicle) set back, for checking independently of which set back location had been used. */
     public int lastSetBackHash = 0;
     /** TickTask tick of the last (player/vehicle) set back, -1 if none happened yet. */
@@ -444,10 +446,22 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         }
     }
 
-    /** A rejected glide must follow the correction before switching checks again. */
-    public void updateElytraRelightRecovery(final boolean onGroundOrResetCond) {
-        if (onGroundOrResetCond || timeSinceSetBack >= 10) {
-            elytraRelightBlocked = false;
+    /** A rejected glide stays blocked until ground contact or a fixed timeout. */
+    public void blockElytraRelight(final int tick) {
+        if (!elytraRelightBlocked) {
+            elytraRelightBlocked = true;
+            elytraRelightBlockedTick = tick;
+        }
+    }
+
+    public void clearElytraRelightBlock() {
+        elytraRelightBlocked = false;
+        elytraRelightBlockedTick = -1;
+    }
+
+    public void updateElytraRelightRecovery(final boolean onGroundOrResetCond, final int tick) {
+        if (onGroundOrResetCond || (elytraRelightBlockedTick >= 0 && tick - elytraRelightBlockedTick >= 20)) {
+            clearElytraRelightBlock();
         }
     }
 
@@ -476,7 +490,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Clear the data of the fly checks (not more-packets).
      */
     public void clearFlyData() {
-        elytraRelightBlocked = false;
+        clearElytraRelightBlock();
         playerMoves.invalidate();
         bunnyhopDelay = 0;
         sfJumpPhase = 0;
@@ -559,7 +573,6 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Move event: Mildly reset some data, prepare setting a new to-Location.
      */
     public void prepareSetBack(final Location loc) {
-        if (elytraRelightBlocked) timeSinceSetBack = 0;
         // A correction must not keep residual glide credit.
         ElytraResidual.end(elytraResidual);
         playerMoves.invalidate();
@@ -684,7 +697,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         noFallMatchedPacketSequence = 0L;
         noFallMovePackets = 0;
         noFallLastMovePackets = 0;
-        elytraRelightBlocked = false;
+        clearElytraRelightBlock();
         noFallLastMoveX = noFallLastMoveY = noFallLastMoveZ = Double.NaN;
         invalidateNativeLandingTask();
         noFallGeneration++;

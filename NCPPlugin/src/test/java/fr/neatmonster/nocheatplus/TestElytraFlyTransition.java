@@ -5,7 +5,6 @@ import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Method;
 import java.util.UUID;
-import java.util.Map;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -117,7 +116,8 @@ public class TestElytraFlyTransition {
     @Test
     public void customMaximumDurabilityUsesTheSameVanillaBoundary() throws Exception {
         for (final int maximum : new int[] {1, 100, 1000}) {
-            when(elytraDamage.serialize()).thenReturn(Map.of("max-damage", maximum));
+            when(elytraDamage.hasMaxDamage()).thenReturn(true);
+            when(elytraDamage.getMaxDamage()).thenReturn(maximum);
             when(elytraDamage.getDamage()).thenReturn(Math.max(0, maximum - 2));
             assertEquals("Maximum " + maximum, maximum > 1, isToggle());
             when(elytraDamage.getDamage()).thenReturn(maximum - 1);
@@ -202,36 +202,36 @@ public class TestElytraFlyTransition {
         final PlayerLocation from = mock(PlayerLocation.class);
         when(from.isPassableBox()).thenReturn(true);
         assertTrue(MovingUtil.canLiftOffWithElytra(player, from, data));
-        data.elytraRelightBlocked = true;
+        data.blockElytraRelight(100);
         assertFalse(MovingUtil.canLiftOffWithElytra(player, from, data));
         assertFalse(MovingUtil.isGlidingWithElytraValid(player, from, data, config));
     }
 
     @Test
-    public void repeatedCorrectionsCannotAccumulateRecoveryMoves() {
-        data.elytraRelightBlocked = true;
+    public void repeatedCorrectionsCannotExtendTheFixedRelightBlock() {
+        data.blockElytraRelight(100);
         final Location correction = new Location(mock(World.class), 1, 100, 1);
-        for (int round = 0; round < 20; round++) {
-            data.timeSinceSetBack = 50;
+        for (int tick = 101; tick < 120; tick++) {
+            data.blockElytraRelight(tick);
             data.prepareSetBack(correction);
-            assertEquals(0, data.timeSinceSetBack);
             assertTrue(data.elytraRelightBlocked);
-            for (int accepted = 1; accepted < 10; accepted++) {
-                data.timeSinceSetBack = accepted;
-                data.updateElytraRelightRecovery(false);
-                assertTrue("Cannot relight after just " + accepted + " clean moves", data.elytraRelightBlocked);
-            }
+            assertEquals("Repeated corrections must not restart the timer", 100, data.elytraRelightBlockedTick);
+            data.updateElytraRelightRecovery(false, tick);
         }
-        data.timeSinceSetBack = 10;
-        data.updateElytraRelightRecovery(false);
+        assertTrue(data.elytraRelightBlocked);
+        data.updateElytraRelightRecovery(false, 120);
         assertFalse("Normal movement allows redeploying again", data.elytraRelightBlocked);
+        data.blockElytraRelight(121);
+        assertTrue("A new rejected airborne toggle starts a new block", data.elytraRelightBlocked);
+        assertEquals(121, data.elytraRelightBlockedTick);
     }
 
     @Test
     public void realContactAllowsImmediateRecovery() {
-        data.elytraRelightBlocked = true;
-        data.updateElytraRelightRecovery(true);
+        data.blockElytraRelight(100);
+        data.updateElytraRelightRecovery(true, 101);
         assertFalse(data.elytraRelightBlocked);
+        assertEquals(-1, data.elytraRelightBlockedTick);
     }
 
     @Test
@@ -239,32 +239,33 @@ public class TestElytraFlyTransition {
         final ItemStack elytra = inventory.getChestplate();
         final PlayerLocation from = mock(PlayerLocation.class);
         when(from.isPassableBox()).thenReturn(true);
-        data.elytraRelightBlocked = true;
+        data.blockElytraRelight(100);
         data.timeSinceSetBack = 1;
         when(inventory.getChestplate()).thenReturn(null);
         assertFalse(Bridge1_9.isWearingElytra(player));
-        data.updateElytraRelightRecovery(false);
+        data.updateElytraRelightRecovery(false, 101);
         assertFalse(MovingUtil.canLiftOffWithElytra(player, from, data));
         assertTrue("Removing the Elytra must not clear the relight block", data.elytraRelightBlocked);
         when(inventory.getChestplate()).thenReturn(elytra);
         assertTrue(Bridge1_9.isWearingElytra(player));
-        data.updateElytraRelightRecovery(false);
+        data.updateElytraRelightRecovery(false, 102);
         assertFalse(MovingUtil.canLiftOffWithElytra(player, from, data));
         assertFalse(MovingUtil.isGlidingWithElytraValid(player, from, data, config));
         assertTrue("Re-equipping must still require recovery", data.elytraRelightBlocked);
-        data.timeSinceSetBack = 10;
-        data.updateElytraRelightRecovery(false);
+        data.updateElytraRelightRecovery(false, 120);
         assertFalse(data.elytraRelightBlocked);
         assertTrue(MovingUtil.canLiftOffWithElytra(player, from, data));
     }
 
     @Test
     public void logoutAndFlyDataResetDoNotKeepAnOldBlock() {
-        data.elytraRelightBlocked = true;
+        data.blockElytraRelight(100);
         data.onPlayerLeave();
         assertFalse(data.elytraRelightBlocked);
-        data.elytraRelightBlocked = true;
+        assertEquals(-1, data.elytraRelightBlockedTick);
+        data.blockElytraRelight(200);
         data.clearFlyData();
         assertFalse(data.elytraRelightBlocked);
+        assertEquals(-1, data.elytraRelightBlockedTick);
     }
 }
