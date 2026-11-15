@@ -5,6 +5,7 @@ import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Method;
 import java.util.UUID;
+import java.util.Map;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
@@ -116,8 +117,7 @@ public class TestElytraFlyTransition {
     @Test
     public void customMaximumDurabilityUsesTheSameVanillaBoundary() throws Exception {
         for (final int maximum : new int[] {1, 100, 1000}) {
-            when(elytraDamage.hasMaxDamage()).thenReturn(true);
-            when(elytraDamage.getMaxDamage()).thenReturn(maximum);
+            when(elytraDamage.serialize()).thenReturn(Map.of("max-damage", maximum));
             when(elytraDamage.getDamage()).thenReturn(Math.max(0, maximum - 2));
             assertEquals("Maximum " + maximum, maximum > 1, isToggle());
             when(elytraDamage.getDamage()).thenReturn(maximum - 1);

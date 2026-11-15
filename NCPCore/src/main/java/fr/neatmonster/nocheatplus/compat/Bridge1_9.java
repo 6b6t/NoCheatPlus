@@ -131,7 +131,9 @@ public class Bridge1_9 {
         if (elytra == null || elytra.getType() != ELYTRA) return false;
         final Damageable damage = (Damageable) elytra.getItemMeta();
         if (damage.isUnbreakable()) return true;
-        final int maximum = damage.hasMaxDamage() ? damage.getMaxDamage() : ELYTRA.getMaxDurability();
+        // This compile API predates Damageable's custom maximum durability methods.
+        final Object customMaximum = damage.serialize().get("max-damage");
+        final int maximum = customMaximum instanceof Number number ? number.intValue() : ELYTRA.getMaxDurability();
         return damage.getDamage() < maximum - 1;
     }
 
