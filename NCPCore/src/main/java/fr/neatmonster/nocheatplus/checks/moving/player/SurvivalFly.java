@@ -333,12 +333,18 @@ public class SurvivalFly extends Check {
 
         // Only the hop immediately after a supported bed or shelf-mushroom landing may skip low-jump detection.
         if (data.sfBedBounceRise > 0.0) {
+            final boolean fromOnShelfTop = ShelfBounce.isOnTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
+                    from.getMaxX(), from.getMaxZ(), from.getY());
             if (BedBounce.isBounceLiftOff(data.sfBedBounceRise, data.sfBedBounceMove, data.getPlayerMoveCount(),
                     fromOnGround, yDistance, BedBounce.isOnBedTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
                             from.getMaxX(), from.getMaxZ(), from.getY())
-                            || ShelfBounce.isOnTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
-                                    from.getMaxX(), from.getMaxZ(), from.getY()))) {
+                            || fromOnShelfTop)) {
                 data.sfNoLowJump = true;
+                // A fall bounce can exceed ordinary jump speed. Register only this validated shelf lift-off,
+                // before vdistrel consults the vertical-velocity queue below.
+                if (fromOnShelfTop && yDistance > data.liftOffEnvelope.getMaxJumpGain(data.jumpAmplifier) + 0.005) {
+                    data.prependVerticalVelocity(new SimpleEntry(tick, yDistance, 1));
+                }
                 context.tags.add("bedbounce");
             }
             data.sfBedBounceRise = 0.0;
