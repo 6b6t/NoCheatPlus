@@ -73,6 +73,12 @@ public class TestBoatPassable {
         final var actionsField = MovingConfig.class.getField("vehicleEnvelopeActions");
         actionsField.setAccessible(true);
         actionsField.set(config, actions);
+        final var boatEnabledField = MovingConfig.class.getField("boatPhasingEnabled");
+        boatEnabledField.setAccessible(true);
+        boatEnabledField.set(config, true);
+        final var boatModeField = MovingConfig.class.getField("boatPhasingMode");
+        boatModeField.setAccessible(true);
+        boatModeField.set(config, BoatPhasingMode.ENFORCE);
         final VehicleEnvelope check = mock(VehicleEnvelope.class, CALLS_REAL_METHODS);
         final ViolationData result = mock(ViolationData.class);
         when(result.willCancel()).thenReturn(true);
@@ -251,13 +257,17 @@ public class TestBoatPassable {
         }
         final VehicleEnvelope check = mock(VehicleEnvelope.class, CALLS_REAL_METHODS);
         final MovingData data = mock(MovingData.class);
+        final MovingConfig config = mock(MovingConfig.class);
+        final var boatEnabled = MovingConfig.class.getField("boatPhasingEnabled");
+        boatEnabled.setAccessible(true);
+        boatEnabled.set(config, true);
         final DefaultSetBackStorage storage = mock(DefaultSetBackStorage.class);
         final var field = MovingData.class.getField("vehicleSetBacks");
         field.setAccessible(true);
         field.set(data, storage);
         when(info.to.isPassableBox()).thenReturn(true);
         assertNull(check.checkBoatPassable(mock(Player.class), mock(Entity.class), info,
-                data, mock(MovingConfig.class), mock(IPlayerData.class)));
+                data, config, mock(IPlayerData.class)));
         verify(check, never()).check(any(), any(), any(), anyBoolean(), any(), any(), any(), any());
         verify(storage).setSafeMediumEntry(info.to);
     }
