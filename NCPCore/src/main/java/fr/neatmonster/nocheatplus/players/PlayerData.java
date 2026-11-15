@@ -170,8 +170,9 @@ public class PlayerData implements IPlayerData {
     // TODO: a per entry typed variant (key - value relation)?
     private final InstanceMapLOW dataCache = new InstanceMapLOW(lock, 24);
 
-    /** If is Bedrock Player. This is set if CompatNoCheatPlus is present. */
+    /** Bedrock connection, identified by Floodgate or CompatNoCheatPlus. */
     private boolean bedrockPlayer = false;
+    private String bedrockVersion;
     private boolean requestUpdateInventory = false;
     private final SetBackRequest<Player> setBackRequest = new SetBackRequest<>();
 
@@ -468,6 +469,7 @@ public class PlayerData implements IPlayerData {
         // (Somewhat reversed order of invalidation.)
         invalidateOffline();
         bedrockPlayer = false;
+        bedrockVersion = null;
     }
 
     /**
@@ -865,6 +867,15 @@ public class PlayerData implements IPlayerData {
      * 
      * @return
      */
+    public void setBedrockVersion(final String version) {
+        bedrockVersion = version;
+    }
+
+    @Override
+    public String getBedrockVersion() {
+        return bedrockVersion;
+    }
+
     @Override
     public boolean isBedrockPlayer() {
         return bedrockPlayer;

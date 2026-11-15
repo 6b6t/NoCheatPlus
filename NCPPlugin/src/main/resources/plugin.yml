@@ -14,6 +14,8 @@ folia-supported: true
 softdepend:
   - LuckPerms
   - ProtocolLib
+  - floodgate
+  - Geyser-Spigot
 
 commands:
     nocheatplus:
