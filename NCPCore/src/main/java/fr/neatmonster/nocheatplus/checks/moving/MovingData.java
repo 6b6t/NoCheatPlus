@@ -291,7 +291,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public boolean sfLowJump = false;
     /** Hacky way to indicate that this movement cannot be a lowjump. */
     public boolean sfNoLowJump = false; 
-    /** Vanilla bed bounce armed by an accepted landing on a bed: rise of the next move (0.0 = none). See BedBounce. */
+    /** Bed or shelf-mushroom bounce armed by a supported landing: rise of the next move (0.0 = none). */
     public double sfBedBounceRise = 0.0;
     /** playerMoveCount of the landing move that armed sfBedBounceRise. */
     public int sfBedBounceMove = 0;

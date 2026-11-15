@@ -41,6 +41,7 @@ import fr.neatmonster.nocheatplus.checks.moving.magic.Magic;
 import fr.neatmonster.nocheatplus.checks.moving.magic.MagicBunny;
 import fr.neatmonster.nocheatplus.checks.moving.magic.AirWorkarounds;
 import fr.neatmonster.nocheatplus.checks.moving.magic.BedBounce;
+import fr.neatmonster.nocheatplus.checks.moving.magic.ShelfBounce;
 import fr.neatmonster.nocheatplus.checks.moving.magic.CornerStep;
 import fr.neatmonster.nocheatplus.checks.moving.magic.FluidEntityClimb;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LiquidWorkarounds;
@@ -330,12 +331,13 @@ public class SurvivalFly extends Check {
             data.sfNoLowJump = true;
         } 
 
-        // Vanilla bed bounce after a short fall (see BedBounce): the hop right after an accepted landing
-        // on a bed is no low jump, if it rises no more than the vanilla bounce. Only for this one move.
+        // Only the hop immediately after a supported bed or shelf-mushroom landing may skip low-jump detection.
         if (data.sfBedBounceRise > 0.0) {
             if (BedBounce.isBounceLiftOff(data.sfBedBounceRise, data.sfBedBounceMove, data.getPlayerMoveCount(),
                     fromOnGround, yDistance, BedBounce.isOnBedTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
-                            from.getMaxX(), from.getMaxZ(), from.getY()))) {
+                            from.getMaxX(), from.getMaxZ(), from.getY())
+                            || ShelfBounce.isOnTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
+                                    from.getMaxX(), from.getMaxZ(), from.getY()))) {
                 data.sfNoLowJump = true;
                 context.tags.add("bedbounce");
             }
@@ -787,6 +789,14 @@ public class SurvivalFly extends Check {
                 data.sfBedBounceRise = bedBounceRise;
                 data.sfBedBounceMove = data.getPlayerMoveCount();
             }
+        }
+
+        // Near-ground tolerance can mark the move before actual mushroom contact as grounded.
+        if (toOnGround && yDistance < 0.0 && lastMove.toIsValid && !isReallySneaking(player)
+                && ShelfBounce.isOnTop(to.getBlockCache(), to.getMinX(), to.getMinZ(),
+                        to.getMaxX(), to.getMaxZ(), to.getY())) {
+            data.sfBedBounceRise = ShelfBounce.firstRise(lastMove.yDistance, yDistance);
+            data.sfBedBounceMove = data.getPlayerMoveCount();
         }
 
         // 5: Horizontal velocity invalidation.
