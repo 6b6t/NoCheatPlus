@@ -19,6 +19,8 @@ import org.bukkit.Location;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
@@ -44,6 +46,7 @@ public class VehicleSetBackTask implements Runnable{
     private final Location location;
     private final boolean debug;
     private final Entity[] passengers;
+    private final Map<Entity, Location> passengerLooks = new LinkedHashMap<>();
 
     /**
      * 
@@ -61,6 +64,7 @@ public class VehicleSetBackTask implements Runnable{
         this.location = location;
         this.debug = debug;
         this.passengers = passengers.length == 0 ? vehicle.getPassengers().toArray(new Entity[0]) : passengers;
+        for (final Entity passenger : this.passengers) passengerLooks.put(passenger, passenger.getLocation().clone());
     }
 
     @Override
@@ -87,9 +91,25 @@ public class VehicleSetBackTask implements Runnable{
         final var teleport = Folia.teleportEntityWithPassengersAsync(vehicle, location,
                 BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
         data.vehicleSetBackTaskId = teleport;
+        data.vehicleSetBackTimeoutTaskId = Folia.runSyncDelayedTaskForEntity(vehicle, plugin, task -> {
+            if (data.vehicleSetBackTaskId == teleport) {
+                data.vehicleSetBackTaskId = null;
+                data.vehicleSetBackTimeoutTaskId = null;
+                data.isVehicleSetBack = false;
+                StaticLog.logWarning("Vehicle correction timed out after 40 ticks for " + player.getName());
+            }
+        }, () -> {
+            if (data.vehicleSetBackTaskId == teleport) {
+                data.vehicleSetBackTaskId = null;
+                data.vehicleSetBackTimeoutTaskId = null;
+                data.isVehicleSetBack = false;
+            }
+        }, 40L);
         teleport.whenComplete((success, error) -> {
             final Object scheduled = Folia.runSyncTaskForEntity(vehicle, plugin, task -> {
                 if (data.vehicleSetBackTaskId != teleport) return;
+                Folia.cancelTask(data.vehicleSetBackTimeoutTaskId);
+                data.vehicleSetBackTimeoutTaskId = null;
                 data.vehicleSetBackTaskId = null;
                 data.isVehicleSetBack = false;
                 if (error != null) {
@@ -100,6 +120,14 @@ public class VehicleSetBackTask implements Runnable{
                     StaticLog.logWarning("Vehicle correction failed for " + player.getName());
                     return;
                 }
+                // Passenger rotation is Bukkit entity state; restore it only on the vehicle's entity scheduler.
+                for (final Entity passenger : passengers) {
+                    final Location look = passengerLooks.get(passenger);
+                    if (look != null && vehicle.getPassengers().contains(passenger)) {
+                        try { passenger.setRotation(look.getYaw(), look.getPitch()); }
+                        catch (RuntimeException e) { StaticLog.logWarning("Could not restore vehicle passenger view: " + e); }
+                    }
+                }
                 if (!vehicle.getPassengers().contains(player)) return;
                 final MovingConfig config = pData.getGenericInstance(MovingConfig.class);
                 final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
@@ -109,11 +137,15 @@ public class VehicleSetBackTask implements Runnable{
                 data.timeSinceSetBack = 0;
             }, () -> {
                 if (data.vehicleSetBackTaskId == teleport) {
+                    Folia.cancelTask(data.vehicleSetBackTimeoutTaskId);
+                    data.vehicleSetBackTimeoutTaskId = null;
                     data.vehicleSetBackTaskId = null;
                     data.isVehicleSetBack = false;
                 }
             });
             if (scheduled == null && data.vehicleSetBackTaskId == teleport) {
+                Folia.cancelTask(data.vehicleSetBackTimeoutTaskId);
+                data.vehicleSetBackTimeoutTaskId = null;
                 data.vehicleSetBackTaskId = null;
                 data.isVehicleSetBack = false;
             }

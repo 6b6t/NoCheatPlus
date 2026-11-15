@@ -62,6 +62,43 @@ public class TestVehicleSetBackTask {
         correction(true, false);
     }
 
+    @Test
+    public void pendingFoliaCorrectionExpiresAfterFortyTicks() {
+        final Entity boat = mock(Entity.class);
+        final Player player = mock(Player.class);
+        final Plugin plugin = mock(Plugin.class);
+        final PluginManager plugins = mock(PluginManager.class);
+        final IPlayerData pData = mock(IPlayerData.class);
+        final MovingData data = mock(MovingData.class);
+        final CompletableFuture<Boolean> teleport = new CompletableFuture<>();
+        final AtomicReference<Consumer<Object>> timeout = new AtomicReference<>();
+        final AtomicReference<Long> delay = new AtomicReference<>();
+        when(boat.getPassengers()).thenReturn(List.of(player));
+        when(player.getLocation()).thenReturn(new Location(null, 0, 0, 0));
+        when(plugins.getPlugin("NoCheatPlus")).thenReturn(plugin);
+        when(pData.getGenericInstance(MovingData.class)).thenReturn(data);
+        try (var bukkit = mockStatic(Bukkit.class); var players = mockStatic(DataManager.class);
+                var folia = mockStatic(Folia.class); var logs = mockStatic(StaticLog.class)) {
+            bukkit.when(Bukkit::getPluginManager).thenReturn(plugins);
+            players.when(() -> DataManager.getPlayerData(player)).thenReturn(pData);
+            folia.when(Folia::isFoliaServer).thenReturn(true);
+            folia.when(() -> Folia.teleportEntityWithPassengersAsync(eq(boat), any(Location.class), any())).thenReturn(teleport);
+            folia.when(() -> Folia.runSyncDelayedTaskForEntity(eq(boat), eq(plugin), any(), any(), anyLong()))
+                    .thenAnswer(call -> {
+                        timeout.set(call.getArgument(2));
+                        delay.set(call.getArgument(4));
+                        return new Object();
+                    });
+            new VehicleSetBackTask(boat, player, new Location(null, 2, 0, 0), false).run();
+            assertTrue(data.isVehicleSetBack);
+            assertSame(teleport, data.vehicleSetBackTaskId);
+            assertEquals(Long.valueOf(40), delay.get());
+            timeout.get().accept(null);
+            assertFalse(data.isVehicleSetBack);
+            assertNull(data.vehicleSetBackTaskId);
+        }
+    }
+
     private void correction(final boolean success, final boolean stillMounted) {
         correction(success, stillMounted, Completion.NORMAL);
     }
@@ -137,6 +174,7 @@ public class TestVehicleSetBackTask {
                 verify(aux).resetVehiclePositions(boat, destination, data, config);
                 verify(aux).resetPositionsAndMediumProperties(player, destination, data, config);
                 assertEquals(0, data.timeSinceSetBack);
+                verify(player).setRotation(0f, 0f);
             }
             else verifyNoInteractions(aux);
             verify(boat, never()).eject();

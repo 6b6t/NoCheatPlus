@@ -4,12 +4,14 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 import org.bukkit.Material;
+import org.bukkit.Bukkit;
 import fr.neatmonster.nocheatplus.actions.ActionList;
 import fr.neatmonster.nocheatplus.actions.Action;
 import fr.neatmonster.nocheatplus.checks.ViolationData;
 import fr.neatmonster.nocheatplus.checks.moving.location.setback.SetBackEntry;
 import org.junit.Before;
 import org.junit.Test;
+import fr.neatmonster.nocheatplus.logging.StaticLog;
 
 import fr.neatmonster.nocheatplus.test.BlockTests;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
@@ -77,6 +79,39 @@ public class TestBoatPassable {
         doReturn(result).when(check).executeActions(any(ViolationData.class));
         return check.checkBoatPassable(mock(Player.class), mock(Entity.class), info,
                 data, config, mock(IPlayerData.class));
+    }
+
+    @Test
+    public void logOnlyBoatHitNeverReturnsCorrectionOrRunsActions() throws Exception {
+        blocks.set(1, 1, 0, Material.STONE);
+        final RichEntityLocation from = at(0, 1, 0.5);
+        when(from.getWorldName()).thenReturn("world");
+        final RichEntityLocation to = at(0.5, 1, 0.5);
+        final VehicleMoveInfo info = mock(VehicleMoveInfo.class);
+        for (final String end : new String[]{"from", "to"}) {
+            final var field = MoveInfo.class.getField(end);
+            field.setAccessible(true);
+            field.set(info, end.equals("from") ? from : to);
+        }
+        final MovingData data = mock(MovingData.class);
+        final MovingConfig config = mock(MovingConfig.class);
+        final var enabled = MovingConfig.class.getField("boatPhasingEnabled");
+        enabled.setAccessible(true);
+        enabled.set(config, true);
+        final var mode = MovingConfig.class.getField("boatPhasingMode");
+        mode.setAccessible(true);
+        mode.set(config, BoatPhasingMode.LOG_ONLY);
+        final Player player = mock(Player.class);
+        when(player.getName()).thenReturn("LabPlayer");
+        final Entity boat = mock(Entity.class);
+        when(boat.getType()).thenReturn(org.bukkit.entity.EntityType.BOAT);
+        final VehicleEnvelope check = mock(VehicleEnvelope.class, CALLS_REAL_METHODS);
+        try (var bukkit = mockStatic(Bukkit.class); var log = mockStatic(StaticLog.class)) {
+            bukkit.when(Bukkit::getPluginManager).thenReturn(mock(org.bukkit.plugin.PluginManager.class));
+            assertNull(check.checkBoatPassable(player, boat, info, data, config, mock(IPlayerData.class)));
+            verify(check, never()).executeActions(any(ViolationData.class));
+            log.verify(() -> StaticLog.logInfo(contains("BoatPhasing LOG_ONLY")));
+        }
     }
 
     @Test

@@ -544,7 +544,7 @@ public class VehicleChecks extends CheckListener {
 
         // Boat flight is allowed here; only entering solid blocks is checked.
         final boolean boat = MaterialUtil.isBoat(vehicleType);
-        if (boat && pData.isCheckActive(CheckType.MOVING_VEHICLE_ENVELOPE, player)) {
+        if (boat && cc.boatPhasingEnabled && pData.isCheckActive(CheckType.MOVING_VEHICLE_ENVELOPE, player)) {
             newTo = vehicleEnvelope.checkBoatPassable(player, vehicle, moveInfo, data, cc, pData);
         }
 

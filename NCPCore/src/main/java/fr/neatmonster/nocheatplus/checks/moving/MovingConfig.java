@@ -189,6 +189,8 @@ public class MovingConfig extends ACheckConfig {
 
     public final HashMap<EntityType, Double> vehicleEnvelopeHorizontalSpeedCap = new HashMap<EntityType, Double>();
     public final ActionList vehicleEnvelopeActions;
+    public final boolean boatPhasingEnabled;
+    public final BoatPhasingMode boatPhasingMode;
 
     // Trace
     public final int traceMaxAge;
@@ -354,6 +356,8 @@ public class MovingConfig extends ACheckConfig {
         }
         config.readDoubleValuesForEntityTypes(ConfPaths.MOVING_VEHICLE_ENVELOPE_HSPEEDCAP, vehicleEnvelopeHorizontalSpeedCap, 4.0, true);
         vehicleEnvelopeActions = config.getOptimizedActionList(ConfPaths.MOVING_VEHICLE_ENVELOPE_ACTIONS, Permissions.MOVING_VEHICLE_ENVELOPE);
+        boatPhasingEnabled = config.getBoolean(ConfPaths.MOVING_VEHICLE_BOATPHASING_ACTIVE, true);
+        boatPhasingMode = BoatPhasingMode.parse(config.getString(ConfPaths.MOVING_VEHICLE_BOATPHASING_MODE, "LOG_ONLY"));
         // Ignored vehicle types (ignore mostly, no checks run).
         List<String> types;
         if (config.get(ConfPaths.MOVING_VEHICLE_IGNOREDVEHICLES) == null) { // Hidden setting for now.

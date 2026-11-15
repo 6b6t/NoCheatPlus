@@ -326,30 +326,12 @@ public class Folia {
     public static CompletableFuture<Boolean> teleportEntityWithPassengersAsync(final Entity entity, final Location loc,
             final TeleportCause cause) {
         try {
-            final Map<Entity, Location> looks = new HashMap<>();
-            for (final Entity passenger : entity.getPassengers()) looks.put(passenger, passenger.getLocation());
             final Class<?> flag = Class.forName("io.papermc.paper.entity.TeleportFlag");
             final Object flags = java.lang.reflect.Array.newInstance(flag, 1);
             java.lang.reflect.Array.set(flags, 0, Class.forName("io.papermc.paper.entity.TeleportFlag$EntityState")
                     .getField("RETAIN_PASSENGERS").get(null));
-            final CompletableFuture<Boolean> teleport = (CompletableFuture<Boolean>) Entity.class.getMethod("teleportAsync", Location.class,
+            return (CompletableFuture<Boolean>) Entity.class.getMethod("teleportAsync", Location.class,
                     TeleportCause.class, flags.getClass()).invoke(entity, loc, cause, flags);
-            return teleport.thenApply(success -> {
-                // The passenger update resets the client's yaw; restore each passenger's own view afterward.
-                if (Boolean.TRUE.equals(success)) {
-                    looks.forEach((passenger, look) -> {
-                        try {
-                            if (entity.getPassengers().contains(passenger)) {
-                                passenger.setRotation(look.getYaw(), look.getPitch());
-                            }
-                        }
-                        catch (RuntimeException e) {
-                            StaticLog.logWarning("Could not restore vehicle passenger view: " + e);
-                        }
-                    });
-                }
-                return success;
-            });
         }
         catch (ReflectiveOperationException e) {
             final CompletableFuture<Boolean> result = new CompletableFuture<>();

@@ -16,6 +16,9 @@ package fr.neatmonster.nocheatplus.checks.moving.vehicle;
 
 import java.util.LinkedList;
 import java.util.List;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Boat;
@@ -31,6 +34,7 @@ import fr.neatmonster.nocheatplus.actions.ParameterName;
 import fr.neatmonster.nocheatplus.checks.Check;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.ViolationData;
+import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.location.setback.SetBackEntry;
@@ -60,6 +64,9 @@ import fr.neatmonster.nocheatplus.utilities.map.BlockFlags;
  *
  */
 public class VehicleEnvelope extends Check {
+
+    private static final BoatPhasingDailyCounter BOAT_PHASING_DAILY = new BoatPhasingDailyCounter();
+    private static final DateTimeFormatter BOAT_LOG_TIME = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
 
     /**
      * Check specific details for re-use.
@@ -176,9 +183,14 @@ public class VehicleEnvelope extends Check {
             final VehicleMoveInfo moveInfo, final MovingData data, final MovingConfig cc, final IPlayerData pData) {
         return ScopedValue.where(CONTEXT, new CheckContext()).call(() -> {
             final boolean blocked = isBoatMoveBlocked(moveInfo.from, moveInfo.to);
+            if (!cc.boatPhasingEnabled) return null;
             if (blocked) {
                 CONTEXT.get().tags.add("entity." + vehicle.getType());
                 CONTEXT.get().tags.add("boat_passable");
+                if (cc.boatPhasingMode == BoatPhasingMode.LOG_ONLY) {
+                    logBoatPhasing(player, moveInfo);
+                    return null;
+                }
                 if (pData.isDebugActive(type)) debug(player, "Boat intersects a solid block.");
             }
             else if (moveInfo.to.isPassableBox()) {
@@ -187,6 +199,56 @@ public class VehicleEnvelope extends Check {
             final SetBackEntry fallback = handleViolation(player, data, cc, blocked, moveInfo);
             return blocked && fallback != null ? nearestBoatSetBack(moveInfo.from, moveInfo.to, fallback) : fallback;
         });
+    }
+
+    private static void logBoatPhasing(final Player player, final VehicleMoveInfo moveInfo) {
+        final long now = System.currentTimeMillis();
+        final long daily = BOAT_PHASING_DAILY.increment(LocalDate.now());
+        final double speed = Math.hypot(moveInfo.to.getX() - moveInfo.from.getX(), moveInfo.to.getZ() - moveInfo.from.getZ()) * 20.0;
+        final String worker = boatWorkerIdentity();
+        final String blocks = boatBlockTypes(moveInfo.from);
+        final boolean ice = moveInfo.from.onIce || moveInfo.to.onIce || moveInfo.from.onBlueIce || moveInfo.to.onBlueIce;
+        final String bedrock = boatBedrockStatus(player);
+        final String time = BOAT_LOG_TIME.format(java.time.Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()));
+        StaticLog.logInfo("BoatPhasing LOG_ONLY time=" + time + " player=" + player.getName() + " worker=" + worker
+                + " speed_blocks_per_second=" + String.format(java.util.Locale.ROOT, "%.3f", speed)
+                + " blocks_under_around=" + blocks + " ice=" + ice + " bedrock=" + bedrock + " daily_count=" + daily);
+    }
+
+    private static String boatWorkerIdentity() {
+        try {
+            final Object value = Class.forName("net.blockhost.fox.worker.Worker").getMethod("getWorkerName").invoke(null);
+            if (value instanceof String && ((String) value).matches("[A-Za-z0-9_-]{1,100}")) return (String) value;
+        }
+        catch (ReflectiveOperationException | LinkageError ignored) { }
+        final String env = System.getenv("FOX_WORKER_NAME");
+        return env != null && env.matches("[A-Za-z0-9_-]{1,100}") ? env : "unknown";
+    }
+
+    private static String boatBedrockStatus(final Player player) {
+        try {
+            if (!org.bukkit.Bukkit.getPluginManager().isPluginEnabled("floodgate")) return "unknown";
+            final Object api = Class.forName("org.geysermc.floodgate.api.FloodgateApi").getMethod("getInstance").invoke(null);
+            final Object result = api.getClass().getMethod("isFloodgatePlayer", java.util.UUID.class).invoke(api, player.getUniqueId());
+            return Boolean.TRUE.equals(result) ? "true" : "false";
+        }
+        catch (ReflectiveOperationException | LinkageError | RuntimeException ignored) { return "unknown"; }
+    }
+
+    private static String boatBlockTypes(final RichEntityLocation loc) {
+        final java.util.TreeSet<String> types = new java.util.TreeSet<>();
+        try {
+            for (int x = loc.getBlockX() - 1; x <= loc.getBlockX() + 1; x++) {
+                for (int y = loc.getBlockY() - 1; y <= loc.getBlockY() + 1; y++) {
+                    for (int z = loc.getBlockZ() - 1; z <= loc.getBlockZ() + 1; z++) {
+                        final Material material = loc.getBlockCache().getType(x, y, z);
+                        if (material != null && material.isSolid()) types.add(material.name());
+                    }
+                }
+            }
+        }
+        catch (RuntimeException ignored) { types.add("unavailable"); }
+        return types.isEmpty() ? "none" : String.join(",", types);
     }
 
     private SetBackEntry handleViolation(final Player player, final MovingData data, final MovingConfig cc,
