@@ -67,6 +67,8 @@ public class VehicleEnvelope extends Check {
 
     private static final BoatPhasingDailyCounter BOAT_PHASING_DAILY = new BoatPhasingDailyCounter();
     private static final DateTimeFormatter BOAT_LOG_TIME = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
+    private static final BoatPhasingLogLimiter BOAT_PHASING_LOG_LIMITER = new BoatPhasingLogLimiter();
+    private static final String BOAT_WORKER_IDENTITY = loadBoatWorkerIdentity();
 
     /**
      * Check specific details for re-use.
@@ -204,19 +206,25 @@ public class VehicleEnvelope extends Check {
     private static void logBoatPhasing(final Player player, final VehicleMoveInfo moveInfo) {
         final long now = System.currentTimeMillis();
         final long daily = BOAT_PHASING_DAILY.increment(LocalDate.now());
+        final BoatPhasingLogLimiter.Decision decision = BOAT_PHASING_LOG_LIMITER.admit(player.getUniqueId(), now);
+        if (!decision.admitted) return;
+        if (decision.workerSuppressed > 0L) {
+            StaticLog.logInfo("BoatPhasing LOG_ONLY rate_limit worker=" + BOAT_WORKER_IDENTITY
+                    + " suppressed=" + decision.workerSuppressed);
+        }
         final double speed = Math.hypot(moveInfo.to.getX() - moveInfo.from.getX(), moveInfo.to.getZ() - moveInfo.from.getZ()) * 20.0;
-        final String worker = boatWorkerIdentity();
         final String blocks = boatBlockTypes(moveInfo.from);
         final boolean ice = moveInfo.from.isOnIce() || moveInfo.to.isOnIce()
                 || moveInfo.from.isOnBlueIce() || moveInfo.to.isOnBlueIce();
         final String bedrock = boatBedrockStatus(player);
         final String time = BOAT_LOG_TIME.format(java.time.Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()));
-        StaticLog.logInfo("BoatPhasing LOG_ONLY time=" + time + " player=" + player.getName() + " worker=" + worker
+        StaticLog.logInfo("BoatPhasing LOG_ONLY time=" + time + " player=" + player.getName() + " worker=" + BOAT_WORKER_IDENTITY
                 + " speed_blocks_per_second=" + String.format(java.util.Locale.ROOT, "%.3f", speed)
-                + " blocks_under_around=" + blocks + " ice=" + ice + " bedrock=" + bedrock + " daily_count=" + daily);
+                + " blocks_under_around=" + blocks + " ice=" + ice + " bedrock=" + bedrock + " daily_count=" + daily
+                + " suppressed=" + decision.playerSuppressed);
     }
 
-    private static String boatWorkerIdentity() {
+    private static String loadBoatWorkerIdentity() {
         try {
             final Object value = Class.forName("net.blockhost.fox.worker.Worker").getMethod("getWorkerName").invoke(null);
             if (value instanceof String && ((String) value).matches("[A-Za-z0-9_-]{1,100}")) return (String) value;

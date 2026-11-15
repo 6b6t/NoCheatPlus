@@ -21,6 +21,8 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
@@ -32,11 +34,12 @@ import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.entity.PassengerUtil;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 
 /**
  * Task for scheduling a vehicle set back. Resets the vehicleSetBackTaskId in
  * the MovingData for the player.
- * 
+ *
  * @author mc_dev
  *
  */
@@ -49,7 +52,7 @@ public class VehicleSetBackTask implements Runnable{
     private final Map<Entity, Location> passengerLooks = new LinkedHashMap<>();
 
     /**
-     * 
+     *
      * @param vehicle
      * @param player
      *            The player because of whom this teleport is happening. This
@@ -73,7 +76,7 @@ public class VehicleSetBackTask implements Runnable{
         final MovingData data = pData.getGenericInstance(MovingData.class);
         data.vehicleSetBackTaskId = null;
         try{
-            if (Folia.isFoliaServer()) {
+            if (Folia.isFoliaServer() && MaterialUtil.isBoat(vehicle.getType())) {
                 correctOnFolia(data, pData);
                 return;
             }
@@ -87,24 +90,46 @@ public class VehicleSetBackTask implements Runnable{
 
     private void correctOnFolia(final MovingData data, final IPlayerData pData) {
         final Plugin plugin = Bukkit.getPluginManager().getPlugin("NoCheatPlus");
+        final Object attempt = new Object();
         data.isVehicleSetBack = true;
-        final var teleport = Folia.teleportEntityWithPassengersAsync(vehicle, location,
-                BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
-        data.vehicleSetBackTaskId = teleport;
-        data.vehicleSetBackTimeoutTaskId = Folia.runSyncDelayedTaskForEntity(vehicle, plugin, task -> {
-            if (data.vehicleSetBackTaskId == teleport) {
-                data.vehicleSetBackTaskId = null;
-                data.vehicleSetBackTimeoutTaskId = null;
-                data.isVehicleSetBack = false;
-                StaticLog.logWarning("Vehicle correction timed out after 40 ticks for " + player.getName());
+        data.vehicleSetBackTaskId = attempt;
+        final AtomicReference<Object> owner = new AtomicReference<>(attempt);
+        final AtomicReference<Object> timeoutReference = new AtomicReference<>();
+        final CompletableFuture<Boolean> teleport;
+        try {
+            final Object timeout = Folia.runSyncDelayedTaskForEntity(vehicle, plugin, task -> {
+                if (data.vehicleSetBackTaskId == owner.get()) {
+                    data.vehicleSetBackTaskId = null;
+                    data.vehicleSetBackTimeoutTaskId = null;
+                    data.isVehicleSetBack = false;
+                    StaticLog.logWarning("Vehicle correction timed out after 40 ticks for " + player.getName());
+                }
+            }, () -> clearPending(data, owner.get()), 40L);
+            if (timeout == null) {
+                clearPending(data, attempt);
+                return;
             }
-        }, () -> {
-            if (data.vehicleSetBackTaskId == teleport) {
-                data.vehicleSetBackTaskId = null;
-                data.vehicleSetBackTimeoutTaskId = null;
-                data.isVehicleSetBack = false;
+            timeoutReference.set(timeout);
+            data.vehicleSetBackTimeoutTaskId = timeout;
+            teleport = Folia.teleportEntityWithPassengersAsync(vehicle, location,
+                    BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
+            if (teleport == null) {
+                Folia.cancelTask(timeout);
+                clearPending(data, attempt);
+                return;
             }
-        }, 40L);
+            data.vehicleSetBackTaskId = teleport;
+            owner.set(teleport);
+        }
+        catch (RuntimeException | Error error) {
+            try {
+                if (data.vehicleSetBackTaskId == attempt) Folia.cancelTask(timeoutReference.get());
+            }
+            finally {
+                clearPending(data, attempt);
+            }
+            throw error;
+        }
         teleport.whenComplete((success, error) -> {
             final Object scheduled = Folia.runSyncTaskForEntity(vehicle, plugin, task -> {
                 if (data.vehicleSetBackTaskId != teleport) return;
@@ -150,5 +175,13 @@ public class VehicleSetBackTask implements Runnable{
                 data.isVehicleSetBack = false;
             }
         });
+    }
+
+    private static void clearPending(final MovingData data, final Object owner) {
+        if (data.vehicleSetBackTaskId == owner) {
+            data.vehicleSetBackTimeoutTaskId = null;
+            data.vehicleSetBackTaskId = null;
+            data.isVehicleSetBack = false;
+        }
     }
 }

@@ -11,6 +11,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.entity.EntityType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.PluginManager;
 import org.junit.Test;
@@ -23,6 +24,8 @@ import fr.neatmonster.nocheatplus.components.NoCheatPlusAPI;
 import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
+import fr.neatmonster.nocheatplus.utilities.entity.PassengerUtil;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 
 public class TestVehicleSetBackTask {
     private enum Completion { NORMAL, MOVED, UNSCHEDULED, REPLACED, RETIRED }
@@ -73,6 +76,7 @@ public class TestVehicleSetBackTask {
         final CompletableFuture<Boolean> teleport = new CompletableFuture<>();
         final AtomicReference<Consumer<Object>> timeout = new AtomicReference<>();
         final AtomicReference<Long> delay = new AtomicReference<>();
+        when(boat.getType()).thenReturn(EntityType.BOAT);
         when(boat.getPassengers()).thenReturn(List.of(player));
         when(player.getLocation()).thenReturn(new Location(null, 0, 0, 0));
         when(plugins.getPlugin("NoCheatPlus")).thenReturn(plugin);
@@ -99,6 +103,93 @@ public class TestVehicleSetBackTask {
         }
     }
 
+    @Test
+    public void nonBoatOnFoliaUsesTheExistingPassengerTeleportPath() {
+        final Entity horse = mock(Entity.class);
+        final Player player = mock(Player.class);
+        final IPlayerData pData = mock(IPlayerData.class);
+        final MovingData data = mock(MovingData.class);
+        final NoCheatPlusAPI api = mock(NoCheatPlusAPI.class);
+        final PassengerUtil passengerUtil = mock(PassengerUtil.class);
+        when(horse.getType()).thenReturn(EntityType.HORSE);
+        when(horse.getPassengers()).thenReturn(List.of(player));
+        when(player.getLocation()).thenReturn(new Location(null, 0, 0, 0));
+        when(pData.getGenericInstance(MovingData.class)).thenReturn(data);
+        when(api.getGenericInstance(PassengerUtil.class)).thenReturn(passengerUtil);
+        try (var players = mockStatic(DataManager.class); var provider = mockStatic(NCPAPIProvider.class);
+                var folia = mockStatic(Folia.class); var material = mockStatic(MaterialUtil.class)) {
+            players.when(() -> DataManager.getPlayerData(player)).thenReturn(pData);
+            provider.when(NCPAPIProvider::getNoCheatPlusAPI).thenReturn(api);
+            folia.when(Folia::isFoliaServer).thenReturn(true);
+            material.when(() -> MaterialUtil.isBoat(EntityType.HORSE)).thenReturn(false);
+            new VehicleSetBackTask(horse, player, new Location(null, 2, 0, 0), false).run();
+            verify(passengerUtil).teleportWithPassengers(horse, player, new Location(null, 2, 0, 0), false,
+                    new Entity[] { player }, true, pData);
+            assertNull(data.vehicleSetBackTaskId);
+            assertFalse(data.isVehicleSetBack);
+        }
+    }
+
+    @Test
+    public void timeoutRegistrationFailureClearsPendingCorrection() {
+        final Entity boat = mock(Entity.class);
+        final Player player = mock(Player.class);
+        final Plugin plugin = mock(Plugin.class);
+        final PluginManager plugins = mock(PluginManager.class);
+        final IPlayerData pData = mock(IPlayerData.class);
+        final MovingData data = mock(MovingData.class);
+        when(boat.getType()).thenReturn(EntityType.BOAT);
+        when(boat.getPassengers()).thenReturn(List.of(player));
+        when(player.getLocation()).thenReturn(new Location(null, 0, 0, 0));
+        when(plugins.getPlugin("NoCheatPlus")).thenReturn(plugin);
+        when(pData.getGenericInstance(MovingData.class)).thenReturn(data);
+        try (var bukkit = mockStatic(Bukkit.class); var players = mockStatic(DataManager.class);
+                var folia = mockStatic(Folia.class); var logs = mockStatic(StaticLog.class)) {
+            bukkit.when(Bukkit::getPluginManager).thenReturn(plugins);
+            players.when(() -> DataManager.getPlayerData(player)).thenReturn(pData);
+            folia.when(Folia::isFoliaServer).thenReturn(true);
+            folia.when(() -> Folia.runSyncDelayedTaskForEntity(eq(boat), eq(plugin), any(), any(), anyLong()))
+                    .thenThrow(new IllegalStateException("scheduler unavailable"));
+            new VehicleSetBackTask(boat, player, new Location(null, 2, 0, 0), false).run();
+            assertFalse(data.isVehicleSetBack);
+            assertNull(data.vehicleSetBackTaskId);
+            assertNull(data.vehicleSetBackTimeoutTaskId);
+            logs.verify(() -> StaticLog.logSevere(any(Throwable.class)));
+        }
+    }
+
+    @Test
+    public void teleportStartupFailureCancelsTimeoutAndClearsPendingCorrection() {
+        final Entity boat = mock(Entity.class);
+        final Player player = mock(Player.class);
+        final Plugin plugin = mock(Plugin.class);
+        final PluginManager plugins = mock(PluginManager.class);
+        final IPlayerData pData = mock(IPlayerData.class);
+        final MovingData data = mock(MovingData.class);
+        final Object timeout = new Object();
+        when(boat.getType()).thenReturn(EntityType.BOAT);
+        when(boat.getPassengers()).thenReturn(List.of(player));
+        when(player.getLocation()).thenReturn(new Location(null, 0, 0, 0));
+        when(plugins.getPlugin("NoCheatPlus")).thenReturn(plugin);
+        when(pData.getGenericInstance(MovingData.class)).thenReturn(data);
+        try (var bukkit = mockStatic(Bukkit.class); var players = mockStatic(DataManager.class);
+                var folia = mockStatic(Folia.class); var logs = mockStatic(StaticLog.class)) {
+            bukkit.when(Bukkit::getPluginManager).thenReturn(plugins);
+            players.when(() -> DataManager.getPlayerData(player)).thenReturn(pData);
+            folia.when(Folia::isFoliaServer).thenReturn(true);
+            folia.when(() -> Folia.runSyncDelayedTaskForEntity(eq(boat), eq(plugin), any(), any(), anyLong()))
+                    .thenReturn(timeout);
+            folia.when(() -> Folia.teleportEntityWithPassengersAsync(eq(boat), any(Location.class), any()))
+                    .thenThrow(new IllegalStateException("teleport startup failed"));
+            new VehicleSetBackTask(boat, player, new Location(null, 2, 0, 0), false).run();
+            assertFalse(data.isVehicleSetBack);
+            assertNull(data.vehicleSetBackTaskId);
+            assertNull(data.vehicleSetBackTimeoutTaskId);
+            folia.verify(() -> Folia.cancelTask(timeout));
+            logs.verify(() -> StaticLog.logSevere(any(Throwable.class)));
+        }
+    }
+
     private void correction(final boolean success, final boolean stillMounted) {
         correction(success, stillMounted, Completion.NORMAL);
     }
@@ -117,6 +208,7 @@ public class TestVehicleSetBackTask {
         final CompletableFuture<Boolean> teleport = new CompletableFuture<>();
         final AtomicReference<Consumer<Object>> callback = new AtomicReference<>();
         final Object replacement = new Object();
+        when(boat.getType()).thenReturn(EntityType.BOAT);
         when(boat.getPassengers()).thenReturn(List.of(player));
         when(boat.getLocation()).thenReturn(destination);
         when(player.getLocation()).thenReturn(destination);
