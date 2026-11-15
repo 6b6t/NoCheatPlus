@@ -537,14 +537,14 @@ public class SurvivalFly extends Check {
 
 
 
-        // Elytra unequip: the client may still glide until it gets the equipment
+        // Elytra unequip or depletion: the client may still glide until it gets the equipment
         // change, then coasts with air drag and gravity. Inside that window the
         // move is accepted; ground, liquid, climbable or any move outside the
         // window ends it and the move is judged as a normal survival move. So does an
-        // elytra back in the chest slot, gliding or not.
+        // usable elytra back in the chest slot, gliding or not.
         if (ElytraResidual.allow(data.elytraResidual, hDistance, yDistance, to.getPitch(),
                 fromOnGround || toOnGround, from.isResetCond() || to.isResetCond(),
-                data.elytraResidual.open && Bridge1_9.isWearingElytra(player))) {
+                data.elytraResidual.open && Bridge1_9.isWearingUsableElytra(player))) {
             hDistanceAboveLimit = 0.0;
             vDistanceAboveLimit = 0.0;
             context.tags.remove("hspeed");
