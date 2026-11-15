@@ -319,6 +319,11 @@ public final class ShulkerLidRide {
      * @param lid  its lid progress now as {@link #lidProgress} read it
      */
     public static void recordOpening(final MovingData data, final Location box, final BlockFace face, final float lid) {
+        recordOpening(data, box, face, lid, true);
+    }
+
+    private static void recordOpening(final MovingData data, final Location box, final BlockFace face, final float lid,
+                                      final boolean openedByPlayer) {
         if (box == null || box.getWorld() == null || !isLidFace(face) || !(lid < 1.0F)) {
             // Not readable here, or already fully open (someone else holds it open).
             // This event cannot cause a push, so a still-pending earlier opening remains authoritative.
@@ -331,9 +336,33 @@ public final class ShulkerLidRide {
         data.shulkerLidOpenZ = box.getBlockZ();
         data.shulkerLidOpenFace = face;
         data.shulkerLidOpenProgress = lid;
+        data.shulkerLidOpenedByPlayer = openedByPlayer;
+        data.shulkerLidOpenMaxProgress = lid;
         data.shulkerLidOpenTick = TickTask.getTick();
         data.shulkerLidOpenValid = true;
         data.shulkerLidMoveStartLogged = false;
+    }
+
+    /**
+     * Remember the lid's server shape at the player's close event. The close event fires before the block entity
+     * starts animating the lid shut; a later poll can therefore recover the last progress that actually pushed them.
+     */
+    public static void recordClosing(final MovingData data, final Location box) {
+        if (!data.shulkerLidOpenValid || !data.shulkerLidOpenedByPlayer || box == null || box.getWorld() == null
+            || data.shulkerLidOpenFace == null || !box.getWorld().getName().equals(data.shulkerLidOpenWorld)
+            || data.shulkerLidOpenX != box.getBlockX() || data.shulkerLidOpenY != box.getBlockY()
+            || data.shulkerLidOpenZ != box.getBlockZ()) {
+            return;
+        }
+        final int age = TickTask.getTick() - data.shulkerLidOpenTick;
+        if (age < 0 || age > WINDOW_TICKS) {
+            return;
+        }
+        final float lid = lidProgress(box.getWorld(), box.getBlockX(), box.getBlockY(), box.getBlockZ(),
+                                      data.shulkerLidOpenFace);
+        if (lid > data.shulkerLidOpenProgress && lid > data.shulkerLidOpenMaxProgress) {
+            data.shulkerLidOpenMaxProgress = lid;
+        }
     }
 
     /**
@@ -345,7 +374,7 @@ public final class ShulkerLidRide {
      */
     public static void recordBystander(final MovingData data, final Location box, final BlockFace face, final float lid) {
         if (!holdsOpening(data, box, face, lid)) {
-            recordOpening(data, box, face, lid);
+            recordOpening(data, box, face, lid, false);
         }
     }
 
@@ -426,7 +455,18 @@ public final class ShulkerLidRide {
         final BlockFace face = data.shulkerLidOpenFace;
         final int[] b = {data.shulkerLidOpenX, data.shulkerLidOpenY, data.shulkerLidOpenZ};
         final float lidNow = lidProgress(world, b[0], b[1], b[2], face);
-        final int ticks = openingTicks(data.shulkerLidOpenProgress, lidNow);
+        // The lid may have started closing after the server pushed the player but before a lagged client/poll
+        // observes that position. Never infer progress: use only the highest server shape seen at open/close/poll.
+        float replayTo = lidNow;
+        if (data.shulkerLidOpenedByPlayer) {
+            if (lidNow > data.shulkerLidOpenMaxProgress) {
+                data.shulkerLidOpenMaxProgress = lidNow;
+            }
+            replayTo = data.shulkerLidOpenMaxProgress;
+        } else if (!(lidNow > data.shulkerLidOpenProgress)) {
+            return Double.NaN;
+        }
+        final int ticks = openingTicks(data.shulkerLidOpenProgress, replayTo);
         if (ticks <= 0) {
             return Double.NaN;
         }
@@ -452,7 +492,7 @@ public final class ShulkerLidRide {
         final double faceAt = b[a] + (s > 0 ? 1.0 : 0.0);
         final double size = bodyMax(a, t, half) - bodyMin(a, t, half);
         final double ride = vanillaRide(data.shulkerLidOpenProgress, ticks, near(t, half, a, s, faceAt), size);
-        if (!(ride > 0.0) || !onPushPath(t, p, a, s, ride, lidNow, near(p, half, a, s, faceAt))) {
+        if (!(ride > 0.0) || !onPushPath(t, p, a, s, ride, replayTo, near(p, half, a, s, faceAt))) {
             return Double.NaN;
         }
         if (exact && !alongFacingOnly(t, p, a, s, ride)) {
