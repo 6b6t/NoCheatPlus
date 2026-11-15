@@ -612,8 +612,8 @@ public class DefaultConfig extends ConfigFile {
         set(ConfPaths.MOVING_VEHICLE_ENVELOPE_HSPEEDCAP + ".default", 0.9, 1154);
         set(ConfPaths.MOVING_VEHICLE_ENVELOPE_HSPEEDCAP + ".pig", 0.3, 1154);
         set(ConfPaths.MOVING_VEHICLE_ENVELOPE_ACTIONS, "cancel vl>50 cancel log:vehicleenvelope:10:6:if vl>300 cancel log:vehicleenvelope:0:10:if cmdc:kickvehiclefly:0:10", 1154);
-        set(ConfPaths.MOVING_VEHICLE_BOATPHASING_ACTIVE, true, 0);
-        set(ConfPaths.MOVING_VEHICLE_BOATPHASING_MODE, "LOG_ONLY", 0);
+        set(ConfPaths.MOVING_VEHICLE_BOATPHASING_ACTIVE, true, 1200);
+        set(ConfPaths.MOVING_VEHICLE_BOATPHASING_MODE, "LOG_ONLY", 1200);
         // Messages
         set(ConfPaths.MOVING_MESSAGE_ILLEGALPLAYERMOVE, "Illegal move.", 785);
         set(ConfPaths.MOVING_MESSAGE_ILLEGALVEHICLEMOVE, "Illegal vehicle move.", 785);
