@@ -207,7 +207,8 @@ public class VehicleEnvelope extends Check {
         final double speed = Math.hypot(moveInfo.to.getX() - moveInfo.from.getX(), moveInfo.to.getZ() - moveInfo.from.getZ()) * 20.0;
         final String worker = boatWorkerIdentity();
         final String blocks = boatBlockTypes(moveInfo.from);
-        final boolean ice = moveInfo.from.onIce || moveInfo.to.onIce || moveInfo.from.onBlueIce || moveInfo.to.onBlueIce;
+        final boolean ice = moveInfo.from.isOnIce() || moveInfo.to.isOnIce()
+                || moveInfo.from.isOnBlueIce() || moveInfo.to.isOnBlueIce();
         final String bedrock = boatBedrockStatus(player);
         final String time = BOAT_LOG_TIME.format(java.time.Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()));
         StaticLog.logInfo("BoatPhasing LOG_ONLY time=" + time + " player=" + player.getName() + " worker=" + worker
