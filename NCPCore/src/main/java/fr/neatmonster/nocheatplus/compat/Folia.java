@@ -17,6 +17,8 @@ package fr.neatmonster.nocheatplus.compat;
 import java.lang.reflect.Method;
 import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -26,6 +28,7 @@ import org.bukkit.Location;
 import org.bukkit.Server;
 import org.bukkit.plugin.Plugin;
 
+import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
 
 import org.bukkit.entity.Entity;
@@ -312,6 +315,25 @@ public class Folia {
             return (CompletableFuture<Boolean>) Entity.class.getMethod("teleportAsync", Location.class,
                     TeleportCause.class).invoke(entity, loc, cause);
         } catch (ReflectiveOperationException e) {
+            final CompletableFuture<Boolean> result = new CompletableFuture<>();
+            result.completeExceptionally(e);
+            return result;
+        }
+    }
+
+    /** Paper/Folia correction that keeps the vehicle's passenger tree attached. */
+    @SuppressWarnings("unchecked")
+    public static CompletableFuture<Boolean> teleportEntityWithPassengersAsync(final Entity entity, final Location loc,
+            final TeleportCause cause) {
+        try {
+            final Class<?> flag = Class.forName("io.papermc.paper.entity.TeleportFlag");
+            final Object flags = java.lang.reflect.Array.newInstance(flag, 1);
+            java.lang.reflect.Array.set(flags, 0, Class.forName("io.papermc.paper.entity.TeleportFlag$EntityState")
+                    .getField("RETAIN_PASSENGERS").get(null));
+            return (CompletableFuture<Boolean>) Entity.class.getMethod("teleportAsync", Location.class,
+                    TeleportCause.class, flags.getClass()).invoke(entity, loc, cause, flags);
+        }
+        catch (ReflectiveOperationException e) {
             final CompletableFuture<Boolean> result = new CompletableFuture<>();
             result.completeExceptionally(e);
             return result;

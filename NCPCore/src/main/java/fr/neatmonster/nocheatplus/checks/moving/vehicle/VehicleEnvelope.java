@@ -16,6 +16,9 @@ package fr.neatmonster.nocheatplus.checks.moving.vehicle;
 
 import java.util.LinkedList;
 import java.util.List;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 
 import org.bukkit.Material;
 import org.bukkit.entity.Boat;
@@ -31,6 +34,7 @@ import fr.neatmonster.nocheatplus.actions.ParameterName;
 import fr.neatmonster.nocheatplus.checks.Check;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.ViolationData;
+import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.location.setback.SetBackEntry;
@@ -46,6 +50,8 @@ import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.PotionUtil;
 import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
 import fr.neatmonster.nocheatplus.utilities.StringUtil;
+import fr.neatmonster.nocheatplus.utilities.collision.Axis;
+import fr.neatmonster.nocheatplus.utilities.collision.PassableAxisTracing;
 import fr.neatmonster.nocheatplus.utilities.location.RichEntityLocation;
 import fr.neatmonster.nocheatplus.utilities.map.BlockProperties;
 import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
@@ -58,6 +64,11 @@ import fr.neatmonster.nocheatplus.utilities.map.BlockFlags;
  *
  */
 public class VehicleEnvelope extends Check {
+
+    private static final BoatPhasingDailyCounter BOAT_PHASING_DAILY = new BoatPhasingDailyCounter();
+    private static final DateTimeFormatter BOAT_LOG_TIME = DateTimeFormatter.ISO_OFFSET_DATE_TIME;
+    private static final BoatPhasingLogLimiter BOAT_PHASING_LOG_LIMITER = new BoatPhasingLogLimiter();
+    private static final String BOAT_WORKER_IDENTITY = loadBoatWorkerIdentity();
 
     /**
      * Check specific details for re-use.
@@ -166,6 +177,91 @@ public class VehicleEnvelope extends Check {
             CONTEXT.get().debugDetails.clear();
         }
 
+        return handleViolation(player, data, cc, violation, moveInfo);
+    }
+
+    /** Boats keep their existing flight freedom; only solid block crossings are rejected. */
+    public SetBackEntry checkBoatPassable(final Player player, final Entity vehicle,
+            final VehicleMoveInfo moveInfo, final MovingData data, final MovingConfig cc, final IPlayerData pData) {
+        return ScopedValue.where(CONTEXT, new CheckContext()).call(() -> {
+            final boolean blocked = isBoatMoveBlocked(moveInfo.from, moveInfo.to);
+            if (!cc.boatPhasingEnabled) return null;
+            if (blocked) {
+                CONTEXT.get().tags.add("entity." + vehicle.getType());
+                CONTEXT.get().tags.add("boat_passable");
+                if (cc.boatPhasingMode == BoatPhasingMode.LOG_ONLY) {
+                    logBoatPhasing(player, moveInfo);
+                    return null;
+                }
+                if (pData.isDebugActive(type)) debug(player, "Boat intersects a solid block.");
+            }
+            else if (moveInfo.to.isPassableBox()) {
+                data.vehicleSetBacks.setSafeMediumEntry(moveInfo.to);
+            }
+            final SetBackEntry fallback = handleViolation(player, data, cc, blocked, moveInfo);
+            return blocked && fallback != null ? nearestBoatSetBack(moveInfo.from, moveInfo.to, fallback) : fallback;
+        });
+    }
+
+    private static void logBoatPhasing(final Player player, final VehicleMoveInfo moveInfo) {
+        final long now = System.currentTimeMillis();
+        final long daily = BOAT_PHASING_DAILY.increment(LocalDate.now());
+        final BoatPhasingLogLimiter.Decision decision = BOAT_PHASING_LOG_LIMITER.admit(player.getUniqueId(), now);
+        if (!decision.admitted) return;
+        if (decision.workerSuppressed > 0L) {
+            StaticLog.logInfo("BoatPhasing LOG_ONLY rate_limit worker=" + BOAT_WORKER_IDENTITY
+                    + " suppressed=" + decision.workerSuppressed);
+        }
+        final double speed = Math.hypot(moveInfo.to.getX() - moveInfo.from.getX(), moveInfo.to.getZ() - moveInfo.from.getZ()) * 20.0;
+        final String blocks = boatBlockTypes(moveInfo.from);
+        final boolean ice = moveInfo.from.isOnIce() || moveInfo.to.isOnIce()
+                || moveInfo.from.isOnBlueIce() || moveInfo.to.isOnBlueIce();
+        final String bedrock = boatBedrockStatus(player);
+        final String time = BOAT_LOG_TIME.format(java.time.Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()));
+        StaticLog.logInfo("BoatPhasing LOG_ONLY time=" + time + " player=" + player.getName() + " worker=" + BOAT_WORKER_IDENTITY
+                + " speed_blocks_per_second=" + String.format(java.util.Locale.ROOT, "%.3f", speed)
+                + " blocks_under_around=" + blocks + " ice=" + ice + " bedrock=" + bedrock + " daily_count=" + daily
+                + " suppressed=" + decision.playerSuppressed);
+    }
+
+    private static String loadBoatWorkerIdentity() {
+        try {
+            final Object value = Class.forName("net.blockhost.fox.worker.Worker").getMethod("getWorkerName").invoke(null);
+            if (value instanceof String && ((String) value).matches("[A-Za-z0-9_-]{1,100}")) return (String) value;
+        }
+        catch (ReflectiveOperationException | LinkageError ignored) { }
+        final String env = System.getenv("FOX_WORKER_NAME");
+        return env != null && env.matches("[A-Za-z0-9_-]{1,100}") ? env : "unknown";
+    }
+
+    private static String boatBedrockStatus(final Player player) {
+        try {
+            if (!org.bukkit.Bukkit.getPluginManager().isPluginEnabled("floodgate")) return "unknown";
+            final Object api = Class.forName("org.geysermc.floodgate.api.FloodgateApi").getMethod("getInstance").invoke(null);
+            final Object result = api.getClass().getMethod("isFloodgatePlayer", java.util.UUID.class).invoke(api, player.getUniqueId());
+            return Boolean.TRUE.equals(result) ? "true" : "false";
+        }
+        catch (ReflectiveOperationException | LinkageError | RuntimeException ignored) { return "unknown"; }
+    }
+
+    private static String boatBlockTypes(final RichEntityLocation loc) {
+        final java.util.TreeSet<String> types = new java.util.TreeSet<>();
+        try {
+            for (int x = loc.getBlockX() - 1; x <= loc.getBlockX() + 1; x++) {
+                for (int y = loc.getBlockY() - 1; y <= loc.getBlockY() + 1; y++) {
+                    for (int z = loc.getBlockZ() - 1; z <= loc.getBlockZ() + 1; z++) {
+                        final Material material = loc.getBlockCache().getType(x, y, z);
+                        if (material != null && material.isSolid()) types.add(material.name());
+                    }
+                }
+            }
+        }
+        catch (RuntimeException ignored) { types.add("unavailable"); }
+        return types.isEmpty() ? "none" : String.join(",", types);
+    }
+
+    private SetBackEntry handleViolation(final Player player, final MovingData data, final MovingConfig cc,
+            final boolean violation, final VehicleMoveInfo moveInfo) {
         if (violation) {
             data.vehicleEnvelopeVL += 1.0; // Add up one for now.
             final ViolationData vd = new ViolationData(this, player, data.vehicleEnvelopeVL, 1, cc.vehicleEnvelopeActions);
@@ -272,6 +368,64 @@ public class VehicleEnvelope extends Check {
     *
     * @return
     */
+    private static SetBackEntry nearestBoatSetBack(final RichEntityLocation from, final RichEntityLocation to,
+            final SetBackEntry fallback) {
+        final double epsilon = 1.0E-7;
+        final double halfWidth = from.getWidth() / 2 - epsilon;
+        if (!BlockProperties.isPassableBox(from.getBlockCache(),
+                from.getX() - halfWidth, from.getY() + epsilon, from.getZ() - halfWidth,
+                from.getX() + halfWidth, from.getY() + from.getBoxMarginVertical() - epsilon,
+                from.getZ() + halfWidth)) return fallback;
+        double clear = 0.0;
+        if (from.getY() != to.getY()) {
+            double blocked = 1.0;
+            for (int i = 0; i < 12; i++) {
+                final double fraction = (clear + blocked) / 2;
+                if (isBoatMoveBlocked(from, to, fraction)) blocked = fraction;
+                else clear = fraction;
+            }
+        }
+        // Stop both horizontal components together instead of deflecting a diagonal clip.
+        return new SetBackEntry().set(from.getWorldName(),
+                from.getX(),
+                from.getY() + clear * (to.getY() - from.getY()),
+                from.getZ(),
+                to.getYaw(), to.getPitch(), fallback.getTime(), fallback.getMsTime());
+    }
+
+    /** Sweep the boat's body; touching a bank or leaving an existing overlap is allowed. */
+    static boolean isBoatMoveBlocked(final RichEntityLocation from, final RichEntityLocation to) {
+        return isBoatMoveBlocked(from, to, 1.0);
+    }
+
+    private static boolean isBoatMoveBlocked(final RichEntityLocation from, final RichEntityLocation to,
+            final double fraction) {
+        if (from.isSamePos(to)) return false;
+        final double epsilon = 1.0E-7;
+        final PassableAxisTracing trace = new PassableAxisTracing();
+        trace.setMaxSteps(60);
+        trace.setMargins(from.getBoxMarginVertical() - 2 * epsilon, from.getWidth() / 2 - epsilon);
+        trace.setBlockCache(from.getBlockCache());
+        trace.setIgnoreInitiallyColliding(true);
+        try {
+            // Vanilla resolves vertical motion before the horizontal axes.
+            for (final List<Axis> order : List.of(Axis.AXIS_ORDER_YXZ, Axis.AXIS_ORDER_YZX)) {
+                trace.setAxisOrder(order);
+                trace.set(from.getX(), from.getY() + epsilon, from.getZ(),
+                        from.getX() + fraction * (to.getX() - from.getX()),
+                        from.getY() + fraction * (to.getY() - from.getY()) + epsilon,
+                        from.getZ() + fraction * (to.getZ() - from.getZ()));
+                trace.loop();
+                // A traversal limit alone is not evidence of passing through a block.
+                if (!trace.collides()) return false;
+            }
+            return true;
+        }
+        finally {
+            trace.cleanup();
+        }
+    }
+
     private boolean checkEntity(final Player player, final Entity vehicle, 
                                 final VehicleMoveData thisMove, final boolean isFake, 
                                 final MovingData data, final MovingConfig cc,

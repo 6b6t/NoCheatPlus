@@ -329,6 +329,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public long vehicleMorePacketsLastTime;
     /** Task id of the vehicle set back task. */ 
     public Object vehicleSetBackTaskId = null;
+    /** Timeout task for a vehicle correction that has not completed within 40 ticks. */
+    public Object vehicleSetBackTimeoutTaskId = null;
     /** Task id of the passenger set back task. */ 
     public Object vehicleSetPassengerTaskId = null;
     
@@ -674,6 +676,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Called when a player leaves the server.
      */
     public void onPlayerLeave() {
+        isVehicleSetBack = false;
         noFallMatchedPacketSequence = 0L;
         noFallMovePackets = 0;
         noFallLastMovePackets = 0;
