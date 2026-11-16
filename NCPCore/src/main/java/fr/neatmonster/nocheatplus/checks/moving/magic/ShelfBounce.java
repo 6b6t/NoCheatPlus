@@ -12,6 +12,14 @@ public final class ShelfBounce {
 
     private ShelfBounce() {}
 
+    /** Accept only the bounded first rise from the immediately preceding shelf landing. */
+    public static boolean isBounceLiftOff(final double expectedRise, final int armedMoveCount, final int moveCount,
+                                          final boolean fromOnGround, final double yDistance,
+                                          final boolean fromOnShelfTop) {
+        return fromOnShelfTop && BedBounce.isBounceLiftOff(expectedRise, armedMoveCount, moveCount,
+                fromOnGround, yDistance, true);
+    }
+
     public static double firstRise(final double lastYDistance, final double landingYDistance) {
         if (!Double.isFinite(lastYDistance) || !Double.isFinite(landingYDistance)
                 || !(lastYDistance < 0.0) || !(landingYDistance < 0.0)) {

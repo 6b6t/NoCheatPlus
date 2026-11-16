@@ -8,7 +8,6 @@ import static org.junit.Assume.assumeNotNull;
 import org.bukkit.Material;
 import org.junit.Test;
 
-import fr.neatmonster.nocheatplus.checks.moving.magic.BedBounce;
 import fr.neatmonster.nocheatplus.checks.moving.magic.ShelfBounce;
 import fr.neatmonster.nocheatplus.utilities.map.FakeBlockCache;
 
@@ -21,9 +20,33 @@ public class TestShelfBounce {
                 ShelfBounce.firstRise(-0.22768848754498797, -58.3125 - -58.2032643993313), 1.0E-10);
         final double rise = ShelfBounce.firstRise(-0.1552320045166016, -58.3125 - -58.30224911560954);
         assertEquals(-58.21900072952579 - -58.3125, rise, 1.0E-10);
-        assertTrue(BedBounce.isBounceLiftOff(rise, 7, 8, true, rise, true));
-        assertFalse("Forged higher bounce", BedBounce.isBounceLiftOff(rise, 7, 8, true, rise + 0.01, true));
-        assertFalse("Expired landing", BedBounce.isBounceLiftOff(rise, 7, 9, true, rise, true));
+        assertTrue(ShelfBounce.isBounceLiftOff(rise, 7, 8, true, rise, true));
+        assertFalse("Forged higher bounce", ShelfBounce.isBounceLiftOff(rise, 7, 8, true, rise + 0.01, true));
+        assertFalse("Expired landing", ShelfBounce.isBounceLiftOff(rise, 7, 9, true, rise, true));
+    }
+
+    @Test
+    public void ordinaryJumpFromShelfDoesNotClaimBounceExemption() {
+        assertFalse("An ordinary jump is not an armed shelf bounce",
+                ShelfBounce.isBounceLiftOff(0.0, 7, 8, true, 0.42, true));
+        assertFalse("A bounce allowance cannot apply away from the shelf top",
+                ShelfBounce.isBounceLiftOff(0.50, 7, 8, true, 0.50, false));
+    }
+
+    @Test
+    public void shortBounceExemptionIsLimitedToTheNextBoundedLiftOff() {
+        final double rise = ShelfBounce.firstRise(-0.1552320045166016, -58.3125 - -58.30224911560954);
+        assertTrue("The recorded short bounce remains eligible", rise < 0.13
+                && ShelfBounce.isBounceLiftOff(rise, 7, 8, true, rise, true));
+        assertFalse("A real over-rise is not exempt", ShelfBounce.isBounceLiftOff(rise, 7, 8, true, rise + 0.01, true));
+        assertFalse("A later move cannot reuse the bounce allowance", ShelfBounce.isBounceLiftOff(rise, 7, 9, true, rise, true));
+    }
+
+    @Test
+    public void forgedFlyOrStepRiseDoesNotMatchTheShelfBounceModel() {
+        final double expectedRise = 0.50;
+        assertFalse("An oversized rise stays under ordinary fly/step checks",
+                ShelfBounce.isBounceLiftOff(expectedRise, 7, 8, true, expectedRise + 0.70, true));
     }
 
     @Test
