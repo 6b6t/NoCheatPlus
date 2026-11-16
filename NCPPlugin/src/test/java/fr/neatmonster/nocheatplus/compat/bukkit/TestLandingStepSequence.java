@@ -138,40 +138,54 @@ public class TestLandingStepSequence {
 
     @Test
     public void recordedShelfBounceAfterNearGroundMove() {
-        final Material shelf = Material.matchMaterial("SHELF_MUSHROOM");
-        org.junit.Assume.assumeNotNull(shelf);
-        ServerVersion.setMinecraftVersion("26.3");
-        blocks.set(0, 64, 0, shelf, new double[]{
-                0.25, 0.375, 0.625, 0.75, 0.6875, 1.0,
-                0.0625, 0.5, 0.375, 0.25, 0.6875, 1.0,
-                0.25, 0.5, 0.375, 0.9375, 0.6875, 0.625,
-                0.75, 0.5, 0.625, 0.9375, 0.6875, 1.0});
-        resetData(64.6875);
-        final PlayerLocation falling = position(0.5, 64.69775088439046, true);
-        acceptedHistory(falling, -0.1552320045166016, 0.0);
-        final PlayerLocation top = position(0.5, 64.6875, true);
-        assertNull("Actual landing after tolerant ground detection", move(falling, top));
-        assertEquals(0.09349927047421, data.sfBedBounceRise, 1.0E-10);
-        data.playerMoves.finishCurrentMove();
-        PlayerLocation from = top;
-        for (final double rise : new double[]{0.09349927047421, 0.0132292853222, -0.0654353016578}) {
-            final PlayerLocation to = position(0.5, from.getY() + rise, false);
-            assertNull("Recorded bounce must not trigger lowjump", move(from, to));
+        shelfFixture();
+        for (int cycle = 0; cycle < 5; cycle++) {
+            resetData(64.6875);
+            final PlayerLocation falling = position(0.5, 64.69775088439046, true);
+            acceptedHistory(falling, -0.1552320045166016, 0.0);
+            final PlayerLocation top = position(0.5, 64.6875, true);
+            assertNull("Actual landing after tolerant ground detection, cycle " + cycle, move(falling, top));
+            assertEquals(0.09349927047421, data.sfBedBounceRise, 1.0E-10);
             data.playerMoves.finishCurrentMove();
-            from = to;
+            PlayerLocation from = top;
+            int bounceTick = 0;
+            for (final double rise : new double[]{0.09349927047421, 0.0132292853222, -0.0654353016578}) {
+                // The client can still report ground on the first near-ground rise. That generic reset must not
+                // discard the one validated shelf-bounce exemption before the following descending phase.
+                final PlayerLocation to = position(0.5, from.getY() + rise, bounceTick++ == 0);
+                assertNull("Recorded short bounce must not trigger lowjump, cycle " + cycle, move(from, to));
+                data.playerMoves.finishCurrentMove();
+                from = to;
+            }
+        }
+    }
+
+    @Test
+    public void tenJumpCyclesOnShelfDoNotTriggerLowJump() {
+        shelfFixture();
+        final double topY = 64.6875;
+        resetData(topY);
+        PlayerLocation from = position(0.5, topY, true);
+        for (int jump = 0; jump < 10; jump++) {
+            double velocity = (double) 0.42F;
+            int tick = 0;
+            while (true) {
+                final double predictedY = from.getY() + velocity;
+                final boolean landed = predictedY <= topY;
+                final PlayerLocation to = position(0.5, landed ? topY : predictedY, landed);
+                assertNull("Vanilla shelf jump " + jump + " tick " + tick, move(from, to));
+                data.playerMoves.finishCurrentMove();
+                from = to;
+                if (landed) break;
+                velocity = (velocity - 0.08) * 0.98;
+                assertTrue("Jump must return to the shelf", ++tick < 20);
+            }
         }
     }
 
     @Test
     public void recordedShelfBounceAfterFourBlockFallUsesBounceVelocityBeforeRelativeCheck() {
-        final Material shelf = Material.matchMaterial("SHELF_MUSHROOM");
-        org.junit.Assume.assumeNotNull(shelf);
-        ServerVersion.setMinecraftVersion("26.3");
-        blocks.set(0, 64, 0, shelf, new double[]{
-                0.25, 0.375, 0.625, 0.75, 0.6875, 1.0,
-                0.0625, 0.5, 0.375, 0.25, 0.6875, 1.0,
-                0.25, 0.5, 0.375, 0.9375, 0.6875, 0.625,
-                0.75, 0.5, 0.625, 0.9375, 0.6875, 1.0});
+        shelfFixture();
         final double topY = 64.6875;
         resetData(topY + 4.0);
         PlayerLocation falling = position(0.5, topY + 4.0, false);
@@ -195,6 +209,29 @@ public class TestLandingStepSequence {
         assertNull("Register the shelf's bounded fall-bounce velocity before vdistrel", move(falling, bounced));
         assertNotNull("The accepted rise must be accounted for as vertical velocity",
                 data.playerMoves.getCurrentMove().verVelUsed);
+    }
+
+    @Test
+    public void forgedShelfBounceCannotBecomeAnOversizedStep() {
+        shelfFixture();
+        final double topY = 64.6875;
+        resetData(topY);
+        data.sfBedBounceRise = 0.50;
+        data.sfBedBounceMove = data.getPlayerMoveCount();
+        final PlayerLocation top = position(0.5, topY, true);
+        final PlayerLocation forged = position(0.5, topY + 1.20, false);
+        assertNotNull("An over-model shelf lift-off still fails the ordinary vertical envelope", move(top, forged));
+    }
+
+    private void shelfFixture() {
+        final Material shelf = Material.matchMaterial("SHELF_MUSHROOM");
+        org.junit.Assume.assumeNotNull(shelf);
+        ServerVersion.setMinecraftVersion("26.3");
+        blocks.set(0, 64, 0, shelf, new double[]{
+                0.25, 0.375, 0.625, 0.75, 0.6875, 1.0,
+                0.0625, 0.5, 0.375, 0.25, 0.6875, 1.0,
+                0.25, 0.5, 0.375, 0.9375, 0.6875, 0.625,
+                0.75, 0.5, 0.625, 0.9375, 0.6875, 1.0});
     }
 
     private void reportLanding(double horizontal) {

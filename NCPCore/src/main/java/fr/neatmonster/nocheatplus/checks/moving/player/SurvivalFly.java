@@ -331,18 +331,22 @@ public class SurvivalFly extends Check {
             data.sfNoLowJump = true;
         } 
 
+        boolean shelfBounceLiftOff = false;
         // Only the hop immediately after a supported bed or shelf-mushroom landing may skip low-jump detection.
         if (data.sfBedBounceRise > 0.0) {
             final boolean fromOnShelfTop = ShelfBounce.isOnTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
                     from.getMaxX(), from.getMaxZ(), from.getY());
-            if (BedBounce.isBounceLiftOff(data.sfBedBounceRise, data.sfBedBounceMove, data.getPlayerMoveCount(),
-                    fromOnGround, yDistance, BedBounce.isOnBedTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
-                            from.getMaxX(), from.getMaxZ(), from.getY())
-                            || fromOnShelfTop)) {
+            shelfBounceLiftOff = ShelfBounce.isBounceLiftOff(data.sfBedBounceRise,
+                    data.sfBedBounceMove, data.getPlayerMoveCount(), fromOnGround, yDistance, fromOnShelfTop);
+            final boolean bedBounceLiftOff = BedBounce.isBounceLiftOff(data.sfBedBounceRise, data.sfBedBounceMove,
+                    data.getPlayerMoveCount(), fromOnGround, yDistance,
+                    BedBounce.isOnBedTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
+                            from.getMaxX(), from.getMaxZ(), from.getY()));
+            if (bedBounceLiftOff || shelfBounceLiftOff) {
                 data.sfNoLowJump = true;
                 // A fall bounce can exceed ordinary jump speed. Register only this validated shelf lift-off,
                 // before vdistrel consults the vertical-velocity queue below.
-                if (fromOnShelfTop && yDistance > data.liftOffEnvelope.getMaxJumpGain(data.jumpAmplifier) + 0.005) {
+                if (shelfBounceLiftOff && yDistance > data.liftOffEnvelope.getMaxJumpGain(data.jumpAmplifier) + 0.005) {
                     data.prependVerticalVelocity(new SimpleEntry(tick, yDistance, 1));
                 }
                 context.tags.add("bedbounce");
@@ -762,6 +766,12 @@ public class SurvivalFly extends Check {
             if (to.getY() < 0.0 && cc.sfSetBackPolicyVoid) {
                 data.setSetBack(to);
             }
+        }
+
+        // Near-ground tolerance can reset sfNoLowJump on the same short rise that this verified shelf bounce creates.
+        // Re-arm it after generic reset handling so the bounce's descending phase is not misclassified as a low jump.
+        if (shelfBounceLiftOff) {
+            data.sfNoLowJump = true;
         }
         
         // 4: Adjust in-air counters.
