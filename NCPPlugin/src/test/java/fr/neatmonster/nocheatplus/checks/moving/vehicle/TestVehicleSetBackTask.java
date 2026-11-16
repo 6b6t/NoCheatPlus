@@ -208,6 +208,7 @@ public class TestVehicleSetBackTask {
         final CompletableFuture<Boolean> teleport = new CompletableFuture<>();
         final AtomicReference<Consumer<Object>> callback = new AtomicReference<>();
         final Object replacement = new Object();
+        final Object timeoutTask = new Object();
         when(boat.getType()).thenReturn(EntityType.BOAT);
         when(boat.getPassengers()).thenReturn(List.of(player));
         when(boat.getLocation()).thenReturn(destination);
@@ -225,6 +226,8 @@ public class TestVehicleSetBackTask {
             folia.when(Folia::isFoliaServer).thenReturn(true);
             folia.when(() -> Folia.teleportEntityWithPassengersAsync(eq(boat), eq(destination), any()))
                     .thenReturn(teleport);
+            folia.when(() -> Folia.runSyncDelayedTaskForEntity(eq(boat), eq(plugin), any(), any(), anyLong()))
+                    .thenReturn(timeoutTask);
             folia.when(() -> Folia.runSyncTaskForEntity(eq(boat), eq(plugin), any(), any()))
                     .thenAnswer(call -> {
                         if (completion == Completion.UNSCHEDULED) return null;
