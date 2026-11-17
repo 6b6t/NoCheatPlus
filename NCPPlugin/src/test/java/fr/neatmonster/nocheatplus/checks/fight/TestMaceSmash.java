@@ -182,6 +182,53 @@ public class TestMaceSmash {
     }
 
     @Test
+    public void groundStartedFakeMaceDiveRemainsInvalidAfterGroundExemptMove() {
+        moves.invalidate();
+        y = 92.0;
+        tick = 100;
+
+        final PlayerMoveData takeoff = prepare(-0.08, 1, null);
+        takeoff.from.extraPropertiesValid = true;
+        takeoff.from.onGroundOrResetCond = true;
+        assertFalse(accept(takeoff));
+
+        // The first glide packet can still carry a ground/reset marker and bypass the single-move
+        // check. Keep it in the whole-fall window so later packets cannot reset the fall's start.
+        final PlayerMoveData firstDive = prepare(-1.75, 1, elytra);
+        firstDive.from.extraPropertiesValid = true;
+        firstDive.from.onGroundOrResetCond = true;
+        assertFalse(accept(firstDive));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.0, 1, elytra)));
+        assertTrue(accept(prepare(-0.75, 1, elytra)));
+        assertTrue(accept(prepare(0.0, 1, null)));
+        assertTrue("The ground-started fake dive cannot deal smash damage", smash());
+    }
+
+    @Test
+    public void smallHorizontalMovementDoesNotBypassWholeFallEvidence() {
+        moves.invalidate();
+        y = 100.0;
+        tick = 100;
+        final PlayerMoveData start = prepare(-0.2, 1, elytra);
+        start.hDistance = 0.11;
+        assertFalse(accept(start));
+
+        double expectedVelocity = -0.2;
+        for (int i = 0; i < 3; i++) {
+            expectedVelocity = (expectedVelocity - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
+            final ModelFlying model = i == 2 ? null : elytra;
+            final PlayerMoveData excessive = prepare(expectedVelocity - 0.1, 1, model);
+            excessive.hDistance = 0.11;
+            assertEquals("Horizontal movement, including the glide-off sample, keeps the fall window active",
+                    i >= 1, accept(excessive));
+        }
+        assertTrue(smash());
+    }
+
+    @Test
     public void nativeKnockbackQueuedVelocityFireworksAndRiptideAreRespected() throws Exception {
         move(0);
         when(player.getVelocity()).thenReturn(new Vector(0, -2, 0));

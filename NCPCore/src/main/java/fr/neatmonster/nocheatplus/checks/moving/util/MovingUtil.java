@@ -118,14 +118,15 @@ public class MovingUtil {
     }
 
     /**
-     * Detect sustained vertical-only dives against the whole recent fall. A stable forged
-     * speed can stay just inside a one-move acceleration comparison, so retain the short
-     * movement history and compare its displacement to unpowered gravity from the prior speed.
+     * Detect sustained dives against the whole recent fall. A stable forged speed can stay just
+     * inside a one-move acceleration comparison, so retain the short movement history and compare
+     * vertical displacement to unpowered gravity from the prior speed. Horizontal movement does
+     * not change the vertical gravity limit.
      */
     private static boolean isInvalidRecentVerticalMaceFall(final PlayerMoveData move, final MovingData data) {
         final PlayerMoveData last = data.playerMoves.getFirstPastMove();
         if ((!isElytraMove(move) && !(move.modelFlying == null && isElytraMove(last)))
-                || move.hDistance > 0.1 || move.multiMoveCount != 0) {
+                || move.multiMoveCount != 0) {
             return false;
         }
 
@@ -136,17 +137,19 @@ public class MovingUtil {
             recent[index] = data.playerMoves.getPastMove(index - 1);
         }
 
-        // Each candidate anchor is the measured vertical speed before the fall window.
-        // Compare newer, adjacent moves in chronological order; packet bursts and discontinuities
-        // are left to the existing per-move check.
+        // Each candidate anchor is the measured vertical speed before the fall window. A move
+        // starting on ground is a valid fall start; a landing/reset can also anchor the next fall
+        // at zero. Do not let an old boundary hide newer, valid anchors.
         for (int anchorIndex = 2; anchorIndex <= count; anchorIndex++) {
             final PlayerMoveData anchor = recent[anchorIndex];
-            if (!anchor.toIsValid || anchor.movementTick < 0 || anchor.touchedGround
-                    || isGroundOrReset(anchor) || anchor.multiMoveCount != 0) {
-                break;
+            if (!anchor.toIsValid || anchor.movementTick < 0 || anchor.multiMoveCount != 0) {
+                continue;
             }
 
-            double expectedVelocity = anchor.yDistance;
+            // A landing/reset anchor starts the next fall from rest; a jump or step is measured
+            // by the following move and becomes its own speed anchor.
+            double expectedVelocity = anchor.to.extraPropertiesValid && anchor.to.onGroundOrResetCond
+                    || anchor.touchedGround ? 0.0 : anchor.yDistance;
             double expectedDistance = 0.0;
             double observedDistance = 0.0;
             int elapsedTicks = 0;
@@ -156,15 +159,23 @@ public class MovingUtil {
                 final PlayerMoveData sample = recent[index];
                 if (!sample.toIsValid || sample.movementTick < 0 || sample.multiMoveCount != 0
                         || sample.touchedGround || sample.verVelUsed != null || sample.maceFallHistoryBoundary
-                        || isGroundOrReset(sample)
-                        || sample.hDistance > 0.1
+                        || sample.to.extraPropertiesValid && sample.to.onGroundOrResetCond
                         || index > 0 && !isElytraMove(sample)
+                                && !(sample.from.extraPropertiesValid && sample.from.onGroundOrResetCond)
                         || index == 0 && sample.modelFlying != null && !isElytraMove(sample)
                         || !previous.to.getWorldName().equals(sample.from.getWorldName())
                         || !TrigUtil.isSamePos(previous.to, sample.from)) {
                     break;
                 }
 
+                if (sample.from.extraPropertiesValid && sample.from.onGroundOrResetCond) {
+                    // This move starts a new fall segment. Keep its displacement, but discard
+                    // any older speed or excess from before ground/reset contact.
+                    expectedVelocity = 0.0;
+                    expectedDistance = 0.0;
+                    observedDistance = 0.0;
+                    elapsedTicks = 0;
+                }
                 final int ticks = sample.movementTick - previous.movementTick;
                 if (ticks < 1 || ticks > 4) break;
                 for (int tick = 0; tick < ticks; tick++) {

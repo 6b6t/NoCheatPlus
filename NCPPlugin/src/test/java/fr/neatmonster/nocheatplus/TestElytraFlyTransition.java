@@ -161,6 +161,39 @@ public class TestElytraFlyTransition {
     }
 
     @Test
+    public void glideToggleHandoffNeedsDownwardMomentumAndCanBeUsedOnlyOnce() throws Exception {
+        lastMove.yDistance = 0.5;
+        transition(100);
+        transition(101);
+        assertFalse("Rising toggles cannot mint flight credit", data.hasQueuedVerVel());
+        assertFalse("Rising toggles cannot mint horizontal credit", data.hasQueuedHorVel());
+
+        lastMove.yDistance = -0.3;
+        transition(102);
+        assertNotNull("The first accepted downward toggle keeps real momentum", data.getOrUseVerticalVelocity(-0.3));
+        assertNotNull(data.getOrUseVerticalVelocity(0.0));
+
+        transition(103);
+        assertNull("A second toggle inside the recovery window cannot renew momentum",
+                data.getOrUseVerticalVelocity(-0.3));
+        assertNull(data.getOrUseVerticalVelocity(0.0));
+        assertFalse("The second toggle cannot renew horizontal credit", data.hasQueuedHorVel());
+    }
+
+    @Test
+    public void glideToggleHandoffCanRecoverAfterGroundOrTwentyTicks() {
+        data.elytraToggleHandoffTick = 100;
+        data.updateElytraToggleHandoffRecovery(false, 119);
+        assertEquals("The handoff remains spent during the recovery window", 100, data.elytraToggleHandoffTick);
+        data.updateElytraToggleHandoffRecovery(false, 120);
+        assertEquals("Twenty ticks end the recovery window", -1, data.elytraToggleHandoffTick);
+
+        data.elytraToggleHandoffTick = 121;
+        data.updateElytraToggleHandoffRecovery(true, 122);
+        assertEquals("Ground/reset contact immediately restores the handoff", -1, data.elytraToggleHandoffTick);
+    }
+
+    @Test
     public void togglingKeepsRealVelocityAvailable() throws Exception {
         final SimpleEntry vertical = new SimpleEntry(100, 0.5, 20);
         data.addVerticalVelocity(vertical);

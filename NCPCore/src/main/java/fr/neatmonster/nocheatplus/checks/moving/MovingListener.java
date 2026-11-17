@@ -1608,6 +1608,8 @@ catch (java.lang.Throwable thr) {}
             if (data.elytraRelightBlocked) {
                 data.updateElytraRelightRecovery(thisMove.to.onGroundOrResetCond, tick);
             }
+            data.updateElytraToggleHandoffRecovery(thisMove.touchedGround
+                    || thisMove.from.onGroundOrResetCond || thisMove.to.onGroundOrResetCond, tick);
             return false;
         }
         // A check has requested a new to-location.
@@ -1946,15 +1948,18 @@ catch (java.lang.Throwable thr) {}
 
         final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
         final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
-        // A toggle with no real downward movement supplies no impulse. Preserve the hand-off
-        // for a previously accepted dive, but do not let a forged descent renew that credit.
-        if (isAirborneElytraToggle(player, thisMove, lastMove)
-                && (lastMove.invalidMaceFall || thisMove.maceFallHistoryBoundary
-                        || MovingUtil.isInvalidMaceFall(player, data)
-                        || Math.abs(lastMove.yDistance) <= 0.125)) {
+        final boolean airborneToggle = isAirborneElytraToggle(player, thisMove, lastMove);
+        data.updateElytraToggleHandoffRecovery(thisMove.touchedGround
+                || thisMove.from.onGroundOrResetCond || thisMove.to.onGroundOrResetCond, tick);
+        // Only an accepted, genuinely downward dive supplies handoff momentum. A second toggle
+        // cannot renew it until ground/reset or the 20-tick recovery window has elapsed.
+        if (airborneToggle && (data.elytraToggleHandoffTick >= 0 || lastMove.invalidMaceFall
+                || thisMove.maceFallHistoryBoundary || lastMove.yDistance >= -0.125
+                || MovingUtil.isInvalidMaceFall(player, data))) {
             if (debug) debug(player, "Glide toggle: keep existing velocity.");
             return;
         }
+        if (airborneToggle) data.elytraToggleHandoffTick = tick;
         final double amount = guessVelocityAmount(player, thisMove, lastMove, data, cc);
         data.clearActiveHorVel(); // Clear active velocity due to adding actual speed here.
         data.bunnyhopDelay = 0; // Remove bunny hop due to add velocity 

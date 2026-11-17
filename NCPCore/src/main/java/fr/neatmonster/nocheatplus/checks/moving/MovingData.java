@@ -347,6 +347,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public boolean elytraRelightBlocked = false;
     /** Tick when the current elytra relight block began, or -1 when clear. */
     public int elytraRelightBlockedTick = -1;
+    /** Tick when an accepted downward glide-toggle handoff last supplied transition velocity. */
+    public int elytraToggleHandoffTick = -1;
     /** Location hash value of the last (player/vehicle) set back, for checking independently of which set back location had been used. */
     public int lastSetBackHash = 0;
     /** TickTask tick of the last (player/vehicle) set back, -1 if none happened yet. */
@@ -465,6 +467,17 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         }
     }
 
+    public void clearElytraToggleHandoff() {
+        elytraToggleHandoffTick = -1;
+    }
+
+    public void updateElytraToggleHandoffRecovery(final boolean onGroundOrResetCond, final int tick) {
+        if (onGroundOrResetCond || elytraToggleHandoffTick >= 0
+                && (tick < elytraToggleHandoffTick || tick - elytraToggleHandoffTick >= 20)) {
+            clearElytraToggleHandoff();
+        }
+    }
+
 
     /**
      * Clear fly and more packets check data for both vehicles and players.
@@ -491,6 +504,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      */
     public void clearFlyData() {
         clearElytraRelightBlock();
+        clearElytraToggleHandoff();
         playerMoves.invalidate();
         bunnyhopDelay = 0;
         sfJumpPhase = 0;
@@ -531,6 +545,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public void onSetBack(final PlayerLocation setBack) {
         // A correction must not keep residual glide credit.
         ElytraResidual.end(elytraResidual);
+        clearElytraToggleHandoff();
         // Reset positions (a teleport should follow, though).
         this.morePacketsSetback = null;
         clearAccounting(); // Might be more safe to do this.
@@ -575,6 +590,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public void prepareSetBack(final Location loc) {
         // A correction must not keep residual glide credit.
         ElytraResidual.end(elytraResidual);
+        clearElytraToggleHandoff();
         playerMoves.invalidate();
         vehicleMoves.invalidate();
         clearAccounting();
@@ -698,6 +714,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         noFallMovePackets = 0;
         noFallLastMovePackets = 0;
         clearElytraRelightBlock();
+        clearElytraToggleHandoff();
         noFallLastMoveX = noFallLastMoveY = noFallLastMoveZ = Double.NaN;
         invalidateNativeLandingTask();
         noFallGeneration++;
@@ -736,6 +753,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         // Every reset of the player's move history (teleport, set back, vehicle, join)
         // also ends residual glide credit; its last move no longer applies.
         ElytraResidual.end(elytraResidual);
+        clearElytraToggleHandoff();
         playerMoves.invalidate();
         sfZeroVdistRepeat = 0;
         sfDirty = false;
