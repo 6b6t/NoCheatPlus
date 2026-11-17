@@ -68,31 +68,145 @@ public class MovingUtil {
     public static boolean isInvalidMaceFall(final Player player, final MovingData data) {
         final PlayerMoveData move = data.playerMoves.getCurrentMove();
         final PlayerMoveData last = data.playerMoves.getFirstPastMove();
+        if (player.isFlying()) {
+            move.maceFallHistoryBoundary = true;
+            return false;
+        }
         if (!move.toIsValid || !last.toIsValid
                 || !move.from.getWorldName().equals(last.to.getWorldName())
                 || !TrigUtil.isSamePos(move.from, last.to)
                 || move.touchedGround && !move.touchedGroundWorkaround
                 || move.from.extraPropertiesValid && move.from.onGroundOrResetCond
-                || move.to.extraPropertiesValid && move.to.onGroundOrResetCond || player.isFlying()) {
+                || move.to.extraPropertiesValid && move.to.onGroundOrResetCond) {
             return false;
         }
         // Return hops and assumed ground contact must not erase a forged dive.
         if (last.invalidMaceFall) return true;
-        if (move.yDistance > 0.0) return false;
-        if (move.verVelUsed != null || data.fireworksBoostDuration > 0 || player.isRiptiding()) return false;
+        if (move.verVelUsed != null || data.fireworksBoostDuration > 0 || player.isRiptiding()) {
+            move.maceFallHistoryBoundary = true;
+            return false;
+        }
         final int impulseAge = data.nativePush == null ? -1 : player.getTicksLived() - data.nativePush.getLastImpulseTick();
-        if (impulseAge >= 0 && impulseAge <= NativePushTracker.MAX_WINDOW) return false;
+        if (impulseAge >= 0 && impulseAge <= NativePushTracker.MAX_WINDOW) {
+            move.maceFallHistoryBoundary = true;
+            return false;
+        }
         if (data.getVerticalVelocityTracker() != null
-                && data.peekVerticalVelocity(move.yDistance, 0, Integer.MAX_VALUE) != null) return false;
+                && data.peekVerticalVelocity(move.yDistance, 0, Integer.MAX_VALUE) != null) {
+            move.maceFallHistoryBoundary = true;
+            return false;
+        }
+        final double naturalLowest = (Math.min(0.0, last.yDistance) - Magic.GRAVITY_MAX)
+                * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
+        final double nativeVelocity = player.getVelocity().getY();
+        if (nativeVelocity < naturalLowest - 0.125) {
+            // This server-reported impulse is already a valid allowance in the single-move check.
+            // Start the next history window here rather than treating it as a forged fall.
+            move.maceFallHistoryBoundary = true;
+        }
+        if (!move.maceFallHistoryBoundary && isInvalidRecentVerticalMaceFall(move, data)) return true;
+        if (move.yDistance > 0.0) return false;
         if (move.modelFlying == null || !MovingConfig.ID_JETPACK_ELYTRA.equals(move.modelFlying.getId())
                 || move.multiMoveCount != 0 || last.multiMoveCount != 0) return false;
 
         // Full gravity is the fastest unpowered dive, regardless of pitch or horizontal speed.
-        double lowest = (Math.min(0.0, last.yDistance) - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
+        double lowest = naturalLowest;
         // Native downward knockback can precede its first accepted client move.
-        lowest = Math.min(lowest, player.getVelocity().getY());
+        lowest = Math.min(lowest, nativeVelocity);
         // Lag queues packets individually; only sub-threshold movement can accumulate without an event.
         return move.yDistance < lowest - 0.125;
+    }
+
+    /**
+     * Detect sustained dives against the whole recent fall. A stable forged speed can stay just
+     * inside a one-move acceleration comparison, so retain the short movement history and compare
+     * vertical displacement to unpowered gravity from the prior speed. Horizontal movement does
+     * not change the vertical gravity limit.
+     */
+    private static boolean isInvalidRecentVerticalMaceFall(final PlayerMoveData move, final MovingData data) {
+        final PlayerMoveData last = data.playerMoves.getFirstPastMove();
+        if ((!isElytraMove(move) && !(move.modelFlying == null && isElytraMove(last)))
+                || move.multiMoveCount != 0) {
+            return false;
+        }
+
+        final int count = Math.min(8, data.playerMoves.getNumberOfPastMoves());
+        final PlayerMoveData[] recent = new PlayerMoveData[count + 1];
+        recent[0] = move;
+        for (int index = 1; index <= count; index++) {
+            recent[index] = data.playerMoves.getPastMove(index - 1);
+        }
+
+        // Each candidate anchor is the measured vertical speed before the fall window. A move
+        // starting on ground is a valid fall start; a landing/reset can also anchor the next fall
+        // at zero. Do not let an old boundary hide newer, valid anchors.
+        for (int anchorIndex = 2; anchorIndex <= count; anchorIndex++) {
+            final PlayerMoveData anchor = recent[anchorIndex];
+            if (!anchor.toIsValid || anchor.movementTick < 0 || anchor.multiMoveCount != 0) {
+                continue;
+            }
+
+            // A landing/reset starts the next fall at rest. Positive launch speed is not a
+            // downward allowance; start the descent model from zero until a downward speed is measured.
+            double expectedVelocity = anchor.to.extraPropertiesValid && anchor.to.onGroundOrResetCond
+                    || anchor.touchedGround ? 0.0 : Math.min(0.0, anchor.yDistance);
+            double expectedDistance = 0.0;
+            double observedDistance = 0.0;
+            int elapsedTicks = 0;
+            PlayerMoveData previous = anchor;
+
+            for (int index = anchorIndex - 1; index >= 0; index--) {
+                final PlayerMoveData sample = recent[index];
+                if (!sample.toIsValid || sample.movementTick < 0 || sample.multiMoveCount != 0
+                        || sample.touchedGround || sample.verVelUsed != null || sample.maceFallHistoryBoundary
+                        || sample.to.extraPropertiesValid && sample.to.onGroundOrResetCond
+                        || index > 0 && !isElytraMove(sample)
+                                && !(sample.from.extraPropertiesValid && sample.from.onGroundOrResetCond)
+                        || index == 0 && sample.modelFlying != null && !isElytraMove(sample)
+                        || !previous.to.getWorldName().equals(sample.from.getWorldName())
+                        || !TrigUtil.isSamePos(previous.to, sample.from)) {
+                    break;
+                }
+
+                if (sample.from.extraPropertiesValid && sample.from.onGroundOrResetCond) {
+                    // This move starts a new fall segment. Keep its displacement, but discard
+                    // any older speed or excess from before ground/reset contact.
+                    expectedVelocity = 0.0;
+                    expectedDistance = 0.0;
+                    observedDistance = 0.0;
+                    elapsedTicks = 0;
+                }
+                final int tickGap = sample.movementTick - previous.movementTick;
+                if (tickGap < 0 || tickGap > 4) break;
+                // Movement packets can arrive in a same-tick burst, but each accepted packet
+                // still represents one client physics step. Do not let a zero server-tick gap
+                // erase its gravity contribution or split the fall history window.
+                final int ticks = Math.max(1, tickGap);
+                for (int tick = 0; tick < ticks; tick++) {
+                    expectedVelocity = (expectedVelocity - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
+                    expectedDistance += expectedVelocity;
+                    elapsedTicks++;
+                }
+                observedDistance += sample.yDistance;
+                // Allow one movement margin plus gravity-model uncertainty across the window;
+                // repeatedly spending the full single-move margin must not become free fall.
+                final double tolerance = 0.125 + Magic.GRAVITY_SPAN * elapsedTicks;
+                if (elapsedTicks >= 2 && observedDistance < expectedDistance - tolerance) {
+                    return true;
+                }
+                previous = sample;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isElytraMove(final PlayerMoveData move) {
+        return move.modelFlying != null && MovingConfig.ID_JETPACK_ELYTRA.equals(move.modelFlying.getId());
+    }
+
+    private static boolean isGroundOrReset(final PlayerMoveData move) {
+        return move.from.extraPropertiesValid && move.from.onGroundOrResetCond
+                || move.to.extraPropertiesValid && move.to.onGroundOrResetCond;
     }
 
     /** Apply a successful Fox placement on the player's destination thread. */

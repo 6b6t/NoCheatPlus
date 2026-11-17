@@ -1186,6 +1186,7 @@ catch (java.lang.Throwable thr) {}
         ///////////////////////////////////////////////
         // TODO: Rework to generic (?) queued velocity entries: activation + invalidation
         final int tick = TickTask.getTick();
+        thisMove.movementTick = tick;
         data.velocityTick(tick - cc.velocityActivationTicks);
 
 
@@ -1607,6 +1608,8 @@ catch (java.lang.Throwable thr) {}
             if (data.elytraRelightBlocked) {
                 data.updateElytraRelightRecovery(thisMove.to.onGroundOrResetCond, tick);
             }
+            data.updateElytraToggleHandoffRecovery(thisMove.touchedGround
+                    || thisMove.from.onGroundOrResetCond || thisMove.to.onGroundOrResetCond, tick);
             return false;
         }
         // A check has requested a new to-location.
@@ -1945,11 +1948,18 @@ catch (java.lang.Throwable thr) {}
 
         final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
         final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
-        // A glide toggle supplies no impulse. Repeated toggles must not renew flight credit.
-        if (isAirborneElytraToggle(player, thisMove, lastMove)) {
+        final boolean airborneToggle = isAirborneElytraToggle(player, thisMove, lastMove);
+        data.updateElytraToggleHandoffRecovery(thisMove.touchedGround
+                || thisMove.from.onGroundOrResetCond || thisMove.to.onGroundOrResetCond, tick);
+        // Only an accepted, genuinely downward dive supplies handoff momentum. A second toggle
+        // cannot renew it until ground/reset or the 20-tick recovery window has elapsed.
+        if (airborneToggle && (data.elytraToggleHandoffTick >= 0 || lastMove.invalidMaceFall
+                || thisMove.maceFallHistoryBoundary || lastMove.yDistance >= -0.125
+                || MovingUtil.isInvalidMaceFall(player, data))) {
             if (debug) debug(player, "Glide toggle: keep existing velocity.");
             return;
         }
+        if (airborneToggle) data.elytraToggleHandoffTick = tick;
         final double amount = guessVelocityAmount(player, thisMove, lastMove, data, cc);
         data.clearActiveHorVel(); // Clear active velocity due to adding actual speed here.
         data.bunnyhopDelay = 0; // Remove bunny hop due to add velocity 

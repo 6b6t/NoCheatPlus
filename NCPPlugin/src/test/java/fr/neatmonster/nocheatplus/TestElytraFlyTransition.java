@@ -143,6 +143,56 @@ public class TestElytraFlyTransition {
     }
 
     @Test
+    public void acceptedElytraDiveMomentumSurvivesTheGlideOffTransition() throws Exception {
+        lastMove.yDistance = -0.18;
+        lastMove.hDistance = 0.35;
+        when(lastMove.modelFlying.getHorizontalModSpeed()).thenReturn(450.0);
+        transition(100);
+        assertTrue("The checked glide's existing vertical momentum must reach SurvivalFly", data.hasQueuedVerVel());
+    }
+
+    @Test
+    public void forgedMaceFallDoesNotReceiveElytraTransitionCredit() throws Exception {
+        lastMove.yDistance = -1.75;
+        lastMove.invalidMaceFall = true;
+        transition(100);
+        assertFalse("A flagged forged descent cannot renew vertical credit", data.hasQueuedVerVel());
+        assertFalse("A flagged forged descent cannot renew horizontal credit", data.hasQueuedHorVel());
+    }
+
+    @Test
+    public void glideToggleHandoffNeedsDownwardMomentumAndCanBeUsedOnlyOnce() throws Exception {
+        lastMove.yDistance = 0.5;
+        transition(100);
+        transition(101);
+        assertFalse("Rising toggles cannot mint flight credit", data.hasQueuedVerVel());
+        assertFalse("Rising toggles cannot mint horizontal credit", data.hasQueuedHorVel());
+
+        lastMove.yDistance = -0.3;
+        transition(102);
+        assertNotNull("The first accepted downward toggle keeps real momentum", data.getOrUseVerticalVelocity(-0.3));
+        data.getVerticalVelocityTracker().clear();
+        data.clearAllHorVel();
+
+        transition(103);
+        assertFalse("A second toggle inside the recovery window cannot renew vertical credit", data.hasQueuedVerVel());
+        assertFalse("The second toggle cannot renew horizontal credit", data.hasQueuedHorVel());
+    }
+
+    @Test
+    public void glideToggleHandoffCanRecoverAfterGroundOrTwentyTicks() {
+        data.elytraToggleHandoffTick = 100;
+        data.updateElytraToggleHandoffRecovery(false, 119);
+        assertEquals("The handoff remains spent during the recovery window", 100, data.elytraToggleHandoffTick);
+        data.updateElytraToggleHandoffRecovery(false, 120);
+        assertEquals("Twenty ticks end the recovery window", -1, data.elytraToggleHandoffTick);
+
+        data.elytraToggleHandoffTick = 121;
+        data.updateElytraToggleHandoffRecovery(true, 122);
+        assertEquals("Ground/reset contact immediately restores the handoff", -1, data.elytraToggleHandoffTick);
+    }
+
+    @Test
     public void togglingKeepsRealVelocityAvailable() throws Exception {
         final SimpleEntry vertical = new SimpleEntry(100, 0.5, 20);
         data.addVerticalVelocity(vertical);

@@ -13,6 +13,7 @@ import org.junit.Test;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
+import fr.neatmonster.nocheatplus.checks.moving.magic.Magic;
 import fr.neatmonster.nocheatplus.checks.moving.model.ModelFlying;
 import fr.neatmonster.nocheatplus.checks.moving.model.MoveTrace;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
@@ -52,6 +53,8 @@ public class TestMaceSmash {
         move.from.setLocation("world", 0, y, 0, 0, 0);
         move.to.setLocation("world", 0, y + dy, 0, 0, 0);
         move.yDistance = dy;
+        move.movementTick = tick;
+        move.maceFallHistoryBoundary = false;
         move.valid = move.toIsValid = true;
         move.modelFlying = model;
         return move;
@@ -140,10 +143,12 @@ public class TestMaceSmash {
     @Test
     public void pitchChangesPullupsSlowfallAndHighHorizontalSpeedDoNotInventDownwardAcceleration() {
         move(-0.3);
-        for (final double dy : new double[] {-0.28, -0.02, 0.0, 0.4, 0.8, 0.2, -0.03, -0.1, -0.17}) {
+        final double[] movements = {-0.28, -0.02, 0.0, 0.4, 0.8, 0.2, -0.03, -0.1, -0.17};
+        for (int index = 0; index < movements.length; index++) {
+            final double dy = movements[index];
             final PlayerMoveData move = prepare(dy, 1, elytra);
             move.hDistance = 5.0;
-            assertFalse(accept(move));
+            assertFalse("Pullup movement index " + index + " (dy=" + dy + ")", accept(move));
         }
         assertFalse(smash());
     }
@@ -160,6 +165,132 @@ public class TestMaceSmash {
             assertFalse(accept(prepare(-0.5, 0, elytra)));
         }
         assertFalse(smash());
+    }
+
+    @Test
+    public void repeatedSmallExcessesAreJudgedAcrossTheWholeRecentFall() {
+        moves.invalidate();
+        y = 100.0;
+        tick = 100;
+        double expectedVelocity = -0.2;
+        assertFalse("The starting accepted Elytra movement is not itself forged", move(expectedVelocity));
+        for (int i = 0; i < 2; i++) {
+            expectedVelocity = (expectedVelocity - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
+            final PlayerMoveData excessive = prepare(expectedVelocity - 0.1, 1, elytra);
+            assertEquals("The whole-fall guard activates only after the second margin-sized excess",
+                    i == 1, accept(excessive));
+        }
+        assertTrue("Repeated margin-sized excesses must remain invalid", smash());
+    }
+
+    @Test
+    public void groundStartedFakeMaceDiveRemainsInvalidAfterGroundExemptMove() {
+        moves.invalidate();
+        y = 92.0;
+        tick = 100;
+
+        final PlayerMoveData takeoff = prepare(-0.08, 1, null);
+        takeoff.from.extraPropertiesValid = true;
+        takeoff.from.onGroundOrResetCond = true;
+        assertFalse(accept(takeoff));
+
+        // The first glide packet can still carry a ground/reset marker and bypass the single-move
+        // check. Keep it in the whole-fall window so later packets cannot reset the fall's start.
+        final PlayerMoveData firstDive = prepare(-1.75, 1, elytra);
+        firstDive.from.extraPropertiesValid = true;
+        firstDive.from.onGroundOrResetCond = true;
+        assertFalse(accept(firstDive));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.0, 1, elytra)));
+        assertTrue(accept(prepare(-0.75, 1, elytra)));
+        assertTrue(accept(prepare(-0.1, 1, null)));
+        assertTrue("The ground-started fake dive cannot deal smash damage", smash());
+    }
+
+    @Test
+    public void groundStartedFakeMaceDiveSurvivesTakeoffAndFirstDiveInOneTick() {
+        moves.invalidate();
+        y = 92.0;
+        tick = 100;
+
+        final PlayerMoveData takeoff = prepare(-0.08, 1, null);
+        takeoff.from.extraPropertiesValid = true;
+        takeoff.from.onGroundOrResetCond = true;
+        assertFalse(accept(takeoff));
+
+        final PlayerMoveData firstDive = prepare(-1.75, 0, elytra);
+        firstDive.from.extraPropertiesValid = true;
+        firstDive.from.onGroundOrResetCond = true;
+        assertFalse(accept(firstDive));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.0, 1, elytra)));
+        assertTrue(accept(prepare(-0.75, 1, elytra)));
+        assertTrue(accept(prepare(-0.1, 1, null)));
+        assertTrue("Same-tick takeoff and first dive cannot deal smash damage", smash());
+    }
+
+    @Test
+    public void groundStartedFakeMaceDiveSurvivesAllFallPacketsInOneTick() {
+        moves.invalidate();
+        y = 92.0;
+        tick = 100;
+
+        final PlayerMoveData takeoff = prepare(-0.08, 1, null);
+        takeoff.from.extraPropertiesValid = true;
+        takeoff.from.onGroundOrResetCond = true;
+        assertFalse(accept(takeoff));
+
+        // The initial dive, repeated speed, and glide-off packet all have one movementTick.
+        final PlayerMoveData firstDive = prepare(-1.75, 1, elytra);
+        firstDive.from.extraPropertiesValid = true;
+        firstDive.from.onGroundOrResetCond = true;
+        assertFalse(accept(firstDive));
+        assertTrue(accept(prepare(-1.75, 0, elytra)));
+        assertTrue(accept(prepare(-1.75, 0, elytra)));
+        assertTrue(accept(prepare(-1.75, 0, elytra)));
+        assertTrue(accept(prepare(-1.0, 0, elytra)));
+        assertTrue(accept(prepare(-0.75, 0, elytra)));
+        assertTrue(accept(prepare(-0.1, 0, null)));
+        assertTrue("A same-tick fake dive cannot deal smash damage", smash());
+    }
+
+    @Test
+    public void vanillaGravityRampInSameTickBurstRemainsUsable() {
+        moves.invalidate();
+        y = 100.0;
+        tick = 100;
+        double velocity = 0.0;
+        for (int index = 0; index < 40; index++) {
+            velocity = (velocity - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
+            assertFalse("Vanilla gravity packet " + index + " in a same-tick burst",
+                    accept(prepare(velocity, index == 0 ? 1 : 0, elytra)));
+        }
+        assertFalse(smash());
+    }
+
+    @Test
+    public void smallHorizontalMovementDoesNotBypassWholeFallEvidence() {
+        moves.invalidate();
+        y = 100.0;
+        tick = 100;
+        final PlayerMoveData start = prepare(-0.2, 1, elytra);
+        start.hDistance = 0.11;
+        assertFalse(accept(start));
+
+        double expectedVelocity = -0.2;
+        for (int i = 0; i < 3; i++) {
+            expectedVelocity = (expectedVelocity - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
+            final ModelFlying model = i == 2 ? null : elytra;
+            final PlayerMoveData excessive = prepare(expectedVelocity - 0.1, 1, model);
+            excessive.hDistance = 0.11;
+            assertEquals("Horizontal movement, including the glide-off sample, keeps the fall window active",
+                    i >= 1, accept(excessive));
+        }
+        assertTrue(smash());
     }
 
     @Test
