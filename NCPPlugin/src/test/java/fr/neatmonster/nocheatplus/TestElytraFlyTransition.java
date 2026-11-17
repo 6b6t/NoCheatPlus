@@ -143,6 +143,24 @@ public class TestElytraFlyTransition {
     }
 
     @Test
+    public void acceptedElytraDiveMomentumSurvivesTheGlideOffTransition() throws Exception {
+        lastMove.yDistance = -0.18;
+        lastMove.hDistance = 0.35;
+        when(lastMove.modelFlying.getHorizontalModSpeed()).thenReturn(450.0);
+        transition(100);
+        assertTrue("The checked glide's existing vertical momentum must reach SurvivalFly", data.hasQueuedVerVel());
+    }
+
+    @Test
+    public void forgedMaceFallDoesNotReceiveElytraTransitionCredit() throws Exception {
+        lastMove.yDistance = -1.75;
+        lastMove.invalidMaceFall = true;
+        transition(100);
+        assertFalse("A flagged forged descent cannot renew vertical credit", data.hasQueuedVerVel());
+        assertFalse("A flagged forged descent cannot renew horizontal credit", data.hasQueuedHorVel());
+    }
+
+    @Test
     public void togglingKeepsRealVelocityAvailable() throws Exception {
         final SimpleEntry vertical = new SimpleEntry(100, 0.5, 20);
         data.addVerticalVelocity(vertical);

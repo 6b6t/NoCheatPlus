@@ -1186,6 +1186,7 @@ catch (java.lang.Throwable thr) {}
         ///////////////////////////////////////////////
         // TODO: Rework to generic (?) queued velocity entries: activation + invalidation
         final int tick = TickTask.getTick();
+        thisMove.movementTick = tick;
         data.velocityTick(tick - cc.velocityActivationTicks);
 
 
@@ -1945,8 +1946,12 @@ catch (java.lang.Throwable thr) {}
 
         final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
         final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
-        // A glide toggle supplies no impulse. Repeated toggles must not renew flight credit.
-        if (isAirborneElytraToggle(player, thisMove, lastMove)) {
+        // A toggle with no real downward movement supplies no impulse. Preserve the hand-off
+        // for a previously accepted dive, but do not let a forged descent renew that credit.
+        if (isAirborneElytraToggle(player, thisMove, lastMove)
+                && (lastMove.invalidMaceFall || thisMove.maceFallHistoryBoundary
+                        || MovingUtil.isInvalidMaceFall(player, data)
+                        || Math.abs(lastMove.yDistance) <= 0.125)) {
             if (debug) debug(player, "Glide toggle: keep existing velocity.");
             return;
         }

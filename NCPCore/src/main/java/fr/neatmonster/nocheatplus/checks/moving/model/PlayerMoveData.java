@@ -100,6 +100,12 @@ public class PlayerMoveData extends MoveData {
     /** This descent gained mace fall distance through an impossible glide dive. */
     public boolean invalidMaceFall;
 
+    /** Server tick when this movement was checked, for short fall-history windows. */
+    public int movementTick = -1;
+
+    /** This move is a valid starting point, but must not be included in earlier fall evidence. */
+    public boolean maceFallHistoryBoundary;
+
     @Override
     protected void resetBase() {
         // Properties of the player.
@@ -120,6 +126,8 @@ public class PlayerMoveData extends MoveData {
         multiMoveCount = 0;
         verVelUsed = null;
         invalidMaceFall = false;
+        movementTick = -1;
+        maceFallHistoryBoundary = false;
         // Super class last, because it'll set valid to true in the end.
         super.resetBase();
     }

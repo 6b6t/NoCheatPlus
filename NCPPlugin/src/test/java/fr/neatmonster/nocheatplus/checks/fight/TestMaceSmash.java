@@ -13,6 +13,7 @@ import org.junit.Test;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
+import fr.neatmonster.nocheatplus.checks.moving.magic.Magic;
 import fr.neatmonster.nocheatplus.checks.moving.model.ModelFlying;
 import fr.neatmonster.nocheatplus.checks.moving.model.MoveTrace;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
@@ -52,6 +53,8 @@ public class TestMaceSmash {
         move.from.setLocation("world", 0, y, 0, 0, 0);
         move.to.setLocation("world", 0, y + dy, 0, 0, 0);
         move.yDistance = dy;
+        move.movementTick = tick;
+        move.maceFallHistoryBoundary = false;
         move.valid = move.toIsValid = true;
         move.modelFlying = model;
         return move;
@@ -160,6 +163,22 @@ public class TestMaceSmash {
             assertFalse(accept(prepare(-0.5, 0, elytra)));
         }
         assertFalse(smash());
+    }
+
+    @Test
+    public void repeatedSmallExcessesAreJudgedAcrossTheWholeRecentFall() {
+        moves.invalidate();
+        y = 100.0;
+        tick = 100;
+        double expectedVelocity = -0.2;
+        assertFalse("The starting accepted Elytra movement is not itself forged", move(expectedVelocity));
+        for (int i = 0; i < 2; i++) {
+            expectedVelocity = (expectedVelocity - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
+            final PlayerMoveData excessive = prepare(expectedVelocity - 0.1, 1, elytra);
+            assertEquals("The whole-fall guard activates only after the second margin-sized excess",
+                    i == 1, accept(excessive));
+        }
+        assertTrue("Repeated margin-sized excesses must remain invalid", smash());
     }
 
     @Test
