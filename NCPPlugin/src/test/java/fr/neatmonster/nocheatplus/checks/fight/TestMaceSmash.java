@@ -205,8 +205,71 @@ public class TestMaceSmash {
         assertTrue(accept(prepare(-1.75, 1, elytra)));
         assertTrue(accept(prepare(-1.0, 1, elytra)));
         assertTrue(accept(prepare(-0.75, 1, elytra)));
-        assertTrue(accept(prepare(0.0, 1, null)));
+        assertTrue(accept(prepare(-0.1, 1, null)));
         assertTrue("The ground-started fake dive cannot deal smash damage", smash());
+    }
+
+    @Test
+    public void groundStartedFakeMaceDiveSurvivesTakeoffAndFirstDiveInOneTick() {
+        moves.invalidate();
+        y = 92.0;
+        tick = 100;
+
+        final PlayerMoveData takeoff = prepare(-0.08, 1, null);
+        takeoff.from.extraPropertiesValid = true;
+        takeoff.from.onGroundOrResetCond = true;
+        assertFalse(accept(takeoff));
+
+        final PlayerMoveData firstDive = prepare(-1.75, 0, elytra);
+        firstDive.from.extraPropertiesValid = true;
+        firstDive.from.onGroundOrResetCond = true;
+        assertFalse(accept(firstDive));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.75, 1, elytra)));
+        assertTrue(accept(prepare(-1.0, 1, elytra)));
+        assertTrue(accept(prepare(-0.75, 1, elytra)));
+        assertTrue(accept(prepare(-0.1, 1, null)));
+        assertTrue("Same-tick takeoff and first dive cannot deal smash damage", smash());
+    }
+
+    @Test
+    public void groundStartedFakeMaceDiveSurvivesAllFallPacketsInOneTick() {
+        moves.invalidate();
+        y = 92.0;
+        tick = 100;
+
+        final PlayerMoveData takeoff = prepare(-0.08, 1, null);
+        takeoff.from.extraPropertiesValid = true;
+        takeoff.from.onGroundOrResetCond = true;
+        assertFalse(accept(takeoff));
+
+        // The initial dive, repeated speed, and glide-off packet all have one movementTick.
+        final PlayerMoveData firstDive = prepare(-1.75, 1, elytra);
+        firstDive.from.extraPropertiesValid = true;
+        firstDive.from.onGroundOrResetCond = true;
+        assertFalse(accept(firstDive));
+        assertTrue(accept(prepare(-1.75, 0, elytra)));
+        assertTrue(accept(prepare(-1.75, 0, elytra)));
+        assertTrue(accept(prepare(-1.75, 0, elytra)));
+        assertTrue(accept(prepare(-1.0, 0, elytra)));
+        assertTrue(accept(prepare(-0.75, 0, elytra)));
+        assertTrue(accept(prepare(-0.1, 0, null)));
+        assertTrue("A same-tick fake dive cannot deal smash damage", smash());
+    }
+
+    @Test
+    public void vanillaGravityRampInSameTickBurstRemainsUsable() {
+        moves.invalidate();
+        y = 100.0;
+        tick = 100;
+        double velocity = 0.0;
+        for (int index = 0; index < 40; index++) {
+            velocity = (velocity - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
+            assertFalse("Vanilla gravity packet " + index + " in a same-tick burst",
+                    accept(prepare(velocity, index == 0 ? 1 : 0, elytra)));
+        }
+        assertFalse(smash());
     }
 
     @Test

@@ -176,8 +176,12 @@ public class MovingUtil {
                     observedDistance = 0.0;
                     elapsedTicks = 0;
                 }
-                final int ticks = sample.movementTick - previous.movementTick;
-                if (ticks < 1 || ticks > 4) break;
+                final int tickGap = sample.movementTick - previous.movementTick;
+                if (tickGap < 0 || tickGap > 4) break;
+                // Movement packets can arrive in a same-tick burst, but each accepted packet
+                // still represents one client physics step. Do not let a zero server-tick gap
+                // erase its gravity contribution or split the fall history window.
+                final int ticks = Math.max(1, tickGap);
                 for (int tick = 0; tick < ticks; tick++) {
                     expectedVelocity = (expectedVelocity - Magic.GRAVITY_MAX) * Magic.FRICTION_MEDIUM_ELYTRA_AIR;
                     expectedDistance += expectedVelocity;
