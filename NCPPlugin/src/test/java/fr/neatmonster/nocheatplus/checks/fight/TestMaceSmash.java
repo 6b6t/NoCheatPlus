@@ -143,10 +143,12 @@ public class TestMaceSmash {
     @Test
     public void pitchChangesPullupsSlowfallAndHighHorizontalSpeedDoNotInventDownwardAcceleration() {
         move(-0.3);
-        for (final double dy : new double[] {-0.28, -0.02, 0.0, 0.4, 0.8, 0.2, -0.03, -0.1, -0.17}) {
+        final double[] movements = {-0.28, -0.02, 0.0, 0.4, 0.8, 0.2, -0.03, -0.1, -0.17};
+        for (int index = 0; index < movements.length; index++) {
+            final double dy = movements[index];
             final PlayerMoveData move = prepare(dy, 1, elytra);
             move.hDistance = 5.0;
-            assertFalse(accept(move));
+            assertFalse("Pullup movement index " + index + " (dy=" + dy + ")", accept(move));
         }
         assertFalse(smash());
     }

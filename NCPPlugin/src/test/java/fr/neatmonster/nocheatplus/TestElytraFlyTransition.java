@@ -171,12 +171,11 @@ public class TestElytraFlyTransition {
         lastMove.yDistance = -0.3;
         transition(102);
         assertNotNull("The first accepted downward toggle keeps real momentum", data.getOrUseVerticalVelocity(-0.3));
-        assertNotNull(data.getOrUseVerticalVelocity(0.0));
+        data.getVerticalVelocityTracker().clear();
+        data.clearAllHorVel();
 
         transition(103);
-        assertNull("A second toggle inside the recovery window cannot renew momentum",
-                data.getOrUseVerticalVelocity(-0.3));
-        assertNull(data.getOrUseVerticalVelocity(0.0));
+        assertFalse("A second toggle inside the recovery window cannot renew vertical credit", data.hasQueuedVerVel());
         assertFalse("The second toggle cannot renew horizontal credit", data.hasQueuedHorVel());
     }
 

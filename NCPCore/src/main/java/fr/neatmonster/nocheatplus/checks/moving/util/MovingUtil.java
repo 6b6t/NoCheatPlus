@@ -146,10 +146,10 @@ public class MovingUtil {
                 continue;
             }
 
-            // A landing/reset anchor starts the next fall from rest; a jump or step is measured
-            // by the following move and becomes its own speed anchor.
+            // A landing/reset starts the next fall at rest. Positive launch speed is not a
+            // downward allowance; start the descent model from zero until a downward speed is measured.
             double expectedVelocity = anchor.to.extraPropertiesValid && anchor.to.onGroundOrResetCond
-                    || anchor.touchedGround ? 0.0 : anchor.yDistance;
+                    || anchor.touchedGround ? 0.0 : Math.min(0.0, anchor.yDistance);
             double expectedDistance = 0.0;
             double observedDistance = 0.0;
             int elapsedTicks = 0;
