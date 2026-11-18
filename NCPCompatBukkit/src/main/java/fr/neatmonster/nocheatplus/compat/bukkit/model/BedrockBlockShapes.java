@@ -51,7 +51,9 @@ public final class BedrockBlockShapes {
     public static int materialCount() { return Data.MATERIALS.size(); }
 
     public static double[] get(final String state) {
-        return Data.STATES.get(state);
+        final double[] bounds = Data.STATES.get(state);
+        // Never expose the table's shared backing array to callers.
+        return bounds == null ? null : bounds.clone();
     }
 
     public static boolean permitsVanillaProfile(final String state) {

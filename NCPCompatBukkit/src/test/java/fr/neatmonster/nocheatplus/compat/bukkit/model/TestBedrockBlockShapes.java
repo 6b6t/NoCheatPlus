@@ -49,6 +49,14 @@ public class TestBedrockBlockShapes {
     }
 
     @Test
+    public void callersCannotMutateTheSharedTable() {
+        final String state = "minecraft:trapped_chest[facing=north,type=left,waterlogged=false]";
+        final double[] first = BedrockBlockShapes.get(state);
+        first[0] = 42;
+        assertEquals(0.025, BedrockBlockShapes.get(state)[0], 0);
+    }
+
+    @Test
     public void customGeyserBlocksAndUnknownStatesKeepNativeShapes() {
         final var access = BedrockBlockShapes.registryAccess(Registries.class);
         assertTrue(access.permits("minecraft:trapped_chest"));

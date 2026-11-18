@@ -18,6 +18,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -40,6 +41,8 @@ import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
  *
  */
 public class BridgeMisc {
+
+    private static final AtomicBoolean FLOODGATE_VERSION_WARNING_LOGGED = new AtomicBoolean();
 
     /** Optional integration point for proxy plugins that can supply a verified client version. */
     public interface BedrockProfileProvider {
@@ -137,7 +140,9 @@ public class BridgeMisc {
             final Object version = lookup.getReturnType().getMethod("getVersion").invoke(player);
             return version instanceof String ? (String) version : null;
         } catch (ReflectiveOperationException | LinkageError failure) {
-            StaticLog.logWarning("Could not read Floodgate client version: " + failure);
+            if (FLOODGATE_VERSION_WARNING_LOGGED.compareAndSet(false, true)) {
+                StaticLog.logWarning("Could not read Floodgate client version; collision profile remains disabled.");
+            }
             return null;
         }
     }
