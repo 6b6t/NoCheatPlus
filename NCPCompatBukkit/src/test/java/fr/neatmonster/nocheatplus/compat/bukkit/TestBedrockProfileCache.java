@@ -67,6 +67,7 @@ public class TestBedrockProfileCache {
         when(player.isBedrockPlayer()).thenReturn(true);
         final var cache = new BlockCacheBukkitModern(Map.of());
         cache.setAccess(world);
+        cache.setBedrockCache(true);
         cache.setPlayerData(player);
         final ConfigFile config = mock(ConfigFile.class);
         when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(true);
