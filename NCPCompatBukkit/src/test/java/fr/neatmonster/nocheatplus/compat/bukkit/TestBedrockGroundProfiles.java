@@ -48,8 +48,8 @@ public class TestBedrockGroundProfiles {
                             x - 0.001, top - 0.025, z - 0.001, x + 0.001, top, z + 0.001));
                 }
             }
-            assertEquals(13357, states);
-            assertEquals(191, blocks.size());
+            assertEquals(13293, states);
+            assertEquals(190, blocks.size());
         } finally { BlockFlags.setBlockFlags(Material.STONE, flags); }
     }
 

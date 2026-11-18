@@ -12,7 +12,7 @@ public class TestBedrockBlockShapes {
         for (final String version : new String[] {"26.50", "26.51", "26.52", "26.60", "1.26.50.4", "1.26.52", "1.26.60"}) {
             assertTrue(version, BedrockBlockShapes.supportsVersion(version));
         }
-        for (final String version : new String[] {null, "", "26.5", "26.60", "26.30", "1.21.11", "unknown"}) {
+        for (final String version : new String[] {null, "", "26.5", "26.61", "26.30", "1.21.11", "unknown"}) {
             assertFalse(version, BedrockBlockShapes.supportsVersion(version));
         }
     }
