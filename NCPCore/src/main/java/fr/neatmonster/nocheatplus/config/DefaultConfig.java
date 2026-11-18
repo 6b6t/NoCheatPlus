@@ -771,6 +771,7 @@ public class DefaultConfig extends ConfigFile {
         set(ConfPaths.COMPATIBILITY_SERVER_CBREFLECT_ENABLE, true, 785);
         set(ConfPaths.COMPATIBILITY_BLOCKS + ConfPaths.SUB_BREAKINGTIME + ".IRON_BLOCK:PICKAXE:DIAMOND:12", 1139);
         set(ConfPaths.COMPATIBILITY_BLOCKS + ConfPaths.SUB_ALLOWINSTANTBREAK, new LinkedList<String>(), 785);
+        // Disabling takes effect immediately; enabling applies to Bedrock players on their next join.
         set(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true, 1200);
         set(ConfPaths.COMPATIBILITY_BLOCKS + ConfPaths.SUB_OVERRIDEFLAGS + "." + Material.SNOW.name().toLowerCase(), "default", 785);
         // Make blocks ign_passable+ground_height.
