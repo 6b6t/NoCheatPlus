@@ -52,6 +52,34 @@ public class TestBedrockProfileCache {
     }
 
     @Test
+    public void missingTableShapeIsCachedForTheMove() {
+        final World world = mock(World.class);
+        when(world.getMinHeight()).thenReturn(-64);
+        when(world.getMaxHeight()).thenReturn(320);
+        final Block block = mock(Block.class);
+        final BlockData data = mock(BlockData.class);
+        when(world.getBlockAt(0, 64, 0)).thenReturn(block);
+        when(block.getType()).thenReturn(Material.TRAPPED_CHEST);
+        when(block.getBlockData()).thenReturn(data);
+        when(data.getAsString()).thenReturn("minecraft:trapped_chest[unknown=state]");
+        final IPlayerData player = mock(IPlayerData.class);
+        when(player.getBedrockVersion()).thenReturn("1.26.52");
+        when(player.isBedrockPlayer()).thenReturn(true);
+        final var cache = new BlockCacheBukkitModern(Map.of());
+        cache.setAccess(world);
+        cache.setPlayerData(player);
+        final ConfigFile config = mock(ConfigFile.class);
+        when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(true);
+        try (var configManager = mockStatic(ConfigManager.class); var ownership = mockStatic(MapUtil.class)) {
+            configManager.when(ConfigManager::getConfigFile).thenReturn(config);
+            ownership.when(() -> MapUtil.areChunksLoadedAndOwned(world, 0, 0, 0.0)).thenReturn(true);
+            assertNull(cache.getBedrockBounds(0, 64, 0));
+            assertNull(cache.getBedrockBounds(0, 64, 0));
+            verify(block, times(1)).getBlockData();
+        } finally { cache.cleanup(); }
+    }
+
+    @Test
     public void editionVersionOwnershipAndCleanupControlTheClientProfile() {
         final World world = mock(World.class);
         when(world.getMinHeight()).thenReturn(-64);

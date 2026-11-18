@@ -56,6 +56,11 @@ public final class BedrockBlockShapes {
         return bounds == null ? null : bounds.clone();
     }
 
+    /** Ender chest shape shared by all facing and waterlogged states in the pinned table. */
+    public static double[] getEnderChestBounds() {
+        return get("minecraft:ender_chest[facing=north,waterlogged=false]");
+    }
+
     public static boolean permitsVanillaProfile(final String state) {
         return Geyser.ACCESS.permits(state);
     }

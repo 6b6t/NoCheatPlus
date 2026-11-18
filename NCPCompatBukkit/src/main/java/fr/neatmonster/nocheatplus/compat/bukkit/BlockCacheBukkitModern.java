@@ -50,6 +50,7 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
     private Map<Material, BukkitShapeModel> shapeModels;
     private final CoordMap<double[]> collisionBounds = new CoordHashMap<double[]>(23);
     private final CoordMap<double[]> bedrockBounds = new CoordHashMap<double[]>(23);
+    private static final double[] NO_BEDROCK_BOUNDS = new double[0];
     private boolean verifiedBedrockProfile;
     private static final boolean HAS_COLLISION_SHAPE =
             ReflectionUtil.getMethodNoArgs(Block.class, "getCollisionShape") != null;
@@ -108,11 +109,11 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
         // world.getBlockAt while populating the cache.
         if (!BedrockBlockShapes.contains(getType(x, y, z))) return null;
         final double[] cached = bedrockBounds.get(x, y, z);
-        if (cached != null) return cached;
+        if (cached != null) return cached == NO_BEDROCK_BOUNDS ? null : cached;
         final String state = world.getBlockAt(x, y, z).getBlockData().getAsString();
-        if (!BedrockBlockShapes.permitsVanillaProfile(state)) return null;
-        final double[] bounds = BedrockBlockShapes.get(state);
-        if (bounds != null) bedrockBounds.put(x, y, z, bounds);
+        final double[] bounds = BedrockBlockShapes.permitsVanillaProfile(state)
+                ? BedrockBlockShapes.get(state) : null;
+        bedrockBounds.put(x, y, z, bounds == null ? NO_BEDROCK_BOUNDS : bounds);
         return bounds;
     }
 
@@ -147,8 +148,8 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
         //final BlockData blockData = state.getBlockData();
         final Material mat = getType(x, y, z);
         if (mat == Material.ENDER_CHEST && isBedrockCache() && verifiedBedrockProfile && bedrockCollisionsEnabled()) {
-            // Bedrock ender chests are wider and 0.075 blocks taller than Java's.
-            return new double[] {0.025, 0.0, 0.025, 0.975, 0.95, 0.975};
+            final double[] bedrock = BedrockBlockShapes.getEnderChestBounds();
+            if (bedrock != null) return bedrock;
         }
 
         final BukkitShapeModel shapeModel = shapeModels.get(mat);

@@ -43,6 +43,7 @@ import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
 public class BridgeMisc {
 
     private static final AtomicBoolean FLOODGATE_VERSION_WARNING_LOGGED = new AtomicBoolean();
+    private static final AtomicBoolean FLOODGATE_IDENTITY_WARNING_LOGGED = new AtomicBoolean();
 
     /** Optional integration point for proxy plugins that can supply a verified client version. */
     public interface BedrockProfileProvider {
@@ -116,7 +117,9 @@ public class BridgeMisc {
             return Boolean.TRUE.equals(apiClass.getMethod("isFloodgatePlayer", UUID.class).invoke(api, playerId));
         }
         catch (ReflectiveOperationException | LinkageError failure) {
-            StaticLog.logWarning("Could not identify Floodgate player: " + failure);
+            if (FLOODGATE_IDENTITY_WARNING_LOGGED.compareAndSet(false, true)) {
+                StaticLog.logWarning("Could not query Floodgate player identity; Bedrock collision profile remains disabled.");
+            }
             return false;
         }
     }

@@ -333,7 +333,6 @@ public class SurvivalFly extends Check {
         } 
 
         boolean shelfBounceLiftOff = false;
-        // Only the hop immediately after a supported bed or shelf-mushroom landing may skip low-jump detection.
         if (pData.isBedrockPlayer() && fromOnGround && yDistance > 0.0
                 && BedrockCollision.isSupportCorrection(from.getBlockCache(), from.getMinX(), from.getMinZ(),
                         from.getMaxX(), from.getMaxZ(), from.getY(), to.getY())) {
@@ -343,6 +342,7 @@ public class SurvivalFly extends Check {
 
         // Vanilla bed bounce after a short fall (see BedBounce): the hop right after an accepted landing
         // on a bed is no low jump, if it rises no more than the vanilla bounce. Only for this one move.
+        // Only the hop immediately after a supported bed or shelf-mushroom landing may skip low-jump detection.
         if (data.sfBedBounceRise > 0.0) {
             final boolean fromOnShelfTop = ShelfBounce.isOnTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
                     from.getMaxX(), from.getMaxZ(), from.getY());
