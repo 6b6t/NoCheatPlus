@@ -79,7 +79,7 @@ public class TestFloodgateDetection {
         for (final String version : new String[] {null, "26.49", "1.26.49", "26.53", "1.26.53", "26.61"}) {
             assertFalse(String.valueOf(version), BridgeMisc.supportsBedrockCollisionVersion(version));
         }
-        assertTrue("Bedrock identity fallback uses the table covered by configured Geyser versions",
+        assertFalse("Identity-only detection has no trusted version and must fail closed",
                 BridgeMisc.canUseBedrockCollisionProfile(true, null));
         assertFalse("Java identities never use Bedrock collision shapes",
                 BridgeMisc.canUseBedrockCollisionProfile(false, null));
