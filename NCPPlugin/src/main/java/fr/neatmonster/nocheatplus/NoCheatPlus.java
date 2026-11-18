@@ -833,7 +833,7 @@ public class NoCheatPlus extends JavaPlugin implements NoCheatPlusAPI {
         final ConfigFile config = ConfigManager.getConfigFile();
 
         final int bedrockStateCount = BedrockBlockShapes.initialize();
-        getLogger().info("Bedrock collision table 26.50-26.52 loaded (" + bedrockStateCount
+        getLogger().info("Bedrock collision table 26.50-26.52 + 26.60 loaded (" + bedrockStateCount
                 + " states, " + BedrockBlockShapes.materialCount() + " materials).");
         // (Might add options to invert selection.)
         // "No permission".

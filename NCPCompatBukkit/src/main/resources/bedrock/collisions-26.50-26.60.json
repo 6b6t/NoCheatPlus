@@ -1,9 +1,10 @@
 {
-  "source": "https://raw.githubusercontent.com/CloudburstMC/Data/88a2436a2d5c605da082a00fee5f103f888a9160/blocks.json",
-  "source_sha256": "8291ff5229f56a4a47196a202308ca9fa324e1c81f3cff6be4c2d5d2dad34983",
-  "geyser_sha256": "7f54564b0cf857c6a186a5b2d379e145351d8e83c725c341ed8c40ef09816234",
-  "states": 13357,
-  "shapes": 87,
+  "bedrock_version": "26.60",
+  "source": "https://raw.githubusercontent.com/CloudburstMC/Data/0021592b1a4253528bad1e1d8b537e306e097557/blocks.json",
+  "source_sha256": "559c723407303f4adc03dc76048a5a02000a26feed787623ba6112b94c986064",
+  "geyser_sha256": "1dd1de0d56ad5f50d31feff2e18f6f71de50bc142853131d473bfd71d9e3809f",
+  "states": 13293,
+  "shapes": 86,
   "blocks": [
     "minecraft:acacia_shelf",
     "minecraft:acacia_trapdoor",
@@ -38,7 +39,6 @@
     "minecraft:cherry_trapdoor",
     "minecraft:chest",
     "minecraft:chipped_anvil",
-    "minecraft:chorus_plant",
     "minecraft:cinnabar_brick_wall",
     "minecraft:cinnabar_wall",
     "minecraft:cobbled_deepslate_wall",
@@ -201,10 +201,11 @@
     "sticky_piston": "paired and moving collision",
     "piston": "paired and moving collision",
     "piston_head": "paired and moving collision",
+    "chorus_plant": "26.50 and 26.60 sampled collision geometry differs",
     "bamboo": "position-dependent native offset",
     "scaffolding": "entity and sneaking dependent collision",
     "pointed_dripstone": "position-dependent native offset",
     "sulfur_spike": "position-dependent native offset"
   },
-  "resource_sha256": "c5b638fc7c384716fd1f66828a524b2b33920b9f144e2f18c06747be82e18faf"
+  "resource_sha256": "ef13281f13de08fba9c653c8020bd3d496b7a873754b611b2dbabffd48dcfd07"
 }

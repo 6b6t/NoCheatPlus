@@ -57,13 +57,19 @@ public class BridgeMisc {
         public String getVersion() { return version; }
     }
 
-    /** The collision table currently packaged by NCP covers Bedrock 26.50-26.52. */
+    /** The collision table covers the common static shapes in Bedrock 26.50-26.52 and 26.60. */
     public static boolean supportsBedrockCollisionVersion(final String version) {
         if (version == null) return false;
         final String normalized = version.startsWith("1.") ? version.substring(2) : version;
         return isVersionWithinTable(normalized, "26.50")
                 || isVersionWithinTable(normalized, "26.51")
-                || isVersionWithinTable(normalized, "26.52");
+                || isVersionWithinTable(normalized, "26.52")
+                || isVersionWithinTable(normalized, "26.60");
+    }
+
+    /** Unknown versions are accepted only for Bedrock identities: Geyser's configured acceptance set is the boundary. */
+    public static boolean canUseBedrockCollisionProfile(final boolean bedrock, final String version) {
+        return bedrock && (version == null || supportsBedrockCollisionVersion(version));
     }
 
     private static boolean isVersionWithinTable(final String version, final String tableVersion) {

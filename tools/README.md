@@ -26,19 +26,17 @@ to select another directory. Use `--output PATH` to change the report directory.
 
 ## Coverage and interpretation
 
-The source is [CloudburstMC/Data's sampled block geometry](https://github.com/CloudburstMC/Data/commit/88a2436a2d5c605da082a00fee5f103f888a9160),
-pinned by commit and SHA-256. This dump covers Bedrock 1.26.50. The supplied jar
-must contain matching Java 26.3 / Bedrock 1.26.50 mappings. Different versions
-fail explicitly, rather than comparing incompatible state IDs. Updating the
-baseline requires updating the pinned data, checksum, version guard and palette
-path together.
+CloudburstMC/Data's sampled block geometry is pinned by commit and SHA-256 for
+Bedrock 1.26.50 and 1.26.60. Select with `--bedrock-version`; the supplied jar
+must contain matching Java 26.3 / Bedrock mappings and palette. Different
+versions fail explicitly, rather than comparing incompatible state IDs.
+Updating a baseline requires updating its pinned data, checksum, version guard
+and palette path together.
 
 The NCP maintainer owns this manual refresh when Geyser accepts a new Bedrock
-release: update the pinned Cloudburst data and hash, confirm the matching
-Java/Bedrock versions and palette path in the Geyser jar, run the comparison,
-review all changed and unknown states, regenerate the table, and run the unit
-suite. The current Bedrock 26.60 client profile remains on Java geometry until
-that review produces a matching table.
+release: add its pinned Cloudburst data and hash, confirm matching Java/Bedrock
+versions and palette path in the Geyser jar, run the comparison, review all
+changed and unknown states, regenerate the table, and run the unit suite.
 
 The Java state order, Java collision shapes, Java-to-Bedrock translation, and
 Bedrock palette come from that exact Geyser jar. Bedrock samples are joined by

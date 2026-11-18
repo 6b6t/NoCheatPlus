@@ -73,12 +73,18 @@ public class TestFloodgateDetection {
 
     @Test
     public void collisionVersionGateMatchesOnlyPackagedTableVersions() {
-        for (final String version : new String[] {"26.50", "26.51", "26.52", "26.50.4", "1.26.50", "1.26.50.4", "1.26.52"}) {
+        for (final String version : new String[] {"26.50", "26.51", "26.52", "26.60", "26.50.4", "1.26.50", "1.26.50.4", "1.26.52", "1.26.60"}) {
             assertTrue(version, BridgeMisc.supportsBedrockCollisionVersion(version));
         }
-        for (final String version : new String[] {null, "26.49", "26.60", "1.26.60", "26.53"}) {
+        for (final String version : new String[] {null, "26.49", "1.26.49", "26.53", "1.26.53", "26.61"}) {
             assertFalse(String.valueOf(version), BridgeMisc.supportsBedrockCollisionVersion(version));
         }
+        assertTrue("Bedrock identity fallback uses the table covered by configured Geyser versions",
+                BridgeMisc.canUseBedrockCollisionProfile(true, null));
+        assertFalse("Java identities never use Bedrock collision shapes",
+                BridgeMisc.canUseBedrockCollisionProfile(false, null));
+        assertFalse("Explicitly unsupported versions stay on Java geometry",
+                BridgeMisc.canUseBedrockCollisionProfile(true, "26.53"));
     }
 
     public static class FloodgateApi {

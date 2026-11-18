@@ -20,10 +20,16 @@ from functools import lru_cache
 from pathlib import Path
 
 
-BEDROCK_VERSION = "26_50"
-DATA_COMMIT = "88a2436a2d5c605da082a00fee5f103f888a9160"
-DATA_URL = f"https://raw.githubusercontent.com/CloudburstMC/Data/{DATA_COMMIT}/blocks.json"
-DATA_SHA256 = "8291ff5229f56a4a47196a202308ca9fa324e1c81f3cff6be4c2d5d2dad34983"
+DATASETS = {
+    "26.50": {"geyser_version": "1.26.50", "bedrock_version": "26_50",
+              "commit": "88a2436a2d5c605da082a00fee5f103f888a9160",
+              "sha256": "8291ff5229f56a4a47196a202308ca9fa324e1c81f3cff6be4c2d5d2dad34983"},
+    "26.60": {"geyser_version": "1.26.60", "bedrock_version": "26_60",
+              "commit": "0021592b1a4253528bad1e1d8b537e306e097557",
+              "sha256": "559c723407303f4adc03dc76048a5a02000a26feed787623ba6112b94c986064"},
+}
+DATA_URL = f"https://raw.githubusercontent.com/CloudburstMC/Data/{DATASETS['26.50']['commit']}/blocks.json"
+DATA_SHA256 = DATASETS["26.50"]["sha256"]
 EPSILON = 1e-6  # Bedrock's sampled data is rounded to six decimal places.
 
 
@@ -240,6 +246,7 @@ def write_reports(report, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--geyser", type=Path, required=True, help="Installed Geyser-Spigot or standalone jar")
+    parser.add_argument("--bedrock-version", choices=DATASETS, default="26.50")
     parser.add_argument("--java", default="java", help="Java executable with source-file launch support")
     parser.add_argument("--libraries", type=Path, help="Server libraries directory (default: beside plugins/)")
     parser.add_argument("--output", type=Path, default=Path(__file__).parent / "collision-report")
@@ -247,15 +254,17 @@ def main():
     folder = Path(__file__).resolve().parent
     cache = folder / ".collision-cache"
     cache.mkdir(exist_ok=True)
-    sample_path = cache / "bedrock-blocks.json"
+    dataset = DATASETS[args.bedrock_version]
+    data_url = f"https://raw.githubusercontent.com/CloudburstMC/Data/{dataset['commit']}/blocks.json"
+    sample_path = cache / f"bedrock-blocks-{args.bedrock_version}.json"
     if not sample_path.exists():
-        with urllib.request.urlopen(DATA_URL, timeout=60) as response:
+        with urllib.request.urlopen(data_url, timeout=60) as response:
             data = response.read()
-        if hashlib.sha256(data).hexdigest() != DATA_SHA256:
+        if hashlib.sha256(data).hexdigest() != dataset["sha256"]:
             raise ValueError("Downloaded Bedrock data checksum differs")
         sample_path.write_bytes(data)
     data = sample_path.read_bytes()
-    if hashlib.sha256(data).hexdigest() != DATA_SHA256:
+    if hashlib.sha256(data).hexdigest() != dataset["sha256"]:
         raise ValueError("Cached Bedrock data checksum differs; remove the cache file and retry")
     libraries = args.libraries or args.geyser.resolve().parent.parent / "libraries"
     classpath = os.pathsep.join([str(args.geyser.resolve())]
@@ -270,17 +279,17 @@ def main():
     with zipfile.ZipFile(args.geyser) as jar:
         versions = jar.read("mappings/README.md").decode("utf-8")
         versions = next(line for line in versions.splitlines() if "generated for Minecraft" in line)
-        if "Java Edition 26.3" not in versions or "Bedrock Edition 1.26.50" not in versions:
-            raise ValueError("Pinned Bedrock dump requires Geyser's Java 26.3 / Bedrock 1.26.50 mappings")
+        if "Java Edition 26.3" not in versions or dataset["geyser_version"] not in versions:
+            raise ValueError(f"Pinned Bedrock dump requires Geyser's Java 26.3 / Bedrock {dataset['geyser_version']} mappings")
         report = compare(definitions["states"],
                          read_nbt(jar.read("mappings/blocks.nbt"))["bedrock_mappings"],
                          read_nbt(jar.read("mappings/collisions.nbt")),
-                         read_nbt(jar.read(f"bedrock/block_palette.{BEDROCK_VERSION}.nbt"))["blocks"],
+                         read_nbt(jar.read(f"bedrock/block_palette.{dataset['bedrock_version']}.nbt"))["blocks"],
                          json.loads(data), definitions["remappers"])
-    with args.geyser.open("rb") as stream:
-        geyser_hash = hashlib.file_digest(stream, "sha256").hexdigest()
+    geyser_hash = hashlib.sha256(args.geyser.read_bytes()).hexdigest()
     report.update(versions=versions, geyser_sha256=geyser_hash,
-                  bedrock_source=DATA_URL, bedrock_sha256=DATA_SHA256)
+                  bedrock_source=data_url, bedrock_sha256=dataset["sha256"],
+                  bedrock_release=args.bedrock_version)
     count = write_reports(report, args.output)
     print(f"Compared {report['total_states']} states / {report['total_blocks']} Java blocks: "
           f"{report['equal_states']} equal, {report['different_states']} differences in {count} blocks, "

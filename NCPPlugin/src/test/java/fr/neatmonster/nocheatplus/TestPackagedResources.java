@@ -25,7 +25,7 @@ public class TestPackagedResources {
         int yaml = 0;
         try (JarFile jar = new JarFile(path)) {
             assertNotNull(jar.getJarEntry("plugin.yml"));
-            assertNotNull("Bedrock geometry must survive shading", jar.getJarEntry("bedrock/collisions-26.50.tsv.gz"));
+            assertNotNull("Bedrock geometry must survive shading", jar.getJarEntry("bedrock/collisions-26.50-26.60.tsv.gz"));
             for (var entry : java.util.Collections.list(jar.entries())) {
                 if (entry.isDirectory() || !(entry.getName().endsWith(".yml") || entry.getName().endsWith(".yaml"))) continue;
                 yaml++;

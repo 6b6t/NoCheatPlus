@@ -25,7 +25,7 @@ public class TestBedrockGroundProfiles {
         BlockFlags.setBlockFlags(Material.STONE, BlockFlags.SOLID_GROUND | BlockFlags.FULL_BOUNDS);
         int states = 0;
         final var blocks = new HashSet<String>();
-        try (var raw = getClass().getResourceAsStream("/bedrock/collisions-26.50.tsv.gz");
+        try (var raw = getClass().getResourceAsStream("/bedrock/collisions-26.50-26.60.tsv.gz");
                 var reader = new BufferedReader(new InputStreamReader(new GZIPInputStream(raw), StandardCharsets.UTF_8))) {
             String row;
             while ((row = reader.readLine()) != null) {

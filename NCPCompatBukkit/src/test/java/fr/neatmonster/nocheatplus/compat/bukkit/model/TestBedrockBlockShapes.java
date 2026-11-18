@@ -9,7 +9,7 @@ import fr.neatmonster.nocheatplus.logging.StaticLog;
 public class TestBedrockBlockShapes {
     @Test
     public void onlyVerifiedClientVersionsUseTheTable() {
-        for (final String version : new String[] {"26.50", "26.51", "26.52", "1.26.50.4", "1.26.52"}) {
+        for (final String version : new String[] {"26.50", "26.51", "26.52", "26.60", "1.26.50.4", "1.26.52", "1.26.60"}) {
             assertTrue(version, BedrockBlockShapes.supportsVersion(version));
         }
         for (final String version : new String[] {null, "", "26.5", "26.60", "26.30", "1.21.11", "unknown"}) {
@@ -22,8 +22,11 @@ public class TestBedrockBlockShapes {
         assertTrue(BedrockBlockShapes.profileEnabled(true, true, "1.26.52"));
         assertFalse(BedrockBlockShapes.profileEnabled(false, true, "1.26.52"));
         assertFalse(BedrockBlockShapes.profileEnabled(true, false, "1.26.52"));
-        assertFalse(BedrockBlockShapes.profileEnabled(true, true, null));
-        assertFalse(BedrockBlockShapes.profileEnabled(true, true, "1.26.60"));
+        assertTrue("Proxy identity without a Floodgate version uses the verified table",
+                BedrockBlockShapes.profileEnabled(true, true, null));
+        assertTrue(BedrockBlockShapes.profileEnabled(true, true, "1.26.60"));
+        assertFalse("Unsupported explicit versions stay on native Java geometry",
+                BedrockBlockShapes.profileEnabled(true, true, "1.26.53"));
     }
 
     @Test
@@ -41,6 +44,8 @@ public class TestBedrockBlockShapes {
         assertNull("Unsupported states must not invent a shape", BedrockBlockShapes.get("minecraft:stone"));
         assertNull("Offset-dependent blocks keep native behavior", BedrockBlockShapes.get(
                 "minecraft:bamboo[age=0,leaves=none,stage=0]"));
+        assertNull("Version-differing states keep native behavior", BedrockBlockShapes.get(
+                "minecraft:chorus_plant[down=false,east=false,north=false,south=false,up=false,west=false]"));
     }
 
     @Test

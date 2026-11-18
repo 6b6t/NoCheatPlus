@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from compare_collisions import DATA_SHA256, DATA_URL, boxes
+from compare_collisions import DATASETS, boxes
 
 
 EXCLUDED = {
@@ -18,6 +18,7 @@ EXCLUDED = {
     "piston": "paired and moving collision",
     "sticky_piston": "paired and moving collision",
     "piston_head": "paired and moving collision",
+    "chorus_plant": "26.50 and 26.60 sampled collision geometry differs",
 }
 
 
@@ -42,10 +43,12 @@ def profile(record):
     return tuple(v for box in result for v in box)
 
 
-def generate(report):
-    if report["bedrock_sha256"] != DATA_SHA256 or report["bedrock_source"] != DATA_URL:
+def generate(report, bedrock_version):
+    dataset = DATASETS[bedrock_version]
+    data_url = f"https://raw.githubusercontent.com/CloudburstMC/Data/{dataset['commit']}/blocks.json"
+    if report["bedrock_sha256"] != dataset["sha256"] or report["bedrock_source"] != data_url:
         raise ValueError("Unverified Bedrock geometry source")
-    if "Java Edition 26.3 and Minecraft: Bedrock Edition 1.26.50." not in report["versions"]:
+    if "Java Edition 26.3" not in report["versions"] or dataset["geyser_version"] not in report["versions"]:
         raise ValueError("Unsupported source versions")
     states, shapes, excluded = {}, {}, {}
     for record in report["differences"]:
@@ -58,12 +61,12 @@ def generate(report):
         if state in states:
             raise ValueError("Duplicate block state")
         states[state] = shapes.setdefault(shape, len(shapes))
-    lines = [f"# Source: {DATA_URL}", f"# SHA256: {DATA_SHA256}",
-             "# Bedrock 26.50-26.52; exact static states only; paired chest seams joined."]
+    lines = [f"# Source: {data_url}", f"# SHA256: {dataset['sha256']}",
+             f"# Bedrock {bedrock_version}; exact static states only; paired chest seams joined."]
     lines += [f"@{index}\t" + ",".join(format(v, ".6f").rstrip("0").rstrip(".") if v else "0" for v in shape)
               for shape, index in shapes.items()]
     lines += [f"{state}\t{index}" for state, index in sorted(states.items())]
-    metadata = {"source": DATA_URL, "source_sha256": DATA_SHA256,
+    metadata = {"bedrock_version": bedrock_version, "source": data_url, "source_sha256": dataset["sha256"],
                 "geyser_sha256": report["geyser_sha256"], "states": len(states), "shapes": len(shapes),
                 "blocks": sorted({s.split("[", 1)[0] for s in states}), "excluded": excluded}
     return ("\n".join(lines) + "\n").encode(), metadata
@@ -72,14 +75,17 @@ def generate(report):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--report", type=Path, default=Path(__file__).parent / "collision-report/details.json")
+    parser.add_argument("--bedrock-version", choices=DATASETS, default="26.50")
+    parser.add_argument("--name", help="Output resource suffix, e.g. 26.50-26.60 for a verified shared profile")
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parent.parent /
                         "NCPCompatBukkit/src/main/resources/bedrock")
     args = parser.parse_args()
-    data, metadata = generate(json.loads(args.report.read_text()))
+    data, metadata = generate(json.loads(args.report.read_text()), args.bedrock_version)
     args.output.mkdir(parents=True, exist_ok=True)
-    (args.output / "collisions-26.50.tsv.gz").write_bytes(gzip.compress(data, mtime=0))
+    name = args.name or args.bedrock_version
+    (args.output / f"collisions-{name}.tsv.gz").write_bytes(gzip.compress(data, mtime=0))
     metadata["resource_sha256"] = hashlib.sha256(data).hexdigest()
-    (args.output / "collisions-26.50.json").write_text(json.dumps(metadata, indent=2) + "\n")
+    (args.output / f"collisions-{name}.json").write_text(json.dumps(metadata, indent=2) + "\n")
     print(f"Generated {len(metadata['blocks'])} blocks / {metadata['states']} states / {metadata['shapes']} shapes; "
           f"{len(metadata['excluded'])} contextual block types retain native behavior.")
 

@@ -38,7 +38,7 @@ public final class BedrockBlockShapes {
     }
 
     public static boolean profileEnabled(final boolean enabled, final boolean bedrock, final String version) {
-        return enabled && bedrock && supportsVersion(version);
+        return enabled && fr.neatmonster.nocheatplus.compat.BridgeMisc.canUseBedrockCollisionProfile(bedrock, version);
     }
 
     public static boolean contains(final Material material) {
@@ -106,7 +106,7 @@ public final class BedrockBlockShapes {
             final var states = new HashMap<String, double[]>();
             final var materials = EnumSet.noneOf(Material.class);
             final var shapes = new HashMap<Integer, double[]>();
-            try (var resource = BedrockBlockShapes.class.getResourceAsStream("/bedrock/collisions-26.50.tsv.gz")) {
+            try (var resource = BedrockBlockShapes.class.getResourceAsStream("/bedrock/collisions-26.50-26.60.tsv.gz")) {
                 if (resource == null) throw new IOException("Missing Bedrock collision resource");
                 try (var reader = new BufferedReader(new InputStreamReader(new GZIPInputStream(resource), StandardCharsets.UTF_8))) {
                     String line;
