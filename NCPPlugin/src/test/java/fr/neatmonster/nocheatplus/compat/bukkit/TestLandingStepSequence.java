@@ -235,6 +235,9 @@ public class TestLandingStepSequence {
                 0.0625, 0.5, 0.375, 0.25, 0.6875, 1.0,
                 0.25, 0.5, 0.375, 0.9375, 0.6875, 0.625,
                 0.75, 0.5, 0.625, 0.9375, 0.6875, 1.0});
+    }
+
+    @Test
     public void recordedBedrockShortBedBounceDoesNotCountAsLowJump() {
         when(playerData.isBedrockPlayer()).thenReturn(true);
         final long flags = BlockFlags.getBlockFlags(Material.BLUE_BED);
