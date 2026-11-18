@@ -48,6 +48,8 @@ public class TestBedrockEnderChest {
             assertFalse("No support outside the rim", BlockProperties.isOnGround(
                     cache, 0.976, 64.925, 0.2, 0.99, 64.95, 0.8));
 
+            cache.cleanup();
+            cache.setPlayerData(player);
             when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(false);
             assertFalse("Off switch restores the exact Java ender chest height", ground(cache, 64.95));
             assertTrue(ground(cache, 64.875));
