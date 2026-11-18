@@ -1,11 +1,14 @@
 # Bedrock movement shapes
 
 `collisions-26.50-26.60.tsv.gz` contains additional static collision profiles
-for authenticated Bedrock connections accepted by the configured Geyser
-version set: 26.50 through 26.52 and 26.60. The worker-side identity fallback
-does not carry a client version, so a null version is enabled only for Bedrock
-identities and relies on the proxy's accepted-version set. Explicit versions
-outside the covered set and all Java identities retain native Java behavior.
+for authenticated Bedrock connections only when Floodgate supplies a verified
+client version: 26.50 through 26.52 and 26.60. The worker-side identity fallback
+does not carry a trusted client version, so identity-only players retain native
+Java behavior. This includes the proxy-accepted 26.40-26.45 clients: their
+shapes have not been compared and they are not eligible for the profile. Java
+identities and all explicit versions outside the covered set also retain native
+Java behavior. Do not add a proxy-to-worker version handoff without explicit
+owner approval; until then this feature is fail-closed on Fox workers.
 The original Java model and native collision API are unchanged. Ground and
 passability may additionally accept a position valid for the Bedrock shape,
 because Geyser can send raw client contacts or positions corrected to Java
@@ -40,9 +43,11 @@ python3 tools/generate_bedrock_shapes.py --report tools/collision-report/details
 When Geyser's accepted Bedrock versions change, the NCP maintainer must compare
 each newly accepted release against this profile, exclude any differing block
 types that are not needed for the main fix, regenerate the shared profile, add
-tests and review the result before that Geyser version is enabled. The worker
-cannot detect a new client version when the proxy does not forward it; do not
-expand Geyser's accepted-version set until the table has been refreshed.
+tests and review the result before that version is enabled. The maintainer who
+updates Geyser owns this refresh. The worker cannot detect a client version
+when the proxy does not forward it, so identity-only profiles remain disabled;
+do not enable an unverified version or add a proxy-to-worker handoff without
+the required approval.
 
 Regression tests exercise generated states through NCP ground detection,
 multipart contacts, fractional world heights, passable interiors, opaque

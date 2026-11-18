@@ -22,7 +22,7 @@ public class TestBedrockBlockShapes {
         assertTrue(BedrockBlockShapes.profileEnabled(true, true, "1.26.52"));
         assertFalse(BedrockBlockShapes.profileEnabled(false, true, "1.26.52"));
         assertFalse(BedrockBlockShapes.profileEnabled(true, false, "1.26.52"));
-        assertTrue("Proxy identity without a Floodgate version uses the verified table",
+        assertFalse("Identity-only detection has no trusted version and must keep native geometry",
                 BedrockBlockShapes.profileEnabled(true, true, null));
         assertTrue(BedrockBlockShapes.profileEnabled(true, true, "1.26.60"));
         assertFalse("Unsupported explicit versions stay on native Java geometry",

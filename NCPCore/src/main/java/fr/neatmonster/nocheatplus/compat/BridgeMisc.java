@@ -67,9 +67,9 @@ public class BridgeMisc {
                 || isVersionWithinTable(normalized, "26.60");
     }
 
-    /** Unknown versions are accepted only for Bedrock identities: Geyser's configured acceptance set is the boundary. */
+    /** A verified, supported client version is required; identity heuristics alone fail closed. */
     public static boolean canUseBedrockCollisionProfile(final boolean bedrock, final String version) {
-        return bedrock && (version == null || supportsBedrockCollisionVersion(version));
+        return bedrock && supportsBedrockCollisionVersion(version);
     }
 
     private static boolean isVersionWithinTable(final String version, final String tableVersion) {
@@ -118,7 +118,9 @@ public class BridgeMisc {
         }
     }
 
-    /** Proxy identity fallback used when Floodgate is only installed on the proxy. */
+    /** Proxy identity hint used for telemetry/recognition when Floodgate is only installed on the proxy.
+     * It is not sufficient to enable Bedrock collision shapes without a trusted client version.
+     */
     public static boolean isBedrockIdentity(final String name, final UUID playerId) {
         return name != null && name.startsWith(".") || playerId != null && playerId.getMostSignificantBits() == 0L;
     }
