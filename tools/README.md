@@ -33,6 +33,13 @@ fail explicitly, rather than comparing incompatible state IDs. Updating the
 baseline requires updating the pinned data, checksum, version guard and palette
 path together.
 
+The NCP maintainer owns this manual refresh when Geyser accepts a new Bedrock
+release: update the pinned Cloudburst data and hash, confirm the matching
+Java/Bedrock versions and palette path in the Geyser jar, run the comparison,
+review all changed and unknown states, regenerate the table, and run the unit
+suite. The current Bedrock 26.60 client profile remains on Java geometry until
+that review produces a matching table.
+
 The Java state order, Java collision shapes, Java-to-Bedrock translation, and
 Bedrock palette come from that exact Geyser jar. Bedrock samples are joined by
 the palette's unsigned network hashes; their complete hash sets must match.
