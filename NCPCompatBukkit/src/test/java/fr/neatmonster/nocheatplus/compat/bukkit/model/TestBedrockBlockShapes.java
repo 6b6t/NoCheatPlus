@@ -18,6 +18,21 @@ public class TestBedrockBlockShapes {
     }
 
     @Test
+    public void switchAndEditionMustBothAllowVersionedShapes() {
+        assertTrue(BedrockBlockShapes.profileEnabled(true, true, "1.26.52"));
+        assertFalse(BedrockBlockShapes.profileEnabled(false, true, "1.26.52"));
+        assertFalse(BedrockBlockShapes.profileEnabled(true, false, "1.26.52"));
+        assertFalse(BedrockBlockShapes.profileEnabled(true, true, null));
+        assertFalse(BedrockBlockShapes.profileEnabled(true, true, "1.26.60"));
+    }
+
+    @Test
+    public void packagedTableCanBeWarmedAtStartup() {
+        assertTrue(BedrockBlockShapes.initialize() > 0);
+        assertTrue(BedrockBlockShapes.materialCount() > 0);
+    }
+
+    @Test
     public void pairedChestHalvesMeetWithoutCreatingAGap() {
         final double[] left = BedrockBlockShapes.get("minecraft:trapped_chest[facing=north,type=left,waterlogged=false]");
         final double[] right = BedrockBlockShapes.get("minecraft:trapped_chest[facing=north,type=right,waterlogged=false]");

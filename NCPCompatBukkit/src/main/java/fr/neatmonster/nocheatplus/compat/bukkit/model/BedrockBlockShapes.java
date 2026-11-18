@@ -20,9 +20,8 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Method;
 import java.util.HashMap;
-import java.util.HashSet;
+import java.util.EnumSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.zip.GZIPInputStream;
 
 import org.bukkit.Material;
@@ -41,9 +40,18 @@ public final class BedrockBlockShapes {
                 && (parts[1].equals("50") || parts[1].equals("51") || parts[1].equals("52"));
     }
 
-    public static boolean contains(final Material material) {
-        return Data.MATERIALS.contains(material.getKey().toString());
+    public static boolean profileEnabled(final boolean enabled, final boolean bedrock, final String version) {
+        return enabled && bedrock && supportsVersion(version);
     }
+
+    public static boolean contains(final Material material) {
+        return material != null && Data.MATERIALS.contains(material);
+    }
+
+    /** Eagerly parse the packaged table during plugin startup. */
+    public static int initialize() { return Data.STATES.size(); }
+
+    public static int materialCount() { return Data.MATERIALS.size(); }
 
     public static double[] get(final String state) {
         return Data.STATES.get(state);
@@ -96,10 +104,10 @@ public final class BedrockBlockShapes {
 
     private static final class Data {
         private static final Map<String, double[]> STATES;
-        private static final Set<String> MATERIALS;
+        private static final EnumSet<Material> MATERIALS;
         static {
             final var states = new HashMap<String, double[]>();
-            final var materials = new HashSet<String>();
+            final var materials = EnumSet.noneOf(Material.class);
             final var shapes = new HashMap<Integer, double[]>();
             try (var resource = BedrockBlockShapes.class.getResourceAsStream("/bedrock/collisions-26.50.tsv.gz")) {
                 if (resource == null) throw new IOException("Missing Bedrock collision resource");
@@ -124,7 +132,9 @@ public final class BedrockBlockShapes {
                         } else {
                             final double[] shape = shapes.get(Integer.parseInt(parts[1]));
                             if (shape == null || states.put(parts[0], shape) != null) throw new IOException("Invalid Bedrock state reference");
-                            materials.add(parts[0].split("\\[", 2)[0]);
+                            final String materialName = parts[0].split("\\[", 2)[0].replace("minecraft:", "");
+                            final Material material = Material.matchMaterial(materialName);
+                            if (material != null) materials.add(material);
                         }
                     }
                 }
@@ -132,7 +142,7 @@ public final class BedrockBlockShapes {
                 throw new ExceptionInInitializerError(failure);
             }
             STATES = Map.copyOf(states);
-            MATERIALS = Set.copyOf(materials);
+            MATERIALS = materials.clone();
         }
     }
 }

@@ -35,6 +35,8 @@ import fr.neatmonster.nocheatplus.compat.bukkit.model.BukkitShapeModel;
 import fr.neatmonster.nocheatplus.compat.bukkit.model.BedrockBlockShapes;
 import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
+import fr.neatmonster.nocheatplus.config.ConfigManager;
+import fr.neatmonster.nocheatplus.config.ConfPaths;
 
 
 /**
@@ -64,8 +66,7 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
     @Override
     public void setPlayerData(final IPlayerData playerData) {
         super.setPlayerData(playerData);
-        verifiedBedrockProfile = isBedrockCache()
-                && BedrockBlockShapes.supportsVersion(playerData.getBedrockVersion());
+        verifiedBedrockProfile = BedrockBlockShapes.profileEnabled(true, isBedrockCache(), playerData.getBedrockVersion());
     }
 
     @Override
@@ -98,17 +99,21 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
 
     @Override
     public double[] getBedrockBounds(final int x, final int y, final int z) {
-        if (!isBedrockCache() || !verifiedBedrockProfile
-                || world == null || y < world.getMinHeight() || y >= world.getMaxHeight()
+        if (!isBedrockCache() || !verifiedBedrockProfile || !bedrockCollisionsEnabled()) return null;
+        if (!BedrockBlockShapes.contains(getType(x, y, z))) return null;
+        if (world == null || y < world.getMinHeight() || y >= world.getMaxHeight()
                 || !MapUtil.areChunksLoadedAndOwned(world, x, z, 0.0)) return null;
         final double[] cached = bedrockBounds.get(x, y, z);
         if (cached != null) return cached;
-        if (!BedrockBlockShapes.contains(getType(x, y, z))) return null;
         final String state = world.getBlockAt(x, y, z).getBlockData().getAsString();
         if (!BedrockBlockShapes.permitsVanillaProfile(state)) return null;
         final double[] bounds = BedrockBlockShapes.get(state);
         if (bounds != null) bedrockBounds.put(x, y, z, bounds);
         return bounds;
+    }
+
+    private static boolean bedrockCollisionsEnabled() {
+        return ConfigManager.getConfigFile().getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true);
     }
 
     @Override
@@ -137,7 +142,7 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
         //final MaterialData materialData = state.getData();
         //final BlockData blockData = state.getBlockData();
         final Material mat = getType(x, y, z);
-        if (mat == Material.ENDER_CHEST && isBedrockCache()) {
+        if (mat == Material.ENDER_CHEST && isBedrockCache() && verifiedBedrockProfile && bedrockCollisionsEnabled()) {
             // Bedrock ender chests are wider and 0.075 blocks taller than Java's.
             return new double[] {0.025, 0.0, 0.025, 0.975, 0.95, 0.975};
         }

@@ -41,6 +41,40 @@ import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
  */
 public class BridgeMisc {
 
+    /** Optional integration point for proxy plugins that can supply a verified client version. */
+    public interface BedrockProfileProvider {
+        BedrockProfile getProfile(Player player);
+    }
+
+    public static final class BedrockProfile {
+        private final boolean bedrock;
+        private final String version;
+        public BedrockProfile(final boolean bedrock, final String version) {
+            this.bedrock = bedrock;
+            this.version = version;
+        }
+        public boolean isBedrock() { return bedrock; }
+        public String getVersion() { return version; }
+    }
+
+    private static volatile BedrockProfileProvider bedrockProfileProvider = BridgeMisc::resolveBedrockProfile;
+
+    public static void setBedrockProfileProvider(final BedrockProfileProvider provider) {
+        bedrockProfileProvider = provider == null ? BridgeMisc::resolveBedrockProfile : provider;
+    }
+
+    public static BedrockProfile getBedrockProfile(final Player player) {
+        return bedrockProfileProvider.getProfile(player);
+    }
+
+    private static BedrockProfile resolveBedrockProfile(final Player player) {
+        if (player == null) return new BedrockProfile(false, null);
+        if (isFloodgatePlayer(player.getUniqueId())) {
+            return new BedrockProfile(true, getFloodgatePlayerVersion(player.getUniqueId()));
+        }
+        return new BedrockProfile(isBedrockIdentity(player.getName(), player.getUniqueId()), null);
+    }
+
     /** Identify authenticated Bedrock connections without requiring Floodgate. */
     public static boolean isFloodgatePlayer(final UUID playerId) {
         if (!Bukkit.getPluginManager().isPluginEnabled("floodgate")) {
@@ -58,6 +92,11 @@ public class BridgeMisc {
             StaticLog.logWarning("Could not identify Floodgate player: " + failure);
             return false;
         }
+    }
+
+    /** Proxy identity fallback used when Floodgate is only installed on the proxy. */
+    public static boolean isBedrockIdentity(final String name, final UUID playerId) {
+        return name != null && name.startsWith(".") || playerId != null && playerId.getMostSignificantBits() == 0L;
     }
 
     /** Version of an authenticated Floodgate client; absence keeps native collision behavior. */

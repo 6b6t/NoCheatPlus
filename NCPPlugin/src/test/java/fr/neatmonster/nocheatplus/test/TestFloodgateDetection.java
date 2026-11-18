@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.PluginManager;
+import org.bukkit.entity.Player;
 import org.junit.Test;
 
 import fr.neatmonster.nocheatplus.compat.BridgeMisc;
@@ -49,6 +50,24 @@ public class TestFloodgateDetection {
             assertNull(BridgeMisc.getFloodgatePlayerVersion(BEDROCK));
             reflection.when(() -> ReflectionUtil.getClass(API)).thenReturn(FailingApi.class);
             assertFalse(BridgeMisc.isFloodgatePlayer(BEDROCK));
+        }
+    }
+
+    @Test
+    public void proxyIdentityFallbackIsBedrockButHasNoUnverifiedVersion() {
+        assertTrue(BridgeMisc.isBedrockIdentity(".bedrock", UUID.randomUUID()));
+        assertTrue(BridgeMisc.isBedrockIdentity("bedrock", BEDROCK));
+        assertFalse(BridgeMisc.isBedrockIdentity("java", UUID.randomUUID()));
+        final Player player = mock(Player.class);
+        when(player.getName()).thenReturn(".bedrock");
+        when(player.getUniqueId()).thenReturn(UUID.randomUUID());
+        try (var bukkit = mockStatic(Bukkit.class)) {
+            final PluginManager plugins = mock(PluginManager.class);
+            bukkit.when(Bukkit::getPluginManager).thenReturn(plugins);
+            when(plugins.isPluginEnabled("floodgate")).thenReturn(false);
+            final BridgeMisc.BedrockProfile profile = BridgeMisc.getBedrockProfile(player);
+            assertTrue(profile.isBedrock());
+            assertNull("Identity fallback cannot assume a client version", profile.getVersion());
         }
     }
 

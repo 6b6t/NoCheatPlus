@@ -33,6 +33,7 @@ public class TestBedrockEnderChest {
 
             final IPlayerData player = mock(IPlayerData.class);
             when(player.isBedrockPlayer()).thenReturn(true);
+            when(player.getBedrockVersion()).thenReturn("1.26.52");
             cache.setPlayerData(player);
             assertTrue("Recorded standing height must not count as hovering", ground(cache, 64.95));
             assertTrue("Bedrock's wider rim supports the player", BlockProperties.isOnGround(
