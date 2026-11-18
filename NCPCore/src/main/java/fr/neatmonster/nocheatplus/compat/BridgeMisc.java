@@ -17,6 +17,8 @@ package fr.neatmonster.nocheatplus.compat;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collection;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -29,6 +31,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.inventory.meta.ItemMeta;
 
+import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
 
 
@@ -38,6 +41,114 @@ import fr.neatmonster.nocheatplus.utilities.ReflectionUtil;
  *
  */
 public class BridgeMisc {
+
+    private static final AtomicBoolean FLOODGATE_VERSION_WARNING_LOGGED = new AtomicBoolean();
+    private static final AtomicBoolean FLOODGATE_IDENTITY_WARNING_LOGGED = new AtomicBoolean();
+
+    /** Optional integration point for proxy plugins that can supply a verified client version. */
+    public interface BedrockProfileProvider {
+        BedrockProfile getProfile(Player player);
+    }
+
+    public static final class BedrockProfile {
+        private final boolean bedrock;
+        private final String version;
+        public BedrockProfile(final boolean bedrock, final String version) {
+            this.bedrock = bedrock;
+            this.version = version;
+        }
+        public boolean isBedrock() { return bedrock; }
+        public String getVersion() { return version; }
+    }
+
+    /** The collision table covers the common static shapes in Bedrock 26.50-26.52 and 26.60. */
+    public static boolean supportsBedrockCollisionVersion(final String version) {
+        if (version == null) return false;
+        final String normalized = version.startsWith("1.") ? version.substring(2) : version;
+        return isVersionWithinTable(normalized, "26.50")
+                || isVersionWithinTable(normalized, "26.51")
+                || isVersionWithinTable(normalized, "26.52")
+                || isVersionWithinTable(normalized, "26.60");
+    }
+
+    /** A verified, supported client version is required; identity heuristics alone fail closed. */
+    public static boolean canUseBedrockCollisionProfile(final boolean bedrock, final String version) {
+        return bedrock && supportsBedrockCollisionVersion(version);
+    }
+
+    private static boolean isVersionWithinTable(final String version, final String tableVersion) {
+        if (version.equals(tableVersion)) return true;
+        if (!version.startsWith(tableVersion + ".") || version.length() == tableVersion.length() + 1) return false;
+        for (int i = tableVersion.length() + 1; i < version.length(); i++) {
+            if (!Character.isDigit(version.charAt(i)) && version.charAt(i) != '.') return false;
+        }
+        return true;
+    }
+
+    private static volatile BedrockProfileProvider bedrockProfileProvider = BridgeMisc::resolveBedrockProfile;
+
+    public static void setBedrockProfileProvider(final BedrockProfileProvider provider) {
+        bedrockProfileProvider = provider == null ? BridgeMisc::resolveBedrockProfile : provider;
+    }
+
+    public static BedrockProfile getBedrockProfile(final Player player) {
+        return bedrockProfileProvider.getProfile(player);
+    }
+
+    private static BedrockProfile resolveBedrockProfile(final Player player) {
+        if (player == null) return new BedrockProfile(false, null);
+        if (isFloodgatePlayer(player.getUniqueId())) {
+            return new BedrockProfile(true, getFloodgatePlayerVersion(player.getUniqueId()));
+        }
+        return new BedrockProfile(isBedrockIdentity(player.getName(), player.getUniqueId()), null);
+    }
+
+    /** Identify authenticated Bedrock connections without requiring Floodgate. */
+    public static boolean isFloodgatePlayer(final UUID playerId) {
+        if (!Bukkit.getPluginManager().isPluginEnabled("floodgate")) {
+            return false;
+        }
+        try {
+            final Class<?> apiClass = ReflectionUtil.getClass("org.geysermc.floodgate.api.FloodgateApi");
+            if (apiClass == null) {
+                return false;
+            }
+            final Object api = apiClass.getMethod("getInstance").invoke(null);
+            return Boolean.TRUE.equals(apiClass.getMethod("isFloodgatePlayer", UUID.class).invoke(api, playerId));
+        }
+        catch (ReflectiveOperationException | LinkageError failure) {
+            if (FLOODGATE_IDENTITY_WARNING_LOGGED.compareAndSet(false, true)) {
+                StaticLog.logWarning("Could not query Floodgate player identity; Bedrock collision profile remains disabled.");
+            }
+            return false;
+        }
+    }
+
+    /** Proxy identity hint used for telemetry/recognition when Floodgate is only installed on the proxy.
+     * It is not sufficient to enable Bedrock collision shapes without a trusted client version.
+     */
+    public static boolean isBedrockIdentity(final String name, final UUID playerId) {
+        return name != null && name.startsWith(".") || playerId != null && playerId.getMostSignificantBits() == 0L;
+    }
+
+    /** Version of an authenticated Floodgate client; absence keeps native collision behavior. */
+    public static String getFloodgatePlayerVersion(final UUID playerId) {
+        try {
+            final Class<?> apiClass = ReflectionUtil.getClass("org.geysermc.floodgate.api.FloodgateApi");
+            if (apiClass == null) return null;
+            final Object api = apiClass.getMethod("getInstance").invoke(null);
+            final Method lookup = apiClass.getMethod("getPlayer", UUID.class);
+            final Object player = lookup.invoke(api, playerId);
+            if (player == null) return null;
+            final Object version = lookup.getReturnType().getMethod("getVersion").invoke(player);
+            return version instanceof String ? (String) version : null;
+        } catch (ReflectiveOperationException | LinkageError failure) {
+            if (FLOODGATE_VERSION_WARNING_LOGGED.compareAndSet(false, true)) {
+                StaticLog.logWarning("Could not read Floodgate client version; collision profile remains disabled.");
+            }
+            return null;
+        }
+    }
 
     private static GameMode getSpectatorGameMode() {
         try {

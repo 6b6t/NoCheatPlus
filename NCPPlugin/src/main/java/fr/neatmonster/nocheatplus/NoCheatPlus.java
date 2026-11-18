@@ -133,6 +133,7 @@ import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.players.IPlayerDataManager;
 import fr.neatmonster.nocheatplus.players.PlayerDataManager;
 import fr.neatmonster.nocheatplus.players.PlayerMessageSender;
+import fr.neatmonster.nocheatplus.compat.bukkit.model.BedrockBlockShapes;
 import fr.neatmonster.nocheatplus.stats.Counters;
 import fr.neatmonster.nocheatplus.utilities.ColorUtil;
 import fr.neatmonster.nocheatplus.utilities.Misc;
@@ -830,6 +831,10 @@ public class NoCheatPlus extends JavaPlugin implements NoCheatPlusAPI {
         // TODO: Might re-check with plugins enabling during runtime (!).
         // Read lists and messages from config.
         final ConfigFile config = ConfigManager.getConfigFile();
+
+        final int bedrockStateCount = BedrockBlockShapes.initialize();
+        getLogger().info("Bedrock collision table 26.50-26.52 + 26.60 loaded (" + bedrockStateCount
+                + " states, " + BedrockBlockShapes.materialCount() + " materials).");
         // (Might add options to invert selection.)
         // "No permission".
         // TODO: Could/should set permission message to null here (server default), might use keyword "default".

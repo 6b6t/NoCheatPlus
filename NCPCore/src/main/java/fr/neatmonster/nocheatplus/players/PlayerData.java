@@ -29,6 +29,9 @@ import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 
+import fr.neatmonster.nocheatplus.config.ConfigManager;
+import fr.neatmonster.nocheatplus.config.ConfPaths;
+
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
@@ -170,8 +173,9 @@ public class PlayerData implements IPlayerData {
     // TODO: a per entry typed variant (key - value relation)?
     private final InstanceMapLOW dataCache = new InstanceMapLOW(lock, 24);
 
-    /** If is Bedrock Player. This is set if CompatNoCheatPlus is present. */
+    /** Bedrock connection, identified by Floodgate or CompatNoCheatPlus. */
     private boolean bedrockPlayer = false;
+    private String bedrockVersion;
     private boolean requestUpdateInventory = false;
     private final SetBackRequest<Player> setBackRequest = new SetBackRequest<>();
 
@@ -468,6 +472,7 @@ public class PlayerData implements IPlayerData {
         // (Somewhat reversed order of invalidation.)
         invalidateOffline();
         bedrockPlayer = false;
+        bedrockVersion = null;
     }
 
     /**
@@ -850,24 +855,30 @@ public class PlayerData implements IPlayerData {
         setTag(TAG_NOTIFY_OFF, notifyOff);
     }
     
-    /**
-     * Set the state player connect through geysermc
-     * 
-     * @param bedrockPlayer
-     */
+    /** Set whether this player has an active, supported Bedrock collision profile. */
     @Override
     public void setBedrockPlayer(final boolean bedrockPlayer) {
         this.bedrockPlayer = bedrockPlayer;
     }
     
+    /** Set the client game version reported by Floodgate or a trusted provider. */
+    public void setBedrockVersion(final String version) {
+        bedrockVersion = version;
+    }
+
+    @Override
+    public String getBedrockVersion() {
+        return bedrockVersion;
+    }
+
     /**
-     * Check if player join via geysermc
-     * 
-     * @return
+     * Whether this player has an active, supported Bedrock collision profile.
+     * The switch is read live so disabling the feature immediately uses Java behavior.
      */
     @Override
     public boolean isBedrockPlayer() {
-        return bedrockPlayer;
+        return bedrockPlayer && ConfigManager.getConfigFile()
+                .getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true);
     }
 
     @Override

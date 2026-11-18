@@ -580,7 +580,13 @@ public class PlayerDataManager  implements IPlayerDataManager, ComponentWithName
      */
     private void addOnlinePlayer(final Player player) {
         final PlayerData pData = getPlayerData(player, true);
-        if (pData != null) pData.onPlayerOnline(player);
+        if (pData != null) {
+            pData.onPlayerOnline(player);
+            final BridgeMisc.BedrockProfile profile = BridgeMisc.getBedrockProfile(player);
+            pData.setBedrockPlayer(BridgeMisc.canUseBedrockCollisionProfile(profile.isBedrock(), profile.getVersion())
+                    && ConfigManager.getConfigFile().getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true));
+            pData.setBedrockVersion(profile.getVersion());
+        }
         playerMap.updatePlayer(player);
     }
 

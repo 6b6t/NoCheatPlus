@@ -979,6 +979,7 @@ public abstract class ConfPaths {
     public  static final String MOVING_TRACE_MERGEDIST                      = "checks.moving.trace.mergedist";
     @Deprecated
     public static final String COMPATIBILITY_BLOCKS_IGNOREPASSABLE = "compatibility.blocks.ignorepassable";
+    public static final String COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE = "compatibility.bedrock-collisions.active";
     @Deprecated
     public static final String  MOVING_PASSABLE_RAYTRACING_CHECK            = "checks.moving.passable.raytracing.active";
     @Deprecated
