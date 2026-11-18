@@ -61,7 +61,18 @@ public class BridgeMisc {
     public static boolean supportsBedrockCollisionVersion(final String version) {
         if (version == null) return false;
         final String normalized = version.startsWith("1.") ? version.substring(2) : version;
-        return normalized.equals("26.50") || normalized.equals("26.51") || normalized.equals("26.52");
+        return isVersionWithinTable(normalized, "26.50")
+                || isVersionWithinTable(normalized, "26.51")
+                || isVersionWithinTable(normalized, "26.52");
+    }
+
+    private static boolean isVersionWithinTable(final String version, final String tableVersion) {
+        if (version.equals(tableVersion)) return true;
+        if (!version.startsWith(tableVersion + ".") || version.length() == tableVersion.length() + 1) return false;
+        for (int i = tableVersion.length() + 1; i < version.length(); i++) {
+            if (!Character.isDigit(version.charAt(i)) && version.charAt(i) != '.') return false;
+        }
+        return true;
     }
 
     private static volatile BedrockProfileProvider bedrockProfileProvider = BridgeMisc::resolveBedrockProfile;
