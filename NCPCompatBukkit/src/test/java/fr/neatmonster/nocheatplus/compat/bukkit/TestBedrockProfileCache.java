@@ -24,6 +24,7 @@ public class TestBedrockProfileCache {
         final World world = mock(World.class);
         when(world.getMinHeight()).thenReturn(-64);
         when(world.getMaxHeight()).thenReturn(320);
+        when(world.isChunkLoaded(0, 0)).thenReturn(true);
         final IPlayerData player = mock(IPlayerData.class);
         when(player.getBedrockVersion()).thenReturn("1.26.52");
         when(player.isBedrockPlayer()).thenReturn(true);
@@ -56,6 +57,7 @@ public class TestBedrockProfileCache {
         final World world = mock(World.class);
         when(world.getMinHeight()).thenReturn(-64);
         when(world.getMaxHeight()).thenReturn(320);
+        when(world.isChunkLoaded(0, 0)).thenReturn(true);
         final Block block = mock(Block.class);
         final BlockData data = mock(BlockData.class);
         when(world.getBlockAt(0, 64, 0)).thenReturn(block);
