@@ -855,21 +855,13 @@ public class PlayerData implements IPlayerData {
         setTag(TAG_NOTIFY_OFF, notifyOff);
     }
     
-    /**
-     * Set the state player connect through geysermc
-     * 
-     * @param bedrockPlayer
-     */
+    /** Set whether this player has an active, supported Bedrock collision profile. */
     @Override
     public void setBedrockPlayer(final boolean bedrockPlayer) {
         this.bedrockPlayer = bedrockPlayer;
     }
     
-    /**
-     * Check if player join via geysermc
-     * 
-     * @return
-     */
+    /** Set the client game version reported by Floodgate or a trusted provider. */
     public void setBedrockVersion(final String version) {
         bedrockVersion = version;
     }
@@ -879,6 +871,10 @@ public class PlayerData implements IPlayerData {
         return bedrockVersion;
     }
 
+    /**
+     * Whether this player has an active, supported Bedrock collision profile.
+     * The switch is read live so disabling the feature immediately uses Java behavior.
+     */
     @Override
     public boolean isBedrockPlayer() {
         return bedrockPlayer && ConfigManager.getConfigFile()

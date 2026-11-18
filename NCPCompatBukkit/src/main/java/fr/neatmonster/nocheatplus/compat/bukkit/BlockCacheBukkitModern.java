@@ -66,8 +66,9 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
     @Override
     public void setPlayerData(final IPlayerData playerData) {
         super.setPlayerData(playerData);
-        verifiedBedrockProfile = playerData != null
-                && BedrockBlockShapes.profileEnabled(true, isBedrockCache(), playerData.getBedrockVersion());
+        // PlayerData stores only active, supported profiles; do not parse the
+        // client version in the movement cache hot path.
+        verifiedBedrockProfile = playerData != null && isBedrockCache();
     }
 
     @Override

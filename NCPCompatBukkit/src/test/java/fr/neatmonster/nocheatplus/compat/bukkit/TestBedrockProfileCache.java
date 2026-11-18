@@ -59,9 +59,11 @@ public class TestBedrockProfileCache {
             when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(true);
             assertArrayEquals("Primary model remains Java/Geyser-corrected", new double[] {0.0625, 0, 0.0625, 0.9375, 0.875, 0.9375}, cache.getBounds(0, 64, 0), 0);
             when(player.getBedrockVersion()).thenReturn("26.60");
+            when(player.isBedrockPlayer()).thenReturn(false);
             cache.setPlayerData(player);
             assertNull("An unverified version cannot reuse an old profile", cache.getBedrockBounds(0, 64, 0));
             when(player.getBedrockVersion()).thenReturn("26.52");
+            when(player.isBedrockPlayer()).thenReturn(true);
             cache.setPlayerData(player);
             ownership.when(() -> MapUtil.areChunksLoadedAndOwned(world, 0, 0, 0.0)).thenReturn(false);
             assertNull("Ownership is checked even for cached data", cache.getBedrockBounds(0, 64, 0));
