@@ -20,6 +20,30 @@ public class TestBedrockProfileCache {
     @BeforeClass public static void materials() { TestNativeEntityOwnership.initializeLegacyClassifier(); }
 
     @Test
+    public void foreignRegionDoesNotReadBlockBeforeOwnershipGuard() {
+        final World world = mock(World.class);
+        when(world.getMinHeight()).thenReturn(-64);
+        when(world.getMaxHeight()).thenReturn(320);
+        final IPlayerData player = mock(IPlayerData.class);
+        when(player.getBedrockVersion()).thenReturn("1.26.52");
+        when(player.isBedrockPlayer()).thenReturn(true);
+        final var cache = new BlockCacheBukkitModern(Map.of());
+        cache.setAccess(world);
+        final ConfigFile config = mock(ConfigFile.class);
+        when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(true);
+        try (var configManager = mockStatic(ConfigManager.class); var ownership = mockStatic(MapUtil.class)) {
+            configManager.when(ConfigManager::getConfigFile).thenReturn(config);
+            ownership.when(() -> MapUtil.areChunksLoadedAndOwned(world, 0, 0, 0.0)).thenReturn(false);
+            cache.setBedrockCache(true);
+            cache.setPlayerData(player);
+
+            assertNull(cache.getBedrockBounds(0, 64, 0));
+            verify(world, never()).getBlockAt(anyInt(), anyInt(), anyInt());
+            verify(world, never()).isChunkLoaded(anyInt(), anyInt());
+        } finally { cache.cleanup(); }
+    }
+
+    @Test
     public void nullPlayerDataClearsAndDisablesVerifiedProfile() {
         final var cache = new BlockCacheBukkitModern(Map.of());
         cache.setBedrockCache(true);

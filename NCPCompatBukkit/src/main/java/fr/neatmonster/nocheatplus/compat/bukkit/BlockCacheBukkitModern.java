@@ -102,9 +102,11 @@ public class BlockCacheBukkitModern extends BlockCacheBukkit {
     @Override
     public double[] getBedrockBounds(final int x, final int y, final int z) {
         if (!isBedrockCache() || !verifiedBedrockProfile || !bedrockCollisionsEnabled()) return null;
-        if (!BedrockBlockShapes.contains(getType(x, y, z))) return null;
         if (world == null || y < world.getMinHeight() || y >= world.getMaxHeight()
                 || !MapUtil.areChunksLoadedAndOwned(world, x, z, 0.0)) return null;
+        // Check region ownership before getType: an uncached lookup can reach
+        // world.getBlockAt while populating the cache.
+        if (!BedrockBlockShapes.contains(getType(x, y, z))) return null;
         final double[] cached = bedrockBounds.get(x, y, z);
         if (cached != null) return cached;
         final String state = world.getBlockAt(x, y, z).getBlockData().getAsString();
