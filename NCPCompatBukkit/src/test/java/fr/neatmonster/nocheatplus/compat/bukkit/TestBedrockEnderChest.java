@@ -8,6 +8,9 @@ import java.util.Map;
 import org.bukkit.Material;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import fr.neatmonster.nocheatplus.config.ConfigFile;
+import fr.neatmonster.nocheatplus.config.ConfigManager;
+import fr.neatmonster.nocheatplus.config.ConfPaths;
 
 import fr.neatmonster.nocheatplus.compat.bukkit.model.BukkitStatic;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
@@ -25,7 +28,10 @@ public class TestBedrockEnderChest {
     public void recordedBedrockHeightIsGroundOnlyForBedrock() {
         final long flags = BlockFlags.getBlockFlags(Material.ENDER_CHEST);
         BlockFlags.setBlockFlags(Material.ENDER_CHEST, BlockFlags.SOLID_GROUND);
-        try {
+        final ConfigFile config = mock(ConfigFile.class);
+        when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(true);
+        try (var configManager = mockStatic(ConfigManager.class)) {
+            configManager.when(ConfigManager::getConfigFile).thenReturn(config);
             final BlockCacheBukkitModern cache = cache(Material.ENDER_CHEST);
             assertFalse(ground(cache, 64.95));
             assertTrue(ground(cache, 64.875));
@@ -42,6 +48,10 @@ public class TestBedrockEnderChest {
             assertFalse("No support outside the rim", BlockProperties.isOnGround(
                     cache, 0.976, 64.925, 0.2, 0.99, 64.95, 0.8));
 
+            when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(false);
+            assertFalse("Off switch restores the exact Java ender chest height", ground(cache, 64.95));
+            assertTrue(ground(cache, 64.875));
+
             cache.cleanup();
             assertFalse("Pooled cache must not leak Bedrock bounds to Java", ground(cache, 64.95));
             assertTrue(ground(cache, 64.875));
@@ -55,10 +65,16 @@ public class TestBedrockEnderChest {
     public void nonBinaryLidHeightWorksAcrossWorldHeights() {
         final long flags = BlockFlags.getBlockFlags(Material.ENDER_CHEST);
         BlockFlags.setBlockFlags(Material.ENDER_CHEST, BlockFlags.SOLID_GROUND);
-        try {
+        final ConfigFile config = mock(ConfigFile.class);
+        when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(true);
+        try (var configManager = mockStatic(ConfigManager.class)) {
+            configManager.when(ConfigManager::getConfigFile).thenReturn(config);
             for (final int y : new int[] {-64, -60, 0, 64, 128, 200, 319}) {
                 final BlockCacheBukkitModern cache = cache(Material.ENDER_CHEST, y);
-                cache.setBedrockCache(true);
+                final IPlayerData player = mock(IPlayerData.class);
+                when(player.isBedrockPlayer()).thenReturn(true);
+                when(player.getBedrockVersion()).thenReturn("1.26.52");
+                cache.setPlayerData(player);
                 final double top = y + 0.95;
                 assertTrue("Ground at Y=" + y, ground(cache, top));
                 assertFalse("Inside lid at Y=" + y, ground(cache, Math.nextDown(top)));

@@ -9,6 +9,9 @@ import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 import org.junit.BeforeClass;
 import org.junit.Test;
+import fr.neatmonster.nocheatplus.config.ConfigFile;
+import fr.neatmonster.nocheatplus.config.ConfigManager;
+import fr.neatmonster.nocheatplus.config.ConfPaths;
 import fr.neatmonster.nocheatplus.compat.bukkit.model.BukkitStatic;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.map.MapUtil;
@@ -32,7 +35,10 @@ public class TestBedrockProfileCache {
         when(player.getBedrockVersion()).thenReturn("1.26.52");
         final var cache = new BlockCacheBukkitModern(Map.of(Material.TRAPPED_CHEST, new BukkitStatic(0.0625, 0.875)));
         cache.setAccess(world);
-        try (var ownership = mockStatic(MapUtil.class)) {
+        final ConfigFile config = mock(ConfigFile.class);
+        when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(true);
+        try (var configManager = mockStatic(ConfigManager.class); var ownership = mockStatic(MapUtil.class)) {
+            configManager.when(ConfigManager::getConfigFile).thenReturn(config);
             ownership.when(() -> MapUtil.areChunksLoadedAndOwned(world, 0, 0, 0.0)).thenReturn(true);
             cache.setPlayerData(player);
             assertNull("Java does not use the client profile", cache.getBedrockBounds(0, 64, 0));
@@ -40,6 +46,9 @@ public class TestBedrockProfileCache {
             cache.setPlayerData(player);
             final double[] expected = {0.025, 0, 0.025, 0.975, 0.95, 0.975};
             assertArrayEquals(expected, cache.getBedrockBounds(0, 64, 0), 0);
+            when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(false);
+            assertNull("Disabling the feature restores Java collision behavior", cache.getBedrockBounds(0, 64, 0));
+            when(config.getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true)).thenReturn(true);
             assertArrayEquals("Primary model remains Java/Geyser-corrected", new double[] {0.0625, 0, 0.0625, 0.9375, 0.875, 0.9375}, cache.getBounds(0, 64, 0), 0);
             when(player.getBedrockVersion()).thenReturn("26.60");
             cache.setPlayerData(player);
