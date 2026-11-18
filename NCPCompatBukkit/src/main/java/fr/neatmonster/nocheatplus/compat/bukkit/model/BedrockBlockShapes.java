@@ -34,10 +34,7 @@ public final class BedrockBlockShapes {
 
     public static boolean supportsVersion(final String version) {
         if (version == null) return false;
-        final String normalized = version.startsWith("1.") ? version.substring(2) : version;
-        final String[] parts = normalized.split("\\.");
-        return parts.length >= 2 && parts[0].equals("26")
-                && (parts[1].equals("50") || parts[1].equals("51") || parts[1].equals("52"));
+        return fr.neatmonster.nocheatplus.compat.BridgeMisc.supportsBedrockCollisionVersion(version);
     }
 
     public static boolean profileEnabled(final boolean enabled, final boolean bedrock, final String version) {

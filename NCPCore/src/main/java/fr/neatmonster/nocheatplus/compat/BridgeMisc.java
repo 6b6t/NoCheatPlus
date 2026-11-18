@@ -57,6 +57,13 @@ public class BridgeMisc {
         public String getVersion() { return version; }
     }
 
+    /** The collision table currently packaged by NCP covers Bedrock 26.50-26.52. */
+    public static boolean supportsBedrockCollisionVersion(final String version) {
+        if (version == null) return false;
+        final String normalized = version.startsWith("1.") ? version.substring(2) : version;
+        return normalized.equals("26.50") || normalized.equals("26.51") || normalized.equals("26.52");
+    }
+
     private static volatile BedrockProfileProvider bedrockProfileProvider = BridgeMisc::resolveBedrockProfile;
 
     public static void setBedrockProfileProvider(final BedrockProfileProvider provider) {

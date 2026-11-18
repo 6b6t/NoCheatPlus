@@ -71,6 +71,16 @@ public class TestFloodgateDetection {
         }
     }
 
+    @Test
+    public void collisionVersionGateMatchesOnlyPackagedTableVersions() {
+        for (final String version : new String[] {"26.50", "26.51", "26.52", "1.26.50", "1.26.52"}) {
+            assertTrue(version, BridgeMisc.supportsBedrockCollisionVersion(version));
+        }
+        for (final String version : new String[] {null, "26.49", "26.60", "1.26.60", "26.52.1"}) {
+            assertFalse(String.valueOf(version), BridgeMisc.supportsBedrockCollisionVersion(version));
+        }
+    }
+
     public static class FloodgateApi {
         public static FloodgateApi getInstance() {
             return new FloodgateApi();

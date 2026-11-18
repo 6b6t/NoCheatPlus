@@ -29,6 +29,9 @@ import org.bukkit.Bukkit;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 
+import fr.neatmonster.nocheatplus.config.ConfigManager;
+import fr.neatmonster.nocheatplus.config.ConfPaths;
+
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
@@ -878,7 +881,8 @@ public class PlayerData implements IPlayerData {
 
     @Override
     public boolean isBedrockPlayer() {
-        return bedrockPlayer;
+        return bedrockPlayer && ConfigManager.getConfigFile()
+                .getBoolean(ConfPaths.COMPATIBILITY_BEDROCK_COLLISIONS_ACTIVE, true);
     }
 
     @Override

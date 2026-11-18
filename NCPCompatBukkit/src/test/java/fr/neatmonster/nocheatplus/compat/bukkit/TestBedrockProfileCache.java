@@ -20,6 +20,14 @@ public class TestBedrockProfileCache {
     @BeforeClass public static void materials() { TestNativeEntityOwnership.initializeLegacyClassifier(); }
 
     @Test
+    public void nullPlayerDataClearsAndDisablesVerifiedProfile() {
+        final var cache = new BlockCacheBukkitModern(Map.of());
+        cache.setBedrockCache(true);
+        cache.setPlayerData(null);
+        assertNull("Vehicle moves have no player profile and must stay on Java geometry", cache.getBedrockBounds(0, 64, 0));
+    }
+
+    @Test
     public void editionVersionOwnershipAndCleanupControlTheClientProfile() {
         final World world = mock(World.class);
         when(world.getMinHeight()).thenReturn(-64);
