@@ -97,9 +97,6 @@ public class PlayerMoveData extends MoveData {
      */
     public SimpleEntry verVelUsed = null;
 
-    /** This descent gained mace fall distance through an impossible glide dive. */
-    public boolean invalidMaceFall;
-
     @Override
     protected void resetBase() {
         // Properties of the player.
@@ -119,7 +116,6 @@ public class PlayerMoveData extends MoveData {
         //modelFlying = null;
         multiMoveCount = 0;
         verVelUsed = null;
-        invalidMaceFall = false;
         // Super class last, because it'll set valid to true in the end.
         super.resetBase();
     }

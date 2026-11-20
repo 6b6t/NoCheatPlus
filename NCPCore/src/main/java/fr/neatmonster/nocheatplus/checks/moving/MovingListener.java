@@ -542,7 +542,7 @@ public class MovingListener extends CheckListener implements TickListener, IRemo
             final IPlayerData pData = DataManager.getPlayerData(player);
             final MovingData data = pData.getGenericInstance(MovingData.class);
             if (!pData.isCheckActive(CheckType.MOVING_SURVIVALFLY, player)) {
-                data.elytraRelightBlocked = false;
+                data.clearElytraRelightBlock();
             }
             final boolean res = !MovingUtil.canLiftOffWithElytra(player, info.from, data);
             info.cleanup();
@@ -1470,7 +1470,7 @@ catch (java.lang.Throwable thr) {}
                 thisMove.flyCheck = CheckType.MOVING_SURVIVALFLY;
                 newTo = survivalFly.check(player, pFrom, pTo, multiMoveCount, data, cc, pData, tick, time, useBlockChangeTracker);
                 if (newTo != null && isAirborneElytraToggle(player, thisMove, lastMove)) {
-                    data.elytraRelightBlocked = true;
+                    data.blockElytraRelight(tick);
                 }
             }
 
@@ -1597,16 +1597,13 @@ catch (java.lang.Throwable thr) {}
             // 3: Finish processing the current move, move it to past ones
             // TODO: More simple: UUID keys or a data flag instead?
             if (processingEvents.containsKey(playerName)) {
-                thisMove.invalidMaceFall = MovingUtil.isInvalidMaceFall(player, data);
                 data.playerMoves.finishCurrentMove();
             }
             // Teleport during violation processing, just invalidate thisMove.
             else thisMove.invalidate();
             // Increase time since set back.
             data.timeSinceSetBack ++;
-            if (data.elytraRelightBlocked) {
-                data.updateElytraRelightRecovery(thisMove.to.onGroundOrResetCond);
-            }
+            data.updateElytraRelightRecovery(thisMove.to.onGroundOrResetCond, tick);
             return false;
         }
         // A check has requested a new to-location.
@@ -1982,7 +1979,7 @@ catch (java.lang.Throwable thr) {}
 
     private static boolean isAirborneElytraToggle(final Player player, final PlayerMoveData thisMove,
                                                   final PlayerMoveData lastMove) {
-        return lastMove.modelFlying != null
+        return lastMove.toIsValid && lastMove.modelFlying != null
                 && MovingConfig.ID_JETPACK_ELYTRA.equals(lastMove.modelFlying.getId())
                 && Bridge1_9.isWearingUsableElytra(player)
                 && !thisMove.touchedGround && !thisMove.from.onGroundOrResetCond
