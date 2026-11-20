@@ -554,6 +554,9 @@ public class SurvivalFly extends Check {
         // move is accepted; ground, liquid, climbable or any move outside the
         // window ends it and the move is judged as a normal survival move. So does an
         // usable elytra back in the chest slot, gliding or not.
+        final boolean glideExit = lastMove.flyCheck == CheckType.MOVING_CREATIVEFLY
+                && lastMove.modelFlying != null && MovingConfig.ID_JETPACK_ELYTRA.equals(lastMove.modelFlying.getId());
+        final int coastMoves = glideExit ? ElytraResidual.MAX_COAST_MOVES : lastMove.elytraCoastMoves;
         if (ElytraResidual.allow(data.elytraResidual, hDistance, yDistance, to.getPitch(),
                 fromOnGround || toOnGround, from.isResetCond() || to.isResetCond(),
                 data.elytraResidual.open && Bridge1_9.isWearingUsableElytra(player))) {
@@ -564,6 +567,16 @@ public class SurvivalFly extends Check {
             context.tags.add("elytra_residual");
             // Same as an accepted CreativeFly glide: the last allowed position is the set back.
             data.setSetBack(to);
+        }
+        else if (coastMoves > 0 && lastMove.toIsValid && Magic.inAir(thisMove) && !resetFrom && !resetTo
+                && TrigUtil.isSamePos(thisMove.from, lastMove.to)
+                && ElytraResidual.matchesGlideCoast(lastMove.to.getX() - lastMove.from.getX(), lastMove.yDistance,
+                        lastMove.to.getZ() - lastMove.from.getZ(), xDistance, yDistance, zDistance, glideExit)
+                && Bridge1_9.isWearingUsableElytra(player)) {
+            thisMove.elytraCoastMoves = coastMoves - 1;
+            hDistanceAboveLimit = 0.0;
+            vDistanceAboveLimit = 0.0;
+            context.tags.add("elytra_glide_coast");
         }
 
 

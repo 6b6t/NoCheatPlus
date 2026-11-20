@@ -1604,7 +1604,7 @@ catch (java.lang.Throwable thr) {}
             else thisMove.invalidate();
             // Increase time since set back.
             data.timeSinceSetBack ++;
-            data.updateElytraRelightRecovery(thisMove.to.onGroundOrResetCond, tick);
+            data.updateElytraRelightRecovery(thisMove, tick);
             return false;
         }
         // A check has requested a new to-location.
@@ -1943,7 +1943,7 @@ catch (java.lang.Throwable thr) {}
 
         final PlayerMoveData lastMove = data.playerMoves.getFirstPastMove();
         final PlayerMoveData thisMove = data.playerMoves.getCurrentMove();
-        // A glide toggle supplies no impulse. Repeated toggles must not renew flight credit.
+        // SurvivalFly validates the glide coast without queuing velocity for toggles.
         if (isAirborneElytraToggle(player, thisMove, lastMove)) {
             if (debug) debug(player, "Glide toggle: keep existing velocity.");
             return;

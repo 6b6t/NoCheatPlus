@@ -14,7 +14,9 @@ import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import org.junit.After;
@@ -31,6 +33,7 @@ import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.location.tracking.LocationTrace.TraceEntryPool;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LostGround;
 import fr.neatmonster.nocheatplus.checks.moving.model.LiftOffEnvelope;
+import fr.neatmonster.nocheatplus.checks.moving.model.ModelFlying;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.player.SurvivalFly;
 import fr.neatmonster.nocheatplus.checks.workaround.WRPT;
@@ -131,6 +134,33 @@ public class TestLandingStepSequence {
         ServerVersion.setMinecraftVersion(oldVersion);
         blocks.cleanup();
         entities.cleanup();
+    }
+
+    @Test
+    public void stoppingGlidePreservesDecayingMomentum() {
+        final ItemStack elytra = mock(ItemStack.class);
+        final Damageable damage = mock(Damageable.class);
+        when(damage.isUnbreakable()).thenReturn(true);
+        when(elytra.getType()).thenReturn(Material.ELYTRA);
+        when(elytra.getItemMeta()).thenReturn(damage);
+        when(player.getInventory().getChestplate()).thenReturn(elytra);
+        final PlayerLocation from = position(1.65, 90.0, false);
+        acceptedHistory(from, -0.18, 1.65);
+        final PlayerMoveData glide = data.playerMoves.getFirstPastMove();
+        glide.flyCheck = CheckType.MOVING_CREATIVEFLY;
+        glide.modelFlying = mock(ModelFlying.class);
+        when(glide.modelFlying.getId()).thenReturn(MovingConfig.ID_JETPACK_ELYTRA);
+
+        final PlayerLocation coast = position(3.31, 89.82, false);
+        assertNull(move(from, coast));
+        assertFalse(data.hasQueuedHorVel());
+        assertFalse(data.hasQueuedVerVel());
+        data.playerMoves.finishCurrentMove();
+        final PlayerLocation falling = position(4.8206, 89.5652, false);
+        assertNull(move(coast, falling));
+        assertEquals(38, data.playerMoves.getCurrentMove().elytraCoastMoves);
+        data.playerMoves.finishCurrentMove();
+        assertNotNull(move(falling, position(6.2, 90.36, false)));
     }
 
     @Test public void recordedBoatLandingWithSmallHorizontalMove() { reportLanding(0.04); }

@@ -560,6 +560,16 @@ public final class ElytraResidual {
         return notHigher && yDistance >= y - GLIDE_Y_MARGIN && hDistance <= h + COAST_H_MARGIN;
     }
 
+    /** The first air move can carry glide velocity, or already have air drag and gravity applied. */
+    public static boolean matchesGlideCoast(final double lastX, final double lastY, final double lastZ,
+                                            final double x, final double y, final double z, final boolean firstMove) {
+        final double fallY = (lastY - GRAVITY) * VERTICAL_DRAG;
+        final boolean fallingInAir = Math.abs(y - fallY) <= GLIDE_Y_MARGIN
+                && Math.hypot(x - lastX * COAST_DRAG, z - lastZ * COAST_DRAG) <= COAST_H_MARGIN;
+        return fallingInAir || firstMove && lastY < -GRAVITY && Math.abs(y - lastY) <= GLIDE_Y_MARGIN
+                && Math.hypot(x - lastX, z - lastZ) <= COAST_H_MARGIN;
+    }
+
     /** Most horizontal speed one glide tick can gain from lift, at any pitch: 0.1 * (0.08 - vy). */
     static double maxLift(final double lastY) {
         return GLIDE_LIFT * Math.max(0.0, GRAVITY - lastY);

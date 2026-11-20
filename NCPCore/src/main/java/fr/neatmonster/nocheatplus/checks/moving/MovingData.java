@@ -462,8 +462,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
         return elytraRelightBlockTick != -1 && elapsed >= 0 && elapsed < 20;
     }
 
-    public void updateElytraRelightRecovery(final boolean onGroundOrResetCond, final int tick) {
-        if (isElytraRelightBlocked(tick) && (onGroundOrResetCond || timeSinceSetBack >= 10)) {
+    public void updateElytraRelightRecovery(final PlayerMoveData move, final int tick) {
+        if (isElytraRelightBlocked(tick) && (move.touchedGround || move.to.onGroundOrResetCond || timeSinceSetBack >= 10)) {
             clearElytraRelightBlock();
         }
     }

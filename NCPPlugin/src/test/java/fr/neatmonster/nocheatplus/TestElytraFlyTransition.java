@@ -151,6 +151,16 @@ public class TestElytraFlyTransition {
     }
 
     @Test
+    public void glideExitMustMatchCarriedVelocityOrAirDrag() {
+        assertTrue(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, 1.67, -0.18, 0.0, true));
+        assertFalse(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, 1.67, -0.18, 0.0, false));
+        assertTrue(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, 1.50, -0.255, 0.0, false));
+        assertFalse(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, -1.65, -0.18, 0.0, true));
+        assertFalse(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, 1.80, -0.18, 0.0, true));
+        assertFalse(ElytraResidual.matchesGlideCoast(0.09, 0.0, 0.0, 0.09, 0.0, 0.0, true));
+    }
+
+    @Test
     public void togglingKeepsRealVelocityAvailable() throws Exception {
         final SimpleEntry vertical = new SimpleEntry(100, 0.5, 20);
         data.addVerticalVelocity(vertical);
@@ -241,16 +251,25 @@ public class TestElytraFlyTransition {
 
     @Test
     public void groundContactOrCleanMovementAllowsEarlierRecovery() {
+        final PlayerMoveData move = data.playerMoves.getCurrentMove();
         data.blockElytraRelight(100);
-        data.updateElytraRelightRecovery(true, 101);
+        move.touchedGround = true;
+        data.updateElytraRelightRecovery(move, 101);
         assertFalse(data.isElytraRelightBlocked(101));
 
         data.blockElytraRelight(102);
+        move.touchedGround = false;
+        move.to.onGroundOrResetCond = true;
+        data.updateElytraRelightRecovery(move, 103);
+        assertFalse(data.isElytraRelightBlocked(103));
+
+        data.blockElytraRelight(104);
+        move.to.onGroundOrResetCond = false;
         data.timeSinceSetBack = 9;
-        data.updateElytraRelightRecovery(false, 111);
+        data.updateElytraRelightRecovery(move, 111);
         assertTrue(data.isElytraRelightBlocked(111));
         data.timeSinceSetBack++;
-        data.updateElytraRelightRecovery(false, 112);
+        data.updateElytraRelightRecovery(move, 112);
         assertFalse(data.isElytraRelightBlocked(112));
     }
 
