@@ -763,6 +763,9 @@ public abstract class ConfPaths {
     public static final String  MOVING_VEHICLE_ENVELOPE_ACTIVE              = MOVING_VEHICLE_ENVELOPE + SUB_ACTIVE;
     public static final String  MOVING_VEHICLE_ENVELOPE_HSPEEDCAP           = MOVING_VEHICLE_ENVELOPE + "hdistcap"; // Section.
     public static final String  MOVING_VEHICLE_ENVELOPE_ACTIONS             = MOVING_VEHICLE_ENVELOPE + "actions";
+    private static final String MOVING_VEHICLE_BOATPHASING                  = MOVING_VEHICLE + "boatphasing.";
+    public static final String  MOVING_VEHICLE_BOATPHASING_ACTIVE           = MOVING_VEHICLE_BOATPHASING + SUB_ACTIVE;
+    public static final String  MOVING_VEHICLE_BOATPHASING_MODE             = MOVING_VEHICLE_BOATPHASING + "mode";
 
     private static final String MOVING_MESSAGE                              = MOVING + "message.";
     public static final  String MOVING_MESSAGE_ILLEGALPLAYERMOVE            = MOVING_MESSAGE + "illegalplayermove";

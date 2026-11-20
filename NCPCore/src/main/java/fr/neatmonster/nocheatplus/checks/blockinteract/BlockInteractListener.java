@@ -205,6 +205,15 @@ public class BlockInteractListener extends CheckListener {
                 if (BlockProperties.isScaffolding(stack.getType())) {
                 	blockChecks = false;
                 }
+                // A cancelled main-hand empty click makes the server treat the block interaction as
+                // handled, so the client never gets to try its off-hand crystal on the same block.
+                // Passing this empty-hand no-op lets the separate off-hand event reach Visible's
+                // crystal-placement exemption below.
+                if (event.getHand() == org.bukkit.inventory.EquipmentSlot.HAND
+                        && Visible.isEmptyMainHandForOffHandCrystal(action, stack,
+                                Bridge1_9.getItemInOffHand(player), block.getType())) {
+                    blockChecks = false;
+                }
                 break;
             default:
                 data.setPlayerInteractEventResolution(event);
@@ -256,7 +265,7 @@ public class BlockInteractListener extends CheckListener {
 
             // Ray tracing for freecam use etc.
             if (!cancelled && visible.isEnabled(player, pData) 
-                    && visible.check(player, loc, eyeHeight, block, face, action, flyingHandle, 
+                    && visible.check(player, loc, eyeHeight, block, face, action, stack, flyingHandle,
                             data, cc, pData)) {
                 cancelled = true;
             }

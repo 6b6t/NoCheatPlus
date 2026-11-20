@@ -291,7 +291,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public boolean sfLowJump = false;
     /** Hacky way to indicate that this movement cannot be a lowjump. */
     public boolean sfNoLowJump = false; 
-    /** Vanilla bed bounce armed by an accepted landing on a bed: rise of the next move (0.0 = none). See BedBounce. */
+    /** Bed or shelf-mushroom bounce armed by a supported landing: rise of the next move (0.0 = none). */
     public double sfBedBounceRise = 0.0;
     /** playerMoveCount of the landing move that armed sfBedBounceRise. */
     public int sfBedBounceMove = 0;
@@ -329,6 +329,8 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public long vehicleMorePacketsLastTime;
     /** Task id of the vehicle set back task. */ 
     public Object vehicleSetBackTaskId = null;
+    /** Timeout task for a vehicle correction that has not completed within 40 ticks. */
+    public Object vehicleSetBackTimeoutTaskId = null;
     /** Task id of the passenger set back task. */ 
     public Object vehicleSetPassengerTaskId = null;
     
@@ -381,6 +383,10 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
     public int shulkerLidOpenY;
     public int shulkerLidOpenZ;
     public float shulkerLidOpenProgress;
+    /** Whether this player opened the inventory (the close-event progress snapshot is only for this case). */
+    public boolean shulkerLidOpenedByPlayer;
+    /** Highest server-observed progress during this opening, retained if the lid starts closing before the poll. */
+    public float shulkerLidOpenMaxProgress;
     /** TickTask tick of the opening. */
     public int shulkerLidOpenTick;
     /** The unchecked start of a split move has been logged for this opening. */
@@ -696,6 +702,7 @@ public class MovingData extends ACheckData implements IDataOnRemoveSubCheckData,
      * Called when a player leaves the server.
      */
     public void onPlayerLeave() {
+        isVehicleSetBack = false;
         noFallMatchedPacketSequence = 0L;
         noFallMovePackets = 0;
         noFallLastMovePackets = 0;

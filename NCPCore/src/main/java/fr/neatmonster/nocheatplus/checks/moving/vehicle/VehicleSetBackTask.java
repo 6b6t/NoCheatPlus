@@ -14,21 +14,32 @@
  */
 package fr.neatmonster.nocheatplus.checks.moving.vehicle;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
+import org.bukkit.plugin.Plugin;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
+import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
+import fr.neatmonster.nocheatplus.checks.moving.util.AuxMoving;
+import fr.neatmonster.nocheatplus.compat.BridgeMisc;
+import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.entity.PassengerUtil;
+import fr.neatmonster.nocheatplus.utilities.map.MaterialUtil;
 
 /**
  * Task for scheduling a vehicle set back. Resets the vehicleSetBackTaskId in
  * the MovingData for the player.
- * 
+ *
  * @author mc_dev
  *
  */
@@ -38,9 +49,10 @@ public class VehicleSetBackTask implements Runnable{
     private final Location location;
     private final boolean debug;
     private final Entity[] passengers;
+    private final Map<Entity, Location> passengerLooks = new LinkedHashMap<>();
 
     /**
-     * 
+     *
      * @param vehicle
      * @param player
      *            The player because of whom this teleport is happening. This
@@ -54,7 +66,8 @@ public class VehicleSetBackTask implements Runnable{
         this.player = player;
         this.location = location;
         this.debug = debug;
-        this.passengers = passengers;
+        this.passengers = passengers.length == 0 ? vehicle.getPassengers().toArray(new Entity[0]) : passengers;
+        for (final Entity passenger : this.passengers) passengerLooks.put(passenger, passenger.getLocation().clone());
     }
 
     @Override
@@ -63,6 +76,10 @@ public class VehicleSetBackTask implements Runnable{
         final MovingData data = pData.getGenericInstance(MovingData.class);
         data.vehicleSetBackTaskId = null;
         try{
+            if (Folia.isFoliaServer() && MaterialUtil.isBoat(vehicle.getType())) {
+                correctOnFolia(data, pData);
+                return;
+            }
             NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(PassengerUtil.class).teleportWithPassengers(
                     vehicle, player, location, debug, passengers, true, pData);
         }
@@ -71,4 +88,100 @@ public class VehicleSetBackTask implements Runnable{
         }
     }
 
+    private void correctOnFolia(final MovingData data, final IPlayerData pData) {
+        final Plugin plugin = Bukkit.getPluginManager().getPlugin("NoCheatPlus");
+        final Object attempt = new Object();
+        data.isVehicleSetBack = true;
+        data.vehicleSetBackTaskId = attempt;
+        final AtomicReference<Object> owner = new AtomicReference<>(attempt);
+        final AtomicReference<Object> timeoutReference = new AtomicReference<>();
+        final CompletableFuture<Boolean> teleport;
+        try {
+            final Object timeout = Folia.runSyncDelayedTaskForEntity(vehicle, plugin, task -> {
+                if (data.vehicleSetBackTaskId == owner.get()) {
+                    data.vehicleSetBackTaskId = null;
+                    data.vehicleSetBackTimeoutTaskId = null;
+                    data.isVehicleSetBack = false;
+                    StaticLog.logWarning("Vehicle correction timed out after 40 ticks for " + player.getName());
+                }
+            }, () -> clearPending(data, owner.get()), 40L);
+            if (timeout == null) {
+                clearPending(data, attempt);
+                return;
+            }
+            timeoutReference.set(timeout);
+            data.vehicleSetBackTimeoutTaskId = timeout;
+            teleport = Folia.teleportEntityWithPassengersAsync(vehicle, location,
+                    BridgeMisc.TELEPORT_CAUSE_CORRECTION_OF_POSITION);
+            if (teleport == null) {
+                Folia.cancelTask(timeout);
+                clearPending(data, attempt);
+                return;
+            }
+            data.vehicleSetBackTaskId = teleport;
+            owner.set(teleport);
+        }
+        catch (RuntimeException | Error error) {
+            try {
+                if (data.vehicleSetBackTaskId == attempt) Folia.cancelTask(timeoutReference.get());
+            }
+            finally {
+                clearPending(data, attempt);
+            }
+            throw error;
+        }
+        teleport.whenComplete((success, error) -> {
+            final Object scheduled = Folia.runSyncTaskForEntity(vehicle, plugin, task -> {
+                if (data.vehicleSetBackTaskId != teleport) return;
+                Folia.cancelTask(data.vehicleSetBackTimeoutTaskId);
+                data.vehicleSetBackTimeoutTaskId = null;
+                data.vehicleSetBackTaskId = null;
+                data.isVehicleSetBack = false;
+                if (error != null) {
+                    StaticLog.logSevere(error);
+                    return;
+                }
+                if (!Boolean.TRUE.equals(success)) {
+                    StaticLog.logWarning("Vehicle correction failed for " + player.getName());
+                    return;
+                }
+                // Passenger rotation is Bukkit entity state; restore it only on the vehicle's entity scheduler.
+                for (final Entity passenger : passengers) {
+                    final Location look = passengerLooks.get(passenger);
+                    if (look != null && vehicle.getPassengers().contains(passenger)) {
+                        try { passenger.setRotation(look.getYaw(), look.getPitch()); }
+                        catch (RuntimeException e) { StaticLog.logWarning("Could not restore vehicle passenger view: " + e); }
+                    }
+                }
+                if (!vehicle.getPassengers().contains(player)) return;
+                final MovingConfig config = pData.getGenericInstance(MovingConfig.class);
+                final AuxMoving aux = NCPAPIProvider.getNoCheatPlusAPI().getGenericInstance(AuxMoving.class);
+                // A later packet may already have moved the boat past the verified destination.
+                aux.resetVehiclePositions(vehicle, location, data, config);
+                aux.resetPositionsAndMediumProperties(player, player.getLocation(), data, config);
+                data.timeSinceSetBack = 0;
+            }, () -> {
+                if (data.vehicleSetBackTaskId == teleport) {
+                    Folia.cancelTask(data.vehicleSetBackTimeoutTaskId);
+                    data.vehicleSetBackTimeoutTaskId = null;
+                    data.vehicleSetBackTaskId = null;
+                    data.isVehicleSetBack = false;
+                }
+            });
+            if (scheduled == null && data.vehicleSetBackTaskId == teleport) {
+                Folia.cancelTask(data.vehicleSetBackTimeoutTaskId);
+                data.vehicleSetBackTimeoutTaskId = null;
+                data.vehicleSetBackTaskId = null;
+                data.isVehicleSetBack = false;
+            }
+        });
+    }
+
+    private static void clearPending(final MovingData data, final Object owner) {
+        if (data.vehicleSetBackTaskId == owner) {
+            data.vehicleSetBackTimeoutTaskId = null;
+            data.vehicleSetBackTaskId = null;
+            data.isVehicleSetBack = false;
+        }
+    }
 }

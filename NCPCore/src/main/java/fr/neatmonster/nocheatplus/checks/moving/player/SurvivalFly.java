@@ -41,6 +41,7 @@ import fr.neatmonster.nocheatplus.checks.moving.magic.Magic;
 import fr.neatmonster.nocheatplus.checks.moving.magic.MagicBunny;
 import fr.neatmonster.nocheatplus.checks.moving.magic.AirWorkarounds;
 import fr.neatmonster.nocheatplus.checks.moving.magic.BedBounce;
+import fr.neatmonster.nocheatplus.checks.moving.magic.ShelfBounce;
 import fr.neatmonster.nocheatplus.checks.moving.magic.CornerStep;
 import fr.neatmonster.nocheatplus.checks.moving.magic.FluidEntityClimb;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LiquidWorkarounds;
@@ -330,13 +331,24 @@ public class SurvivalFly extends Check {
             data.sfNoLowJump = true;
         } 
 
-        // Vanilla bed bounce after a short fall (see BedBounce): the hop right after an accepted landing
-        // on a bed is no low jump, if it rises no more than the vanilla bounce. Only for this one move.
+        boolean shelfBounceLiftOff = false;
+        // Only the hop immediately after a supported bed or shelf-mushroom landing may skip low-jump detection.
         if (data.sfBedBounceRise > 0.0) {
-            if (BedBounce.isBounceLiftOff(data.sfBedBounceRise, data.sfBedBounceMove, data.getPlayerMoveCount(),
-                    fromOnGround, yDistance, BedBounce.isOnBedTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
-                            from.getMaxX(), from.getMaxZ(), from.getY()))) {
+            final boolean fromOnShelfTop = ShelfBounce.isOnTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
+                    from.getMaxX(), from.getMaxZ(), from.getY());
+            shelfBounceLiftOff = ShelfBounce.isBounceLiftOff(data.sfBedBounceRise,
+                    data.sfBedBounceMove, data.getPlayerMoveCount(), fromOnGround, yDistance, fromOnShelfTop);
+            final boolean bedBounceLiftOff = BedBounce.isBounceLiftOff(data.sfBedBounceRise, data.sfBedBounceMove,
+                    data.getPlayerMoveCount(), fromOnGround, yDistance,
+                    BedBounce.isOnBedTop(from.getBlockCache(), from.getMinX(), from.getMinZ(),
+                            from.getMaxX(), from.getMaxZ(), from.getY()));
+            if (bedBounceLiftOff || shelfBounceLiftOff) {
                 data.sfNoLowJump = true;
+                // A fall bounce can exceed ordinary jump speed. Register only this validated shelf lift-off,
+                // before vdistrel consults the vertical-velocity queue below.
+                if (shelfBounceLiftOff && yDistance > data.liftOffEnvelope.getMaxJumpGain(data.jumpAmplifier) + 0.005) {
+                    data.prependVerticalVelocity(new SimpleEntry(tick, yDistance, 1));
+                }
                 context.tags.add("bedbounce");
             }
             data.sfBedBounceRise = 0.0;
@@ -755,6 +767,12 @@ public class SurvivalFly extends Check {
                 data.setSetBack(to);
             }
         }
+
+        // Near-ground tolerance can reset sfNoLowJump on the same short rise that this verified shelf bounce creates.
+        // Re-arm it after generic reset handling so the bounce's descending phase is not misclassified as a low jump.
+        if (shelfBounceLiftOff) {
+            data.sfNoLowJump = true;
+        }
         
         // 4: Adjust in-air counters.
         if (inAir) {
@@ -787,6 +805,14 @@ public class SurvivalFly extends Check {
                 data.sfBedBounceRise = bedBounceRise;
                 data.sfBedBounceMove = data.getPlayerMoveCount();
             }
+        }
+
+        // Near-ground tolerance can mark the move before actual mushroom contact as grounded.
+        if (toOnGround && yDistance < 0.0 && lastMove.toIsValid && !isReallySneaking(player)
+                && ShelfBounce.isOnTop(to.getBlockCache(), to.getMinX(), to.getMinZ(),
+                        to.getMaxX(), to.getMaxZ(), to.getY())) {
+            data.sfBedBounceRise = ShelfBounce.firstRise(lastMove.yDistance, yDistance);
+            data.sfBedBounceMove = data.getPlayerMoveCount();
         }
 
         // 5: Horizontal velocity invalidation.

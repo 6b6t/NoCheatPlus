@@ -11,6 +11,7 @@ import org.bukkit.util.*;
 import org.junit.*;
 import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.compat.bukkit.BlockCacheBukkitModern;
+import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.utilities.location.RichBoundsLocation;
 import fr.neatmonster.nocheatplus.utilities.map.*;
 
@@ -29,7 +30,11 @@ public class TestStrictPhaseExterior {
   Method gate=RichBoundsLocation.class.getDeclaredMethod("hasClearNegativeExterior",int.class);
   gate.setAccessible(true);return (Boolean)gate.invoke(l,63);
  }
- @BeforeClass public static void setup()throws Exception{fr.neatmonster.nocheatplus.test.BlockTests.initBlockProperties();}
+ @BeforeClass public static void setup()throws Exception{
+  StaticLog.setUseLogManager(false);
+  try{fr.neatmonster.nocheatplus.test.BlockTests.initBlockProperties();}
+  finally{StaticLog.setUseLogManager(true);}
+ }
  World world(){World w=mock(World.class);when(w.getMaxHeight()).thenReturn(320);when(w.isChunkLoaded(anyInt(),anyInt())).thenReturn(true);return w;}
  @Test public void singleFaceRequiresFullWallContinuationAndEmptyOpenExterior()throws Exception {
   World w=world();try(var f=mockStatic(Folia.class)) {

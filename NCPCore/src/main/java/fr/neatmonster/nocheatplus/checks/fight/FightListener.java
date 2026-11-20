@@ -92,6 +92,10 @@ import fr.neatmonster.nocheatplus.worlds.WorldFactoryArgument;
  */
 public class FightListener extends CheckListener implements JoinLeaveListener{
 
+    static boolean isCrystalSweep(final int tick, final int lastCrystalHitTick) {
+        return tick == lastCrystalHitTick;
+    }
+
     /** The angle check. */
     private final Angle angle = addCheck(new Angle());
 
@@ -731,6 +735,27 @@ public class FightListener extends CheckListener implements JoinLeaveListener{
                                             attackerPData, penaltyList)) {
                     event.setCancelled(true);
                 }
+                else if (damaged.getType() != null && "END_CRYSTAL".equals(damaged.getType().name())
+                        && visible.isEnabled(player, attackerPData)) {
+                    final Location loc = player.getLocation(useLoc1);
+                    final Location damagedLoc = damaged.getLocation(useLoc2);
+                    if (visible.isObstructed(player, loc, damaged, damagedIsFake, damagedLoc)) {
+                        attackerData.lastCrystalHitTick = tick;
+                    }
+                    useLoc1.setWorld(null);
+                    useLoc2.setWorld(null);
+                }
+            }
+            else if (BridgeHealth.DAMAGE_SWEEP != null && damageCause == BridgeHealth.DAMAGE_SWEEP
+                    && isCrystalSweep(tick, attackerData.lastCrystalHitTick)
+                    && visible.isEnabled(player, attackerPData)) {
+                final Location loc = player.getLocation(useLoc1);
+                final Location damagedLoc = damaged.getLocation(useLoc2);
+                if (visible.isObstructed(player, loc, damaged, damagedIsFake, damagedLoc)) {
+                    event.setCancelled(true);
+                }
+                useLoc1.setWorld(null);
+                useLoc2.setWorld(null);
             }
         }
     }

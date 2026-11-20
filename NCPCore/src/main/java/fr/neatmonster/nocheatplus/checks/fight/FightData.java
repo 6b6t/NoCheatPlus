@@ -44,6 +44,8 @@ public class FightData extends ACheckData implements IDataOnRemoveSubCheckData, 
     public double                  speedVL;
     public double                  impossibleHitVL;
     public double                  visibleVL;
+    /** Tick of a through-wall crystal hit that can produce a sword sweep. */
+    public int                     lastCrystalHitTick = -1;
 
     // Shared
     public String lastWorld			= "";
