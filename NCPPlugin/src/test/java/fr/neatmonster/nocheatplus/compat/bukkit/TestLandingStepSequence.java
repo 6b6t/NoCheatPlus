@@ -138,18 +138,8 @@ public class TestLandingStepSequence {
 
     @Test
     public void stoppingGlidePreservesDecayingMomentum() {
-        final ItemStack elytra = mock(ItemStack.class);
-        final Damageable damage = mock(Damageable.class);
-        when(damage.isUnbreakable()).thenReturn(true);
-        when(elytra.getType()).thenReturn(Material.ELYTRA);
-        when(elytra.getItemMeta()).thenReturn(damage);
-        when(player.getInventory().getChestplate()).thenReturn(elytra);
         final PlayerLocation from = position(1.65, 90.0, false);
-        acceptedHistory(from, -0.18, 1.65);
-        final PlayerMoveData glide = data.playerMoves.getFirstPastMove();
-        glide.flyCheck = CheckType.MOVING_CREATIVEFLY;
-        glide.modelFlying = mock(ModelFlying.class);
-        when(glide.modelFlying.getId()).thenReturn(MovingConfig.ID_JETPACK_ELYTRA);
+        acceptedGlide(from, -0.18, 1.65);
 
         final PlayerLocation coast = position(3.31, 89.82, false);
         assertNull(move(from, coast));
@@ -160,7 +150,41 @@ public class TestLandingStepSequence {
         assertNull(move(coast, falling));
         assertEquals(38, data.playerMoves.getCurrentMove().elytraCoastMoves);
         data.playerMoves.finishCurrentMove();
-        assertNotNull(move(falling, position(6.2, 90.36, false)));
+
+        final PlayerLocation slowed = position(5.02, 89.237096, false);
+        assertNull(move(falling, slowed));
+        assertEquals(0, data.playerMoves.getCurrentMove().elytraCoastMoves);
+        assertFalse(data.hasQueuedHorVel());
+        assertFalse(data.hasQueuedVerVel());
+        data.playerMoves.finishCurrentMove();
+        assertNotNull(move(slowed, position(6.2, 90.036, false)));
+    }
+
+    @Test
+    public void rocketClimbExitCarriesOneTrackedBoost() {
+        final PlayerLocation from = position(21.8589623, 138.9656231, false);
+        when(from.getYaw()).thenReturn(-90f);
+        when(from.getPitch()).thenReturn(-45f);
+        final PlayerLocation exit = position(23.0200528, 140.1970322, false);
+        final PlayerLocation next = position(24.0766452, 141.3254131, false);
+        final PlayerLocation third = position(25.0381443, 142.3528264, false);
+
+        acceptedGlide(from, 1.2607366, 1.1202147);
+        data.fireworksBoostTickExpire = data.getPlayerMoveCount() + 1;
+        assertNull(move(from, exit));
+        assertEquals(39, data.playerMoves.getCurrentMove().elytraCoastMoves);
+        data.playerMoves.finishCurrentMove();
+        assertNull(move(exit, next));
+        assertEquals(38, data.playerMoves.getCurrentMove().elytraCoastMoves);
+        data.playerMoves.finishCurrentMove();
+        assertNull(move(next, third));
+        assertEquals(37, data.playerMoves.getCurrentMove().elytraCoastMoves);
+
+        resetData(10.0);
+        data.increasePlayerMoveCount();
+        data.fireworksBoostTickExpire = data.getPlayerMoveCount();
+        acceptedGlide(from, 1.2607366, 1.1202147);
+        assertNotNull(move(from, exit));
     }
 
     @Test public void recordedBoatLandingWithSmallHorizontalMove() { reportLanding(0.04); }
@@ -540,6 +564,20 @@ public class TestLandingStepSequence {
                     x + 0.3, y + epsilon, 0.8);
         });
         return loc;
+    }
+
+    private void acceptedGlide(PlayerLocation to, double dy, double horizontal) {
+        final ItemStack elytra = mock(ItemStack.class);
+        final Damageable damage = mock(Damageable.class);
+        when(damage.isUnbreakable()).thenReturn(true);
+        when(elytra.getType()).thenReturn(Material.ELYTRA);
+        when(elytra.getItemMeta()).thenReturn(damage);
+        when(player.getInventory().getChestplate()).thenReturn(elytra);
+        acceptedHistory(to, dy, horizontal);
+        final PlayerMoveData glide = data.playerMoves.getFirstPastMove();
+        glide.flyCheck = CheckType.MOVING_CREATIVEFLY;
+        glide.modelFlying = mock(ModelFlying.class);
+        when(glide.modelFlying.getId()).thenReturn(MovingConfig.ID_JETPACK_ELYTRA);
     }
 
     private void acceptedHistory(PlayerLocation to, double dy, double horizontal) {

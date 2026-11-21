@@ -73,6 +73,9 @@ public final class ElytraResidual {
     /** Coast phase: input acceleration and rounding above the drag. */
     public static final double COAST_H_MARGIN = 0.04;
 
+    /** Vanilla sprinting air input, with rounding tolerance for each movement vector. */
+    private static final double WORN_COAST_AIR_INPUT = 0.0261;
+
     /** Coast phase: vanilla gravity per tick. */
     public static final double GRAVITY = 0.08;
 
@@ -564,10 +567,27 @@ public final class ElytraResidual {
     public static boolean matchesGlideCoast(final double lastX, final double lastY, final double lastZ,
                                             final double x, final double y, final double z, final boolean firstMove) {
         final double fallY = (lastY - GRAVITY) * VERTICAL_DRAG;
-        final boolean fallingInAir = Math.abs(y - fallY) <= GLIDE_Y_MARGIN
-                && Math.hypot(x - lastX * COAST_DRAG, z - lastZ * COAST_DRAG) <= COAST_H_MARGIN;
-        return fallingInAir || firstMove && lastY < -GRAVITY && Math.abs(y - lastY) <= GLIDE_Y_MARGIN
-                && Math.hypot(x - lastX, z - lastZ) <= COAST_H_MARGIN;
+        return matchesAirMove(x, y, z, lastX * COAST_DRAG, fallY, lastZ * COAST_DRAG)
+                || firstMove && Math.abs(lastY) > GRAVITY && matchesAirMove(x, y, z, lastX, lastY, lastZ);
+    }
+
+    /** A rocket tick can update the carried glide velocity before the first air move. */
+    public static boolean matchesRocketGlideExit(final double lastX, final double lastY, final double lastZ,
+                                                 final double x, final double y, final double z,
+                                                 final float yaw, final float pitch) {
+        final double yawRadians = Math.toRadians(yaw);
+        final double pitchRadians = Math.toRadians(pitch);
+        final double horizontalPush = ROCKET_PUSH * Math.cos(pitchRadians);
+        return matchesAirMove(x, y, z,
+                lastX * ROCKET_KEEP - horizontalPush * Math.sin(yawRadians),
+                lastY * ROCKET_KEEP - ROCKET_PUSH * Math.sin(pitchRadians),
+                lastZ * ROCKET_KEEP + horizontalPush * Math.cos(yawRadians));
+    }
+
+    private static boolean matchesAirMove(final double x, final double y, final double z,
+                                          final double expectedX, final double expectedY, final double expectedZ) {
+        return Math.abs(y - expectedY) <= GLIDE_Y_MARGIN
+                && Math.hypot(x - expectedX, z - expectedZ) <= WORN_COAST_AIR_INPUT;
     }
 
     /** Most horizontal speed one glide tick can gain from lift, at any pitch: 0.1 * (0.08 - vy). */

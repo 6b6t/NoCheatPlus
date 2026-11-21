@@ -570,13 +570,18 @@ public class SurvivalFly extends Check {
         }
         else if (coastMoves > 0 && lastMove.toIsValid && Magic.inAir(thisMove) && !resetFrom && !resetTo
                 && TrigUtil.isSamePos(thisMove.from, lastMove.to)
-                && ElytraResidual.matchesGlideCoast(lastMove.to.getX() - lastMove.from.getX(), lastMove.yDistance,
-                        lastMove.to.getZ() - lastMove.from.getZ(), xDistance, yDistance, zDistance, glideExit)
                 && Bridge1_9.isWearingUsableElytra(player)) {
-            thisMove.elytraCoastMoves = coastMoves - 1;
-            hDistanceAboveLimit = 0.0;
-            vDistanceAboveLimit = 0.0;
-            context.tags.add("elytra_glide_coast");
+            final double lastX = lastMove.to.getX() - lastMove.from.getX();
+            final double lastZ = lastMove.to.getZ() - lastMove.from.getZ();
+            if (ElytraResidual.matchesGlideCoast(lastX, lastMove.yDistance, lastZ, xDistance, yDistance, zDistance, glideExit)
+                    || glideExit && data.fireworksBoostTickExpire >= tick && data.fireworksBoostTickExpire != 0
+                        && ElytraResidual.matchesRocketGlideExit(lastX, lastMove.yDistance, lastZ,
+                                xDistance, yDistance, zDistance, from.getYaw(), from.getPitch())) {
+                thisMove.elytraCoastMoves = coastMoves - 1;
+                hDistanceAboveLimit = 0.0;
+                vDistanceAboveLimit = 0.0;
+                context.tags.add("elytra_glide_coast");
+            }
         }
 
 

@@ -155,9 +155,14 @@ public class TestElytraFlyTransition {
         assertTrue(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, 1.67, -0.18, 0.0, true));
         assertFalse(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, 1.67, -0.18, 0.0, false));
         assertTrue(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, 1.50, -0.255, 0.0, false));
+        assertTrue(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, 1.5275, -0.255, 0.0, false));
+        assertFalse(ElytraResidual.matchesGlideCoast(0.40, -0.18, 0.0, 0.40, -0.255, 0.0, false));
         assertFalse(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, -1.65, -0.18, 0.0, true));
         assertFalse(ElytraResidual.matchesGlideCoast(1.65, -0.18, 0.0, 1.80, -0.18, 0.0, true));
         assertFalse(ElytraResidual.matchesGlideCoast(0.09, 0.0, 0.0, 0.09, 0.0, 0.0, true));
+        assertTrue(ElytraResidual.matchesGlideCoast(0.5552, -2.2446, 0.0, 0.5552, -2.2446, 0.0, true));
+        assertTrue(ElytraResidual.matchesGlideCoast(1.12, 1.26, 0.0, 1.12, 1.26, 0.0, true));
+        assertFalse(ElytraResidual.matchesGlideCoast(1.12, 1.26, 0.0, 1.12, 1.26, 0.0, false));
     }
 
     @Test
