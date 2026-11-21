@@ -15,7 +15,7 @@
 package fr.neatmonster.nocheatplus.checks.moving;
 
 /**
- * Short in-memory window after an elytra is unequipped mid-glide.
+ * Short in-memory window after an elytra is unequipped or depleted mid-glide.
  * <p>
  * The client keeps gliding until the server's equipment update reaches it, then
  * coasts with vanilla air drag. SurvivalFly alone sets that back. The window has
@@ -41,7 +41,7 @@ package fr.neatmonster.nocheatplus.checks.moving;
  * </ul>
  * In both phases the player may not drop more than {@link #Y_DESCEND_SLACK} below
  * the last accepted vertical speed, and no move is faster than the elytra cap.
- * Any move outside the limits, ground, liquid, climbable or an elytra back in
+ * Any move outside the limits, ground, liquid, climbable or a usable elytra back in
  * the chest slot ends the window. A new window can
  * open at most once per {@link #REARM_MOVES} moves. State lives only in
  * {@link MovingData}.
@@ -72,6 +72,9 @@ public final class ElytraResidual {
 
     /** Coast phase: input acceleration and rounding above the drag. */
     public static final double COAST_H_MARGIN = 0.04;
+
+    /** Vanilla sprinting air input, with rounding tolerance for each movement vector. */
+    private static final double WORN_COAST_AIR_INPUT = 0.0261;
 
     /** Coast phase: vanilla gravity per tick. */
     public static final double GRAVITY = 0.08;
@@ -289,12 +292,12 @@ public final class ElytraResidual {
     /**
      * Count one move and judge it against the open window. Returns true when the
      * move is inside the window. Ground, reset conditions (liquid, climbable and
-     * similar), an elytra in the chest slot again and any move outside the limits
+     * similar), a usable elytra in the chest slot again and any move outside the limits
      * end the window.
      */
     public static boolean allow(final State state, final double hDistance, final double yDistance,
-                                final boolean onGround, final boolean resetCond, final boolean wearingElytra) {
-        return allow(state, hDistance, yDistance, Double.NaN, onGround, resetCond, wearingElytra);
+                                final boolean onGround, final boolean resetCond, final boolean wearingUsableElytra) {
+        return allow(state, hDistance, yDistance, Double.NaN, onGround, resetCond, wearingUsableElytra);
     }
 
     /**
@@ -305,12 +308,12 @@ public final class ElytraResidual {
      */
     public static boolean allow(final State state, final double hDistance, final double yDistance,
                                 final double pitch, final boolean onGround, final boolean resetCond,
-                                final boolean wearingElytra) {
+                                final boolean wearingUsableElytra) {
         countMove(state);
         if (!state.open) {
             return false;
         }
-        if (wearingElytra || onGround || resetCond || !Double.isFinite(hDistance) || !Double.isFinite(yDistance)
+        if (wearingUsableElytra || onGround || resetCond || !Double.isFinite(hDistance) || !Double.isFinite(yDistance)
                 || hDistance < 0.0) {
             end(state);
             return false;
@@ -558,6 +561,33 @@ public final class ElytraResidual {
     private static boolean repeats(final double h, final double y, final double hDistance, final double yDistance) {
         final boolean notHigher = yDistance <= y + REPEAT_RISE || yDistance <= 0.0 && yDistance <= y + GLIDE_Y_MARGIN;
         return notHigher && yDistance >= y - GLIDE_Y_MARGIN && hDistance <= h + COAST_H_MARGIN;
+    }
+
+    /** The first air move can carry glide velocity, or already have air drag and gravity applied. */
+    public static boolean matchesGlideCoast(final double lastX, final double lastY, final double lastZ,
+                                            final double x, final double y, final double z, final boolean firstMove) {
+        final double fallY = (lastY - GRAVITY) * VERTICAL_DRAG;
+        return matchesAirMove(x, y, z, lastX * COAST_DRAG, fallY, lastZ * COAST_DRAG)
+                || firstMove && Math.abs(lastY) > GRAVITY && matchesAirMove(x, y, z, lastX, lastY, lastZ);
+    }
+
+    /** A rocket tick can update the carried glide velocity before the first air move. */
+    public static boolean matchesRocketGlideExit(final double lastX, final double lastY, final double lastZ,
+                                                 final double x, final double y, final double z,
+                                                 final float yaw, final float pitch) {
+        final double yawRadians = Math.toRadians(yaw);
+        final double pitchRadians = Math.toRadians(pitch);
+        final double horizontalPush = ROCKET_PUSH * Math.cos(pitchRadians);
+        return matchesAirMove(x, y, z,
+                lastX * ROCKET_KEEP - horizontalPush * Math.sin(yawRadians),
+                lastY * ROCKET_KEEP - ROCKET_PUSH * Math.sin(pitchRadians),
+                lastZ * ROCKET_KEEP + horizontalPush * Math.cos(yawRadians));
+    }
+
+    private static boolean matchesAirMove(final double x, final double y, final double z,
+                                          final double expectedX, final double expectedY, final double expectedZ) {
+        return Math.abs(y - expectedY) <= GLIDE_Y_MARGIN
+                && Math.hypot(x - expectedX, z - expectedZ) <= WORN_COAST_AIR_INPUT;
     }
 
     /** Most horizontal speed one glide tick can gain from lift, at any pitch: 0.1 * (0.08 - vy). */
