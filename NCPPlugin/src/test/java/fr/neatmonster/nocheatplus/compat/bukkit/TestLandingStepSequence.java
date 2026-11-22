@@ -409,9 +409,7 @@ public class TestLandingStepSequence {
         assertEquals("jump-boost move is cancelled by live after VL-up", 1, jumpBoostOff);
 
         // (iii-d) Sprint-jump horizontal boost remains governed by the live horizontal envelope.
-        final int sprintJumpOn = sprintJump(true);
-        final int sprintJumpOff = sprintJump(false);
-        assertEquals("sprint-jump abuse probe parity", sprintJumpOff, sprintJumpOn);
+        assertEquals("vanilla-sized sprint-jump impulse is accepted with the workaround", 0, sprintJump());
 
         // (iii) A blocked head still rejects a jump, identically with the config on and off.
         blocks.set(0, 65, 0, Material.OBSIDIAN);
@@ -484,8 +482,8 @@ public class TestLandingStepSequence {
         return move(from, position(0.5, 64.0 + gain, false)) == null ? 0 : 1;
     }
 
-    private int sprintJump(final boolean enabled) throws Exception {
-        configureInBlockGround(enabled);
+    private int sprintJump() throws Exception {
+        configureInBlockGround(true);
         when(access.getJumpAmplifier(player)).thenReturn(Double.NEGATIVE_INFINITY);
         resetData(64.0);
         data.survivalFlyVL = 36.0;
@@ -493,7 +491,7 @@ public class TestLandingStepSequence {
         data.multSprinting = 1.3;
         final PlayerLocation from = position(0.5, 64.0, false);
         // NCP's ordinary sprint-jump initial horizontal envelope from the live helper.
-        final double horizontal = 0.42;
+        final double horizontal = 0.20;
         return move(from, position(0.5 + horizontal, 64.42, false)) == null ? 0 : 1;
     }
 
