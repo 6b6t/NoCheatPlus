@@ -34,6 +34,7 @@ import fr.neatmonster.nocheatplus.checks.moving.magic.InBlockStand;
 import fr.neatmonster.nocheatplus.checks.moving.model.LiftOffEnvelope;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.player.SurvivalFly;
+import fr.neatmonster.nocheatplus.checks.moving.util.MovingUtil;
 import fr.neatmonster.nocheatplus.checks.workaround.WRPT;
 import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.compat.MCAccess;
@@ -385,6 +386,31 @@ public class TestLandingStepSequence {
         }
         assertTrue("jump lands above burrow block", landed);
 
+        // (iii-a) An ascending destination at the bottom of the second block is not a reset-to.
+        blocks.set(0, 65, 0, Material.OBSIDIAN);
+        final int[] stackClimbOn = ascendingIntoTwoBlockStack(true);
+        final int[] stackClimbOff = ascendingIntoTwoBlockStack(false);
+        assertArrayEquals("ascending into a block bottom preserves live result", stackClimbOff, stackClimbOn);
+
+        // (iii-b) A vanilla client caps an in-block jump under a ceiling two blocks above its feet.
+        blocks.set(0, 66, 0, Material.OBSIDIAN);
+        final int ceilingOn = cappedCeilingJump(true);
+        final int ceilingOff = cappedCeilingJump(false);
+        assertEquals("ceiling-limited vanilla jump is accepted only by the workaround", 0, ceilingOn);
+        assertEquals("the live in-air path cancels this jump after VL-up", 1, ceilingOff);
+
+        // (iii-c) Use NCP's potion helper and the normal envelope for Jump Boost I's initial gain.
+        blocks.set(0, 66, 0, Material.AIR);
+        final int jumpBoostOn = jumpBoostJump(true);
+        final int jumpBoostOff = jumpBoostJump(false);
+        assertEquals("jump-boost vanilla impulse is accepted", 0, jumpBoostOn);
+        assertEquals("jump-boost move is cancelled by live after VL-up", 1, jumpBoostOff);
+
+        // (iii-d) Sprint-jump horizontal boost remains governed by the live horizontal envelope.
+        final int sprintJumpOn = sprintJump(true);
+        final int sprintJumpOff = sprintJump(false);
+        assertEquals("sprint-jump abuse probe parity", sprintJumpOff, sprintJumpOn);
+
         // (iii) A blocked head still rejects a jump, identically with the config on and off.
         blocks.set(0, 65, 0, Material.OBSIDIAN);
         final PlayerLocation headBlocked = position(0.5, 64.0, false);
@@ -425,6 +451,70 @@ public class TestLandingStepSequence {
         final int candidateHorizontal = horizontalSequence(true);
         assertEquals(liveHorizontal, candidateHorizontal);
         assertTrue("horizontal cheat still violates", candidateHorizontal > 0);
+    }
+
+    private int[] ascendingIntoTwoBlockStack(final boolean enabled) throws Exception {
+        configureInBlockGround(enabled);
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        final PlayerLocation from = position(0.5, 64.0, false);
+        final Location correction = move(from, position(0.5, 65.0, false));
+        return new int[] {correction == null ? 0 : 1, (int) data.survivalFlyVL};
+    }
+
+    private int cappedCeilingJump(final boolean enabled) throws Exception {
+        configureInBlockGround(enabled);
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        final PlayerLocation from = position(0.5, 64.0, false);
+        return move(from, position(0.5, 64.2, false)) == null ? 0 : 1;
+    }
+
+    private int jumpBoostJump(final boolean enabled) throws Exception {
+        configureInBlockGround(enabled);
+        when(access.getJumpAmplifier(player)).thenReturn(0.0); // Bukkit amplifier 0 = Jump Boost I.
+        resetData(64.0);
+        data.jumpAmplifier = MovingUtil.getJumpAmplifier(player, access);
+        data.survivalFlyVL = 36.0;
+        final double gain = data.liftOffEnvelope.getMinJumpGain(data.jumpAmplifier);
+        assertEquals("jump gain comes from NCP's envelope", 0.52, gain, 1.0e-9);
+        final PlayerLocation from = position(0.5, 64.0, false);
+        return move(from, position(0.5, 64.0 + gain, false)) == null ? 0 : 1;
+    }
+
+    private int sprintJump(final boolean enabled) throws Exception {
+        configureInBlockGround(enabled);
+        when(access.getJumpAmplifier(player)).thenReturn(Double.NEGATIVE_INFINITY);
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        data.timeSprinting = 1000L;
+        data.multSprinting = 1.3;
+        final PlayerLocation from = position(0.5, 64.0, false);
+        // NCP's ordinary sprint-jump initial horizontal envelope from the live helper.
+        final double horizontal = 0.42;
+        return move(from, position(0.5 + horizontal, 64.42, false)) == null ? 0 : 1;
+    }
+
+    @Test
+    public void inBlockWalkOutFinishesFullyOutsideTheBlock() throws Exception {
+        configureInBlockGround(true);
+        blocks.cleanup();
+        blocks.fill(-2, 63, -2, 2, 64, 2, Material.OBSIDIAN);
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        PlayerLocation from = position(0.5, 64.0, false);
+        int accepted = 0;
+        for (int step = 1; step <= 8; step++) {
+            final PlayerLocation to = position(0.5 + step * 0.2, 64.0, false);
+            assertTrue("VL remains exhausted", data.survivalFlyVL > 35.0);
+            final Location correction = move(from, to);
+            if (correction == null) accepted++;
+            data.playerMoves.finishCurrentMove();
+            from = to;
+        }
+        assertEquals("all vanilla walk-out steps accepted", 8, accepted);
+        assertTrue("final player footprint is fully beyond the starting block",
+                from.getMinX() >= 1.0 && from.getMaxX() > 1.0);
     }
 
     private int[] riseSequence(final boolean enabled) throws Exception {

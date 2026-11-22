@@ -193,7 +193,7 @@ public class SurvivalFly extends Check {
         final boolean fromOnGround = thisMove.from.onGround;
         final boolean toOnGround = thisMove.to.onGround || useBlockChangeTracker && toOnGroundPastStates(from, to, thisMove, tick, data, cc);  // TODO: Work in the past ground stuff differently (thisMove, touchedGround?, from/to ...)
         final boolean resetTo = toOnGround || to.isResetCond()
-                || cc.sfInBlockGround && InBlockStand.isStanding(to, cc.yOnGround, false,
+                || cc.sfInBlockGround && thisMove.yDistance <= 0.0 && InBlockStand.isStanding(to, cc.yOnGround, false,
                         cc.sfInBlockGroundHeadBlocked, from);
 
         if (debug) {
@@ -277,20 +277,13 @@ public class SurvivalFly extends Check {
                 data.getPlayerMoveCount(), data.sfCornerStepX, data.sfCornerStepY, data.sfCornerStepZ,
                 from.getX(), from.getY(), from.getZ());
         data.sfCornerStepArmed = false;
-        final boolean resetFrom;
+        boolean resetFrom;
         if (fromOnGround || from.isResetCond()) {
             resetFrom = true;
         }
         else if (cornerStepLiftOff) {
             resetFrom = true;
             context.tags.add("cornerstep_liftoff");
-        }
-        // Only the first vanilla jump impulse is excused. Small module-like rises and larger fly steps stay in-air checks.
-        else if (cc.sfInBlockGround && (yDistance <= 0.0 || Math.abs(yDistance - 0.42) <= 0.005)
-                && InBlockStand.isStanding(from, cc.yOnGround, yDistance > 0.0,
-                cc.sfInBlockGroundHeadBlocked, null)) {
-            resetFrom = true;
-            context.tags.add("inblock_ground");
         }
         else if (isSamePos) {
 
@@ -308,6 +301,16 @@ public class SurvivalFly extends Check {
         // TODO: Consider if (!resetTo) ?
         // Check lost-ground workarounds.
         else resetFrom = LostGround.lostGround(player, from, to, hDistance, yDistance, sprinting, lastMove, data, cc, useBlockChangeTracker ? blockChangeTracker : null, context.tags);
+
+        // Keep the existing live chain (including its state and side effects) authoritative.
+        // The in-block rule is only a fallback when no live ground workaround matched.
+        if (!resetFrom && cc.sfInBlockGround && (yDistance <= 0.0
+                || yDistance <= data.liftOffEnvelope.getMaxJumpGain(data.jumpAmplifier) + 0.005)
+                && InBlockStand.isStanding(from, cc.yOnGround, yDistance > 0.0,
+                cc.sfInBlockGroundHeadBlocked, null)) {
+            resetFrom = true;
+            context.tags.add("inblock_ground");
+        }
 
         if (thisMove.touchedGround) {
             // Lost ground workaround has just been applied, check resetting of the dirty flag.
