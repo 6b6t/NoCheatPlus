@@ -393,6 +393,7 @@ public class TestLandingStepSequence {
         assertArrayEquals("ascending into a block bottom preserves live result", stackClimbOff, stackClimbOn);
 
         // (iii-b) A vanilla client caps an in-block jump under a ceiling two blocks above its feet.
+        blocks.set(0, 65, 0, Material.AIR);
         blocks.set(0, 66, 0, Material.OBSIDIAN);
         final int ceilingOn = cappedCeilingJump(true);
         final int ceilingOff = cappedCeilingJump(false);
@@ -400,6 +401,7 @@ public class TestLandingStepSequence {
         assertEquals("the live in-air path cancels this jump after VL-up", 1, ceilingOff);
 
         // (iii-c) Use NCP's potion helper and the normal envelope for Jump Boost I's initial gain.
+        blocks.set(0, 65, 0, Material.AIR);
         blocks.set(0, 66, 0, Material.AIR);
         final int jumpBoostOn = jumpBoostJump(true);
         final int jumpBoostOff = jumpBoostJump(false);
