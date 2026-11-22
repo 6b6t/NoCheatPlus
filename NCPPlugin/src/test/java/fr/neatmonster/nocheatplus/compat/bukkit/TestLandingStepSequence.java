@@ -405,8 +405,13 @@ public class TestLandingStepSequence {
         data.survivalFlyVL = 36.0;
         assertNull(move(headBlocked, headBlocked));
         data.playerMoves.finishCurrentMove();
+        final PlayerLocation slightStep = position(0.7, 64.0, false);
         data.survivalFlyVL = 36.0;
-        assertNotNull(move(headBlocked, jump));
+        assertTrue("VL precondition", data.survivalFlyVL > 35.0);
+        assertNull("head-blocked horizontal 0.2 move", move(headBlocked, slightStep));
+        data.playerMoves.finishCurrentMove();
+        data.survivalFlyVL = 36.0;
+        assertNotNull(move(slightStep, position(0.7, 64.42, false)));
         assertFalse("no inherited touched-ground allowance", data.playerMoves.getCurrentMove().touchedGroundWorkaround);
 
         // (v) Small and repeated non-vanilla vertical rises keep exactly the live result.
