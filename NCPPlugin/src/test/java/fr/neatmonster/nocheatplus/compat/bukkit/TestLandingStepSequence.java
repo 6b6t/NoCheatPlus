@@ -30,6 +30,7 @@ import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.location.tracking.LocationTrace.TraceEntryPool;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LostGround;
+import fr.neatmonster.nocheatplus.checks.moving.magic.InBlockStand;
 import fr.neatmonster.nocheatplus.checks.moving.model.LiftOffEnvelope;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.player.SurvivalFly;
@@ -39,6 +40,7 @@ import fr.neatmonster.nocheatplus.compat.MCAccess;
 import fr.neatmonster.nocheatplus.compat.bukkit.BlockCacheBukkitModern;
 import fr.neatmonster.nocheatplus.compat.bukkit.NativeLandingAccess;
 import fr.neatmonster.nocheatplus.compat.versions.ServerVersion;
+import fr.neatmonster.nocheatplus.config.ConfPaths;
 import fr.neatmonster.nocheatplus.components.modifier.DummyAttributeAccess;
 import fr.neatmonster.nocheatplus.components.modifier.IAttributeAccess;
 import fr.neatmonster.nocheatplus.logging.StaticLog;
@@ -61,6 +63,7 @@ public class TestLandingStepSequence {
     private Player player;
     private IPlayerData playerData;
     private MCAccess access;
+    private PluginTests.UnitTestNoCheatPlusAPI api;
     private FakeBlockCache blocks;
     private BlockCacheBukkitModern entities;
     private final List<Entity> nearby = new ArrayList<>();
@@ -75,7 +78,7 @@ public class TestLandingStepSequence {
         StaticLog.setUseLogManager(true);
         // Match production carpet flags, which the minimal block test bootstrap does not install.
         BlockFlags.setBlockFlags(Material.WHITE_CARPET, BlockFlags.F_GROUND | BlockFlags.F_CARPET);
-        final PluginTests.UnitTestNoCheatPlusAPI api = new PluginTests.UnitTestNoCheatPlusAPI() {
+        api = new PluginTests.UnitTestNoCheatPlusAPI() {
             @Override public fr.neatmonster.nocheatplus.compat.blocks.changetracker.BlockChangeTracker getBlockChangeTracker() { return null; }
         };
         final var install = NCPAPIProvider.class.getDeclaredMethod("setNoCheatPlusAPI",
@@ -327,6 +330,141 @@ public class TestLandingStepSequence {
         data.playerMoves.finishCurrentMove();
         assertNotNull(move(jump, position(0.2, 11.0, true)));
         assertFalse(data.playerMoves.getCurrentMove().touchedGroundWorkaround);
+    }
+
+    @Test
+    public void inBlockGroundSequencesWithSurvivalFlyLeniencyExhausted() throws Exception {
+        assertFalse("new config key stays off by default", config.sfInBlockGround);
+        configureInBlockGround(true);
+
+        blocks.cleanup();
+        blocks.fill(-2, 63, -2, 2, 64, 2, Material.OBSIDIAN);
+        final PlayerLocation burrow = position(0.5, 64.0, false);
+
+        // (i) Look-only packets are accepted with the workaround and remain live behaviour with it disabled.
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        int onViolations = 0;
+        for (int i = 0; i < 20; i++) {
+            assertTrue("VL precondition", data.survivalFlyVL > 35.0);
+            if (move(burrow, burrow) != null) onViolations++;
+            data.playerMoves.finishCurrentMove();
+        }
+        assertEquals(0, onViolations);
+        configureInBlockGround(false);
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        int offViolations = 0;
+        for (int i = 0; i < 20; i++) {
+            assertTrue("VL precondition", data.survivalFlyVL > 35.0);
+            if (move(burrow, burrow) != null) offViolations++;
+            data.playerMoves.finishCurrentMove();
+        }
+        assertTrue("disabled config matches the live cancellation", offViolations > 0);
+
+        // (ii) A vanilla jump arc from inside the block is accepted through its landing on the block top.
+        configureInBlockGround(true);
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        assertTrue("source geometry recognized", InBlockStand.isStanding(burrow, config.yOnGround, true, true, null));
+        assertTrue("config enabled", config.sfInBlockGround);
+        assertTrue("head-blocked option parses", config.sfInBlockGroundHeadBlocked);
+        PlayerLocation from = burrow;
+        double velocity = (double) 0.42F;
+        boolean landed = false;
+        for (int tick = 0; tick < 20 && !landed; tick++) {
+            final double predicted = from.getY() + velocity;
+            landed = predicted >= 65.0;
+            final PlayerLocation to = position(0.5, landed ? 65.0 : predicted, landed);
+            assertTrue("VL precondition", data.survivalFlyVL > 35.0);
+            final Location correction = move(from, to);
+            assertNull("vanilla jump tick " + tick, correction);
+            data.playerMoves.finishCurrentMove();
+            from = to;
+            velocity = (velocity - 0.08) * 0.98;
+        }
+        assertTrue("jump lands above burrow block", landed);
+
+        // (iii) A blocked head still rejects a jump, identically with the config on and off.
+        blocks.set(0, 65, 0, Material.OBSIDIAN);
+        final PlayerLocation headBlocked = position(0.5, 64.0, false);
+        final PlayerLocation jump = position(0.5, 64.42, false);
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        assertNotNull("head-blocked jump with workaround", move(headBlocked, jump));
+        final double blockedVlOn = data.survivalFlyVL;
+        configureInBlockGround(false);
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        assertNotNull("head-blocked jump on live path", move(headBlocked, jump));
+        assertEquals(blockedVlOn, data.survivalFlyVL, 0.0);
+
+        // (iv) A tolerated stationary move does not arm a later head-blocked jump.
+        configureInBlockGround(true);
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        assertNull(move(headBlocked, headBlocked));
+        data.playerMoves.finishCurrentMove();
+        data.survivalFlyVL = 36.0;
+        assertNotNull(move(headBlocked, jump));
+        assertFalse("no inherited touched-ground allowance", data.playerMoves.getCurrentMove().touchedGroundWorkaround);
+
+        // (v) Small and repeated non-vanilla vertical rises keep exactly the live result.
+        blocks.set(0, 65, 0, Material.AIR);
+        final int[] liveRiseViolations = riseSequence(false);
+        final int[] candidateRiseViolations = riseSequence(true);
+        assertArrayEquals(liveRiseViolations, candidateRiseViolations);
+
+        // (vi) A 0.6 horizontal move remains over the live horizontal limit.
+        final int liveHorizontal = horizontalSequence(false);
+        final int candidateHorizontal = horizontalSequence(true);
+        assertEquals(liveHorizontal, candidateHorizontal);
+        assertTrue("horizontal cheat still violates", candidateHorizontal > 0);
+    }
+
+    private int[] riseSequence(final boolean enabled) throws Exception {
+        configureInBlockGround(enabled);
+        final int[] violations = new int[2];
+        for (int sequence = 0; sequence < 2; sequence++) {
+            resetData(64.0);
+            data.survivalFlyVL = 36.0;
+            PlayerLocation from = position(0.5, 64.0, false);
+            final int count = sequence == 0 ? 10 : 3;
+            final double rise = sequence == 0 ? 0.0625 : 0.40;
+            for (int i = 0; i < count; i++) {
+                assertTrue("VL precondition", data.survivalFlyVL > 35.0);
+                final PlayerLocation to = position(0.5, from.getY() + rise, false);
+                if (move(from, to) != null) violations[sequence]++;
+                data.playerMoves.finishCurrentMove();
+                from = to;
+            }
+        }
+        return violations;
+    }
+
+    private int horizontalSequence(final boolean enabled) throws Exception {
+        configureInBlockGround(enabled);
+        resetData(64.0);
+        data.survivalFlyVL = 36.0;
+        int violations = 0;
+        for (int i = 0; i < 4; i++) {
+            assertTrue("VL precondition", data.survivalFlyVL > 35.0);
+            final PlayerLocation from = position(0.5 + i * 0.6, 64.0, false);
+            final PlayerLocation to = position(1.1 + i * 0.6, 64.0, false);
+            if (move(from, to) != null) violations++;
+            data.playerMoves.finishCurrentMove();
+        }
+        return violations;
+    }
+
+    private void configureInBlockGround(final boolean active) {
+        final var worldData = api.getWorldDataManager().getWorldData("inblock-ground-" + active);
+        worldData.getRawConfiguration().set(ConfPaths.MOVING_SURVIVALFLY_INBLOCKGROUND_ACTIVE, active);
+        worldData.getRawConfiguration().set(ConfPaths.MOVING_SURVIVALFLY_INBLOCKGROUND_HEADBLOCKED, true);
+        try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+            bukkit.when(Bukkit::getVersion).thenReturn("Folia (MC: 26.2)");
+            config = new MovingConfig(worldData);
+        }
     }
 
     @Test

@@ -125,6 +125,8 @@ public class MovingConfig extends ACheckConfig {
      */
     public final boolean    sfGroundHop;
     public final double     sfStepHeight;
+    public final boolean    sfInBlockGround;
+    public final boolean    sfInBlockGroundHeadBlocked;
     public final boolean    survivalFlyAccountingH;
     public final boolean    survivalFlyAccountingV;
     public final boolean    survivalFlyAccountingStep;
@@ -269,6 +271,9 @@ public class MovingConfig extends ACheckConfig {
         survivalFlyWalkingSpeed = config.getInt(ConfPaths.MOVING_SURVIVALFLY_WALKINGSPEED, 100);
         sfSlownessSprintHack = config.getAlmostBoolean(ConfPaths.MOVING_SURVIVALFLY_SLOWNESSSPRINTHACK, AlmostBoolean.MAYBE).decideOptimistically();
         sfGroundHop = config.getBoolean(ConfPaths.MOVING_SURVIVALFLY_GROUNDHOP, ServerVersion.compareMinecraftVersion("1.7") == -1);
+        sfInBlockGround = config.getBoolean(ConfPaths.MOVING_SURVIVALFLY_INBLOCKGROUND_ACTIVE, false);
+        sfInBlockGroundHeadBlocked = sfInBlockGround
+                && config.getBoolean(ConfPaths.MOVING_SURVIVALFLY_INBLOCKGROUND_HEADBLOCKED, true);
         survivalFlyAccountingH = config.getBoolean(ConfPaths.MOVING_SURVIVALFLY_EXTENDED_HACC);
         survivalFlyAccountingV = config.getBoolean(ConfPaths.MOVING_SURVIVALFLY_EXTENDED_VACC);
         survivalFlyAccountingStep = config.getBoolean(ConfPaths.MOVING_SURVIVALFLY_EXTENDED_STEP);

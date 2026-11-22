@@ -548,6 +548,8 @@ public class DefaultConfig extends ConfigFile {
         // SurvivalFly
         set(ConfPaths.MOVING_SURVIVALFLY_CHECK, "default", 785);
         set(ConfPaths.MOVING_SURVIVALFLY_STEPHEIGHT, "default", 785);
+        set(ConfPaths.MOVING_SURVIVALFLY_INBLOCKGROUND_ACTIVE, false, 1154);
+        set(ConfPaths.MOVING_SURVIVALFLY_INBLOCKGROUND_HEADBLOCKED, true, 1154);
         set(ConfPaths.MOVING_SURVIVALFLY_EXTENDED_VACC, true, 785);
         set(ConfPaths.MOVING_SURVIVALFLY_EXTENDED_HACC, true, 1154);
         set(ConfPaths.MOVING_SURVIVALFLY_EXTENDED_STEP, true, 1154);

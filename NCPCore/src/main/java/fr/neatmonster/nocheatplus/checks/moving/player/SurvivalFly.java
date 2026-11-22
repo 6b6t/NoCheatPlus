@@ -43,6 +43,7 @@ import fr.neatmonster.nocheatplus.checks.moving.magic.AirWorkarounds;
 import fr.neatmonster.nocheatplus.checks.moving.magic.BedBounce;
 import fr.neatmonster.nocheatplus.checks.moving.magic.ShelfBounce;
 import fr.neatmonster.nocheatplus.checks.moving.magic.CornerStep;
+import fr.neatmonster.nocheatplus.checks.moving.magic.InBlockStand;
 import fr.neatmonster.nocheatplus.checks.moving.magic.FluidEntityClimb;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LiquidWorkarounds;
 import fr.neatmonster.nocheatplus.checks.moving.model.LiftOffEnvelope;
@@ -191,7 +192,9 @@ public class SurvivalFly extends Check {
         final boolean HasHorizontalDistance;
         final boolean fromOnGround = thisMove.from.onGround;
         final boolean toOnGround = thisMove.to.onGround || useBlockChangeTracker && toOnGroundPastStates(from, to, thisMove, tick, data, cc);  // TODO: Work in the past ground stuff differently (thisMove, touchedGround?, from/to ...)
-        final boolean resetTo = toOnGround || to.isResetCond();
+        final boolean resetTo = toOnGround || to.isResetCond()
+                || cc.sfInBlockGround && InBlockStand.isStanding(to, cc.yOnGround, false,
+                        cc.sfInBlockGroundHeadBlocked, from);
 
         if (debug) {
             data.ws.setJustUsedIds(context.justUsedWorkarounds);
@@ -281,6 +284,13 @@ public class SurvivalFly extends Check {
         else if (cornerStepLiftOff) {
             resetFrom = true;
             context.tags.add("cornerstep_liftoff");
+        }
+        // Only the first vanilla jump impulse is excused. Small module-like rises and larger fly steps stay in-air checks.
+        else if (cc.sfInBlockGround && (yDistance <= 0.0 || Math.abs(yDistance - 0.42) <= 0.005)
+                && InBlockStand.isStanding(from, cc.yOnGround, yDistance > 0.0,
+                cc.sfInBlockGroundHeadBlocked, null)) {
+            resetFrom = true;
+            context.tags.add("inblock_ground");
         }
         else if (isSamePos) {
 
