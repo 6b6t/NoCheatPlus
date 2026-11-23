@@ -39,6 +39,7 @@ import fr.neatmonster.nocheatplus.checks.moving.player.SurvivalFly;
 import fr.neatmonster.nocheatplus.checks.workaround.WRPT;
 import fr.neatmonster.nocheatplus.compat.Folia;
 import fr.neatmonster.nocheatplus.compat.MCAccess;
+import fr.neatmonster.nocheatplus.components.registry.event.IHandle;
 import fr.neatmonster.nocheatplus.compat.bukkit.BlockCacheBukkitModern;
 import fr.neatmonster.nocheatplus.compat.bukkit.NativeLandingAccess;
 import fr.neatmonster.nocheatplus.compat.versions.ServerVersion;
@@ -71,6 +72,10 @@ public class TestPhaseGuardSequence {
     private final List<Entity> nearby = new ArrayList<>();
     private final List<ViolationData> violations = new ArrayList<>();
     private MockedStatic<Folia> folia;
+    /** Phase-guard tests: ground answers come from a real PlayerLocation (see realGround), never from a mock. */
+    private boolean realProbes;
+    private IHandle<MCAccess> accessHandle;
+    private final List<PlayerLocation> realLocations = new ArrayList<>();
     private MockedStatic<NativeLandingAccess> nativeAccess;
     private String oldVersion;
 
@@ -95,6 +100,12 @@ public class TestPhaseGuardSequence {
         when(access.getJumpAmplifier(any(Player.class))).thenReturn(Double.NEGATIVE_INFINITY);
         when(access.getFasterMovementAmplifier(any(Player.class))).thenReturn(Double.NEGATIVE_INFINITY);
         api.registerGenericInstance(MCAccess.class, access);
+        when(access.getWidth(any(Entity.class))).thenReturn(0.6);
+        when(access.getHeight(any(Entity.class))).thenReturn(1.8);
+        @SuppressWarnings("unchecked")
+        final IHandle<MCAccess> handle = mock(IHandle.class);
+        when(handle.getHandle()).thenReturn(access);
+        accessHandle = handle;
         try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
             bukkit.when(Bukkit::getVersion).thenReturn("Folia (MC: 26.2)");
             worldData = api.getWorldDataManager().getWorldData("landingstep-test");
@@ -135,6 +146,7 @@ public class TestPhaseGuardSequence {
 
     @After
     public void cleanup() {
+        for (final PlayerLocation loc : realLocations) loc.cleanup();
         nativeAccess.close();
         folia.close();
         ServerVersion.setMinecraftVersion(oldVersion);
@@ -485,8 +497,29 @@ public class TestPhaseGuardSequence {
         return position(x, y, 0.5, ground);
     }
 
+    /**
+     * A real location over the fake blocks, read as MovingListener reads a move's from/to: on-ground with
+     * cc.yOnGround (inside a block standing on a full block, the "stuck" shortcut says true and caches the margin),
+     * then the 1.17+ powder-snow re-check with the full box query, which can flip it to false.
+     */
+    private PlayerLocation realGround(double x, double y, double z) {
+        final PlayerLocation loc = new PlayerLocation(accessHandle, blocks);
+        loc.set(new Location(world, x, y, z), player, 0.6, 1.62, 1.8, 1.8, config.yOnGround);
+        realLocations.add(loc);
+        if (loc.isOnGround()) loc.adjustOnGround(!loc.isOnGround(config.yOnGround, BlockFlags.F_POWDERSNOW));
+        return loc;
+    }
+
     private PlayerLocation position(double x, double y, double z, boolean ground) {
         final PlayerLocation loc = mock(PlayerLocation.class);
+        if (realProbes) {
+            // The ground flag argument is ignored here: the real location decides, including its probe cache.
+            final PlayerLocation real = realGround(x, y, z);
+            ground = real.isOnGround();
+            when(loc.isOnGround(anyDouble())).thenAnswer(inv -> real.isOnGround((double) inv.getArgument(0)));
+            when(loc.isOnGround(anyDouble(), anyDouble(), anyDouble())).thenAnswer(inv -> real.isOnGround(
+                    (double) inv.getArgument(0), (double) inv.getArgument(1), (double) inv.getArgument(2)));
+        }
         when(loc.getWorld()).thenReturn(world);
         when(loc.getWorldName()).thenReturn("world");
         when(loc.getX()).thenReturn(x);
@@ -502,15 +535,17 @@ public class TestPhaseGuardSequence {
         when(loc.isOnGround()).thenReturn(ground);
         when(loc.getMCAccess()).thenReturn(access);
         when(loc.getBlockCache()).thenReturn(blocks);
-        when(loc.isOnGround(anyDouble(), anyDouble(), anyDouble())).thenAnswer(inv -> {
-            double margin = inv.getArgument(0), horizontal = inv.getArgument(1), vertical = inv.getArgument(2);
-            return BlockProperties.isOnGround(blocks, x - 0.3 - horizontal, y - margin - vertical, z - 0.3 - horizontal,
-                    x + 0.3 + horizontal, y + vertical, z + 0.3 + horizontal);
-        });
-        when(loc.isOnGround(anyDouble())).thenAnswer(inv -> {
-            double margin = inv.getArgument(0);
-            return BlockProperties.isOnGround(blocks, x - 0.3, y - margin, z - 0.3, x + 0.3, y, z + 0.3);
-        });
+        if (!realProbes) {
+            when(loc.isOnGround(anyDouble(), anyDouble(), anyDouble())).thenAnswer(inv -> {
+                double margin = inv.getArgument(0), horizontal = inv.getArgument(1), vertical = inv.getArgument(2);
+                return BlockProperties.isOnGround(blocks, x - 0.3 - horizontal, y - margin - vertical, z - 0.3 - horizontal,
+                        x + 0.3 + horizontal, y + vertical, z + 0.3 + horizontal);
+            });
+            when(loc.isOnGround(anyDouble())).thenAnswer(inv -> {
+                double margin = inv.getArgument(0);
+                return BlockProperties.isOnGround(blocks, x - 0.3, y - margin, z - 0.3, x + 0.3, y, z + 0.3);
+            });
+        }
         when(loc.standsOnEntityContact(anyDouble(), anyDouble(), anyDouble())).thenAnswer(inv -> {
             double margin = inv.getArgument(0), horizontal = inv.getArgument(1), vertical = inv.getArgument(2);
             return entities.standsOnEntityContact(player, x - 0.3 - horizontal, y - margin - vertical, z - 0.3 - horizontal,
@@ -543,12 +578,14 @@ public class TestPhaseGuardSequence {
         data.sfJumpPhase = 11;
     }
     private void phaseStack() {
+        realProbes = true;
         blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
         blocks.set(0, 10, 0, Material.STONE);
         blocks.set(0, 11, 0, Material.STONE);
     }
 
     private void phaseStackHole() {
+        realProbes = true;
         blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
         for (int x = -1; x <= 1; x++) {
             for (int z = -1; z <= 1; z++) {
@@ -562,6 +599,7 @@ public class TestPhaseGuardSequence {
     }
 
     private void phaseGuard(boolean enabled) throws Exception {
+        realProbes = true;
         worldData.getRawConfiguration().set(ConfPaths.MOVING_SURVIVALFLY_PHASEGUARD_ACTIVE, enabled, 1154);
         try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
             bukkit.when(Bukkit::getVersion).thenReturn("Folia (MC: 26.2)");
@@ -574,8 +612,10 @@ public class TestPhaseGuardSequence {
         data.setSetBack(target.getLocation());
         data.resetPlayerPositions(target);
         final PlayerMoveData last = data.playerMoves.getFirstPastMove();
-        // The reproduction trace's stale ground bit sits on to, while resetPlayerPositions sets from.
+        // The reproduction trace's stale ground bit sits on to, while resetPlayerPositions sets from: it is the
+        // floor walk's (or ring top's) ground state from before the teleport, not the in-block target's.
         last.to.setExtraProperties(target);
+        last.to.onGround = true;
         // The accepted live trace has the normal jump envelope (vAD 0.425, jumpPhase 0).
         data.liftOffEnvelope = LiftOffEnvelope.NORMAL;
         assertTrue(last.valid);
@@ -739,53 +779,32 @@ public class TestPhaseGuardSequence {
         assertTrue(violations.isEmpty() || !String.valueOf(violations.get(violations.size() - 1).getTelemetryTags()).contains("phaseguard_hold"));
     }
 
-    @Test public void s2CornerRouteRemainsAllowed() throws Exception {
+    @Test public void s2CornerKeyRouteRemainsAllowed() throws Exception {
         final boolean t1241Available = enableT1241IfPresent();
         for (boolean t1241 : new boolean[] {false, true}) {
             if (t1241 && !t1241Available) continue;
-            for (boolean afterTeleport : new boolean[] {false, true}) {
-                double offVl = runS2Corner(false, t1241, afterTeleport);
-                double onVl = runS2Corner(true, t1241, afterTeleport);
-                assertEquals("corner route VL is unchanged (t1241=" + t1241 + ", teleport=" + afterTeleport + ")",
-                        offVl, onVl, 0.0);
-                assertEquals("corner route has no violations", 0.0, onVl, 0.0);
-            }
+            double offVl = runS2CornerKeys(false, t1241);
+            double onVl = runS2CornerKeys(true, t1241);
+            assertEquals("corner key route VL is unchanged (t1241=" + t1241 + ")", offVl, onVl, 0.0);
+            assertEquals("corner key route has no violations", 0.0, onVl, 0.0);
         }
     }
 
-    private double runS2Corner(boolean enabled, boolean t1241, boolean afterTeleport) throws Exception {
+    private double runS2CornerKeys(boolean enabled, boolean t1241) throws Exception {
         resetData(10);
         phaseStackHole();
         phaseGuard(enabled);
         final boolean t1241Available = setT1241IfPresent(t1241);
         if (t1241) assertTrue(t1241Available);
-        final PlayerLocation corner = position(0.3, 10.0, 0.3, !afterTeleport);
-        // The live trace reports touched-ground at this exact corner. The production location caches that
-        // one-argument probe from its movement history; our synthetic location supplies the observed result.
-        when(corner.isOnGround(0.03)).thenReturn(true);
-        assertFalse(InBlockJumpGuard.holdStaleGroundJump(corner, new ArrayList<>()));
-        if (afterTeleport) {
-            teleportWithStaleGround(position(0.3, 10.0, 0.3, true));
-            assertFalse(data.playerMoves.getFirstPastMove().toIsValid);
-        } else {
-            // Model the S2 forward/back/left/right key sequence in the corner of the stack cell.
-            PlayerLocation at = corner;
-            final PlayerLocation[] keys = {
-                    position(0.35, 10.0, 0.3, true), position(0.3, 10.0, 0.3, true),
-                    position(0.3, 10.0, 0.35, true), position(0.3, 10.0, 0.3, true)
-            };
-            for (PlayerLocation next : keys) {
-                assertNull("corner key move is allowed", move(at, next));
-                data.playerMoves.finishCurrentMove();
-                at = next;
-            }
-            assertTrue(data.playerMoves.getFirstPastMove().valid);
-            assertTrue(data.playerMoves.getFirstPastMove().toIsValid);
-            data.playerMoves.getFirstPastMove().toIsValid = true;
-        }
+        // The S2 forward/back/left/right key sequence ends in the corner of the stack cell. Live accepts those in-block
+        // key moves with 0 corrections (6-lab run 1: S2 8/8 on every column; trace from/to not on ground, tags
+        // dirty+hcollision from the lab's queued velocity, which this harness does not model), so the last key move is
+        // recorded as accepted history: a real move, so the jump's last move is valid and never reaches data_reset.
+        acceptedHistory(position(0.3, 10.0, 0.3, false), 0.0, 0.05);
+        assertTrue(data.playerMoves.getFirstPastMove().valid);
+        assertTrue(data.playerMoves.getFirstPastMove().toIsValid);
         violations.clear();
         final PlayerLocation jumpFrom = position(0.3, 10.0, 0.3, false);
-        when(jumpFrom.isOnGround(0.03)).thenReturn(true);
         try (MockedStatic<InBlockJumpGuard> guard = mockStatic(InBlockJumpGuard.class, CALLS_REAL_METHODS)) {
             Location correction = move(jumpFrom, position(0.3, 10.42, 0.3, false));
             final PlayerMoveData prior = data.playerMoves.getFirstPastMove();
@@ -793,11 +812,43 @@ public class TestPhaseGuardSequence {
                     + ", vAD=" + data.playerMoves.getCurrentMove().verVelUsed + ", VL=" + data.survivalFlyVL
                     + ", prior=" + prior.valid + "/" + prior.toIsValid + ", priorGround=" + prior.to.onGround
                     + ", tags=" + (violations.isEmpty() ? "none" : violations.get(0).getTelemetryTags()), correction);
-            if (!afterTeleport) guard.verifyNoInteractions();
+            guard.verifyNoInteractions();
         }
+        // lostground_micro from the real 0.03 probe, as in the lab (j1 tag lostground_micro 8/8).
+        assertTrue("corner jump is a lost-ground (micro) jump", data.playerMoves.getCurrentMove().touchedGroundWorkaround);
         assertEquals(0.0, data.survivalFlyVL, 0.0);
         assertTrue("no held violation", violations.isEmpty());
         return data.survivalFlyVL;
+    }
+
+    /**
+     * S2t / S2sb: the corner jump as the FIRST move after a teleport or set-back takes the S1 path (stale ground
+     * credit in data_reset; lab 6-lab run 1: LIVE oct 7/8 via dirty+data_reset, not lostground_micro). October allowed
+     * the 2-stack climb only after a corner move, so this one is held with the key ON (3-plan design, ours).
+     */
+    @Test public void s2tCornerTeleportFirstIsHeldOnlyWhenEnabled() throws Exception {
+        final boolean t1241Available = enableT1241IfPresent();
+        for (boolean t1241 : new boolean[] {false, true}) {
+            if (t1241 && !t1241Available) continue;
+            for (boolean enabled : new boolean[] {false, true}) {
+                resetData(10);
+                phaseStackHole();
+                phaseGuard(enabled);
+                setT1241IfPresent(t1241);
+                final PlayerLocation target = position(0.3, 10.0, 0.3, true);
+                teleportWithStaleGround(target);
+                assertStaleState(target);
+                violations.clear();
+                final Location result = move(position(0.3, 10.0, 0.3, false), position(0.3, 10.42, 0.3, false));
+                if (enabled) {
+                    assertNotNull("S2t held (t1241=" + t1241 + ")", result);
+                    assertEquals(42.0, data.survivalFlyVL, 0.01);
+                    assertTrue(String.valueOf(violations.get(0).getTelemetryTags()).contains("phaseguard_hold"));
+                } else {
+                    assertNull("S2t key OFF follows live (t1241=" + t1241 + ")", result);
+                }
+            }
+        }
     }
 
     @Test public void groundedJumpAfterTeleportRemainsAllowed() throws Exception {
