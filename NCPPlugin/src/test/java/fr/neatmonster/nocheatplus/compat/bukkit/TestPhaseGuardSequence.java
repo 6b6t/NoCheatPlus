@@ -801,6 +801,7 @@ public class TestPhaseGuardSequence {
         blocks.set(0, 10, 0, Material.STONE);
         blocks.set(0, 11, 0, Material.AIR);
         assertFalse(InBlockJumpGuard.holdStaleGroundJump(position(0.5, 10, false), tags));
+        blocks.cleanup(); phaseStack();
         blocks.set(0, 11, 0, Material.STONE_SLAB, new double[] {0, 0, 0, 1, 0.5, 1});
         assertTrue(InBlockJumpGuard.holdStaleGroundJump(position(0.5, 10, false), tags));
         blocks.set(0, 11, 0, Material.STONE);
