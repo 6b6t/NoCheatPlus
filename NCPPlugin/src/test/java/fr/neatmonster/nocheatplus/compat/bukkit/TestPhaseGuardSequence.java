@@ -749,7 +749,10 @@ public class TestPhaseGuardSequence {
         final PlayerLocation jumpFrom = position(0.3, 10.0, 0.3, false);
         when(jumpFrom.isOnGround(0.03)).thenReturn(true);
         try (MockedStatic<InBlockJumpGuard> guard = mockStatic(InBlockJumpGuard.class, CALLS_REAL_METHODS)) {
-            assertNull(move(jumpFrom, position(0.3, 10.42, 0.3, false)));
+            Location correction = move(jumpFrom, position(0.3, 10.42, 0.3, false));
+            assertNull("correction=" + correction + ", onGround003=" + jumpFrom.isOnGround(0.03)
+                    + ", vAD=" + data.playerMoves.getCurrentMove().verVelUsed + ", VL=" + data.survivalFlyVL
+                    + ", tags=" + (violations.isEmpty() ? "none" : violations.get(0).getTelemetryTags()), correction);
             guard.verifyNoInteractions();
         }
         assertEquals(0.0, data.survivalFlyVL, 0.0);
