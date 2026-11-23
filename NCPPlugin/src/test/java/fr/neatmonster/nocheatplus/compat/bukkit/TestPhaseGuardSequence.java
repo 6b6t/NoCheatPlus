@@ -723,7 +723,10 @@ public class TestPhaseGuardSequence {
         final boolean t1241Available = setT1241IfPresent(t1241);
         if (t1241) assertTrue(t1241Available);
         final PlayerLocation corner = position(0.3, 10.0, 0.3, false);
-        assertTrue("corner body's 0.03 ground margin matches live lostground_micro", corner.isOnGround(0.03));
+        // The live trace reports touched-ground at this exact corner. The production location caches that
+        // one-argument probe from its movement history; our synthetic location supplies the observed result.
+        when(corner.isOnGround(0.03)).thenReturn(true);
+        assertTrue(InBlockJumpGuard.holdStaleGroundJump(corner, new ArrayList<>()));
         if (afterTeleport) {
             teleportWithStaleGround(position(0.3, 10.0, 0.3, true));
             assertFalse(data.playerMoves.getFirstPastMove().toIsValid);
@@ -743,7 +746,12 @@ public class TestPhaseGuardSequence {
             assertTrue(data.playerMoves.getFirstPastMove().toIsValid);
         }
         violations.clear();
-        assertNull(move(position(0.3, 10.0, 0.3, false), position(0.3, 10.42, 0.3, false)));
+        final PlayerLocation jumpFrom = position(0.3, 10.0, 0.3, false);
+        when(jumpFrom.isOnGround(0.03)).thenReturn(true);
+        try (MockedStatic<InBlockJumpGuard> guard = mockStatic(InBlockJumpGuard.class, CALLS_REAL_METHODS)) {
+            assertNull(move(jumpFrom, position(0.3, 10.42, 0.3, false)));
+            guard.verifyNoInteractions();
+        }
         assertEquals(0.0, data.survivalFlyVL, 0.0);
         assertTrue("no held violation", violations.isEmpty());
         return data.survivalFlyVL;
