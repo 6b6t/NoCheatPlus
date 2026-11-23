@@ -553,7 +553,6 @@ public class TestPhaseGuardSequence {
         last.to.setExtraProperties(target);
         // The accepted live trace has the normal jump envelope (vAD 0.425, jumpPhase 0).
         data.liftOffEnvelope = LiftOffEnvelope.NORMAL;
-        data.sfDirty = true;
         assertTrue(last.valid);
         assertFalse(last.toIsValid);
         assertTrue(last.to.onGround);
