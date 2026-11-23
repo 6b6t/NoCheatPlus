@@ -28,7 +28,7 @@ import fr.neatmonster.nocheatplus.checks.ViolationData;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.config.ConfPaths;
-import fr.neatmonster.nocheatplus.worlds.WorldData;
+import fr.neatmonster.nocheatplus.worlds.IWorldData;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.location.tracking.LocationTrace.TraceEntryPool;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LostGround;
@@ -59,7 +59,7 @@ public class TestPhaseGuardSequence {
     private SurvivalFly check;
     private MovingData data;
     private MovingConfig config;
-    private WorldData worldData;
+    private IWorldData worldData;
     private World world;
     private Player player;
     private IPlayerData playerData;
