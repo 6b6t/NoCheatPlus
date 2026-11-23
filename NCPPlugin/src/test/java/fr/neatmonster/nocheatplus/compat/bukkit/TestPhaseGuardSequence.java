@@ -723,20 +723,19 @@ public class TestPhaseGuardSequence {
     @Test public void headClearBurrowZeroDyKeyMoveThenJumpMatchesT1241Alone() throws Exception {
         blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
         blocks.set(0, 10, 0, Material.STONE);
-        resetData(10); phaseGuard(false);
+        resetData(10); phaseGuard(false); enableT1241IfPresent();
         PlayerLocation target = position(0.5, 10, true); teleportWithStaleGround(target);
-        Location offKey = move(position(0.5, 10, false), position(0.6, 10, false));
+        Location t1241Key = move(position(0.5, 10, false), position(0.6, 10, false));
         data.playerMoves.finishCurrentMove();
-        Location offJump = move(position(0.6, 10, false), position(0.6, 10 + (double) 0.42F, false));
+        Location t1241Jump = move(position(0.6, 10, false), position(0.6, 10 + (double) 0.42F, false));
         resetData(10); phaseGuard(true);
         target = position(0.5, 10, true); teleportWithStaleGround(target);
         enableT1241IfPresent();
         Location onKey = move(position(0.5, 10, false), position(0.6, 10, false));
         data.playerMoves.finishCurrentMove();
         Location onJump = move(position(0.6, 10, false), position(0.6, 10 + (double) 0.42F, false));
-        assertEquals(offKey != null, onKey != null);
-        assertEquals(offJump != null, onJump != null);
-        assertEquals("zero-dy burrow key path matches t1241 alone", offJump != null, onJump != null);
+        assertEquals("zero-dy burrow key path matches t1241 alone", t1241Key != null, onKey != null);
+        assertEquals("following jump matches t1241 alone", t1241Jump != null, onJump != null);
     }
 
     @Test public void pearlFaceStraddleWithAirFootColumnRemainsUnchanged() throws Exception {
