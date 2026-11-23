@@ -67,6 +67,7 @@ public class TestPhaseGuardSequence {
     private FakeBlockCache blocks;
     private BlockCacheBukkitModern entities;
     private final List<Entity> nearby = new ArrayList<>();
+    private final List<ViolationData> violations = new ArrayList<>();
     private MockedStatic<Folia> folia;
     private MockedStatic<NativeLandingAccess> nativeAccess;
     private String oldVersion;
@@ -124,7 +125,8 @@ public class TestPhaseGuardSequence {
         try (MockedStatic<DataManager> ignored = mockStatic(DataManager.class)) { check = spy(new SurvivalFly()); }
         final ViolationData actions = mock(ViolationData.class);
         when(actions.willCancel()).thenReturn(true);
-        doReturn(actions).when(check).executeActions(any(ViolationData.class));
+        doAnswer(inv -> { violations.add(inv.getArgument(0)); return actions; })
+                .when(check).executeActions(any(ViolationData.class));
         resetData(10.0);
     }
 
@@ -566,7 +568,8 @@ public class TestPhaseGuardSequence {
     @Test public void s1HoleCentreIsHeldOnlyWhenEnabled() throws Exception {
         phaseStack();
         Location off = phaseJump(0.5, 10.0, false);
-        assertNull("OFF move correction=" + off + ", vAD=" + data.playerMoves.getCurrentMove().verVelUsed, off);
+        assertNull("OFF move correction=" + off + ", vAD=" + data.playerMoves.getCurrentMove().verVelUsed
+                + ", VL=" + data.survivalFlyVL + ", tags=" + (violations.isEmpty() ? "none" : violations.get(0).getTelemetryTags()), off);
         resetData(10.0);
         assertNotNull(phaseJump(0.5, 10.0, true));
     }
@@ -575,7 +578,8 @@ public class TestPhaseGuardSequence {
         blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
         blocks.set(0, 10, 0, Material.STONE); blocks.set(0, 11, 0, Material.STONE);
         Location off = phaseJump(0.5, 10.0, false);
-        assertNull("OFF move correction=" + off + ", vAD=" + data.playerMoves.getCurrentMove().verVelUsed, off);
+        assertNull("OFF move correction=" + off + ", vAD=" + data.playerMoves.getCurrentMove().verVelUsed
+                + ", VL=" + data.survivalFlyVL + ", tags=" + (violations.isEmpty() ? "none" : violations.get(0).getTelemetryTags()), off);
         resetData(10.0);
         assertNotNull(phaseJump(0.5, 10.0, true));
     }
