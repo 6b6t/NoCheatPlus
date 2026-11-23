@@ -304,10 +304,11 @@ public class SurvivalFly extends Check {
 
         // Keep the existing live chain (including its state and side effects) authoritative.
         // The in-block rule is only a fallback when no live ground workaround matched.
-        if (!resetFrom && cc.sfInBlockGround && (yDistance <= 0.0
-                || InBlockStand.isVanillaJumpStart(from, yDistance, data.jumpAmplifier, data.liftOffEnvelope))
+        if (!resetFrom && cc.sfInBlockGround
                 && InBlockStand.isStanding(from, cc.yOnGround, yDistance > 0.0,
-                cc.sfInBlockGroundHeadBlocked, null)) {
+                cc.sfInBlockGroundHeadBlocked, null)
+                && (yDistance <= 0.0
+                || InBlockStand.isVanillaJumpStart(from, yDistance, data.jumpAmplifier, data.liftOffEnvelope))) {
             resetFrom = true;
             context.tags.add("inblock_ground");
         }

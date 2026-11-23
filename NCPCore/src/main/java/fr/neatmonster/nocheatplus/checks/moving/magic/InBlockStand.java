@@ -45,6 +45,12 @@ public final class InBlockStand {
         if (cache == null) {
             return false;
         }
+        // The ordinary head-block option is for non-rising moves only. A rise must
+        // never get a jump-start reset while any full block occupies the upper body,
+        // including the feet+2 cell that the single-cell check below does not inspect.
+        if (upward && hasFullSolidHeadOverlap(loc, cache)) {
+            return false;
+        }
         final int feetBlockY = (int) floorY;
         final int minX = Location.locToBlock(loc.getMinX());
         final int maxX = Location.locToBlock(loc.getMaxX() - EDGE_EPSILON);
@@ -162,5 +168,37 @@ public final class InBlockStand {
         return from.getMinX() < x + 1.0 - EDGE_EPSILON && from.getMaxX() > x + EDGE_EPSILON
                 && from.getMinY() < y + 1.0 - EDGE_EPSILON && from.getMaxY() > y + EDGE_EPSILON
                 && from.getMinZ() < z + 1.0 - EDGE_EPSILON && from.getMaxZ() > z + EDGE_EPSILON;
+    }
+
+    private static boolean hasFullSolidHeadOverlap(final PlayerLocation loc, final BlockCache cache) {
+        final double headBottom = loc.getMinY() + 1.0;
+        final double headTop = loc.getMaxY();
+        final int minX = Location.locToBlock(loc.getMinX());
+        final int maxX = Location.locToBlock(loc.getMaxX() - EDGE_EPSILON);
+        final int minZ = Location.locToBlock(loc.getMinZ());
+        final int maxZ = Location.locToBlock(loc.getMaxZ() - EDGE_EPSILON);
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int y = Location.locToBlock(headBottom); y <= Location.locToBlock(headTop - EDGE_EPSILON); y++) {
+                    final Material type = cache.getType(x, y, z);
+                    if (type == null || (BlockFlags.getBlockFlags(type) & (BlockFlags.F_GROUND | BlockFlags.F_SOLID))
+                            != (BlockFlags.F_GROUND | BlockFlags.F_SOLID)) continue;
+                    final double[] bounds = cache.getBounds(x, y, z);
+                    if (bounds != null && bounds.length != 6) continue;
+                    final double minXBound = x + (bounds == null ? 0.0 : bounds[0]);
+                    final double minYBound = y + (bounds == null ? 0.0 : bounds[1]);
+                    final double minZBound = z + (bounds == null ? 0.0 : bounds[2]);
+                    final double maxXBound = x + (bounds == null ? 1.0 : bounds[3]);
+                    final double maxYBound = y + (bounds == null ? 1.0 : bounds[4]);
+                    final double maxZBound = z + (bounds == null ? 1.0 : bounds[5]);
+                    if (loc.getMaxX() > minXBound && loc.getMinX() < maxXBound
+                            && headTop > minYBound && headBottom < maxYBound
+                            && loc.getMaxZ() > minZBound && loc.getMinZ() < maxZBound) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 }

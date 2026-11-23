@@ -416,6 +416,7 @@ public class TestLandingStepSequence {
         inBlockRiseParity("C6a +0.20 probe", 0.20);
         inBlockRiseParity("C6a +0.0625 probe", 0.0625);
         inBlockRiseParity("C3b centre +0.20 probe without ceiling", 0.20);
+        c3bHeadOccupiedCentreRiseParity();
 
         // (iii-d) Sprint-jump horizontal boost remains governed by the live horizontal envelope.
         assertEquals("vanilla-sized sprint-jump impulse is accepted with the workaround", 0, sprintJump());
@@ -509,12 +510,14 @@ public class TestLandingStepSequence {
         configureInBlockGround(true);
         blocks.cleanup();
         blocks.fill(-2, 63, -2, 2, 64, 2, Material.OBSIDIAN);
+        blocks.fill(1, 64, -2, 2, 64, 2, Material.AIR);
         resetData(64.0);
         data.survivalFlyVL = 36.0;
         PlayerLocation from = position(0.5, 64.0, false);
         int accepted = 0;
         for (int step = 1; step <= 8; step++) {
-            final PlayerLocation to = position(0.5 + step * 0.2, 64.0, false);
+            final double x = 0.5 + step * 0.2;
+            final PlayerLocation to = position(x, 64.0, x >= 1.3);
             assertTrue("VL remains exhausted", data.survivalFlyVL > 35.0);
             final Location correction = move(from, to);
             if (correction == null) accepted++;
@@ -542,6 +545,41 @@ public class TestLandingStepSequence {
             result[enabled] = correction == null ? 0 : 1;
         }
         assertEquals(name + " equals live (OFF)", result[0], result[1]);
+    }
+
+    private void c3bHeadOccupiedCentreRiseParity() throws Exception {
+        final double[] rises = {0.20, 0.42};
+        for (int riseIndex = 0; riseIndex < rises.length; riseIndex++) {
+            for (int priorGroundMove = 0; priorGroundMove <= 1; priorGroundMove++) {
+                for (int exhaustedVl = 0; exhaustedVl <= 1; exhaustedVl++) {
+                    final int[] result = new int[2];
+                    for (int enabled = 0; enabled <= 1; enabled++) {
+                        configureInBlockGround(enabled == 1);
+                        blocks.cleanup();
+                        blocks.fill(-2, 63, -2, 2, 64, 2, Material.OBSIDIAN);
+                        blocks.set(0, 65, 0, Material.OBSIDIAN);
+                        blocks.set(0, 66, 0, Material.OBSIDIAN);
+                        resetData(64.0);
+                        data.survivalFlyVL = exhaustedVl == 1 ? 36.0 : 0.0;
+                        final PlayerLocation center = position(0.5, 64.0, false);
+                        assertFalse("head occupied by the full block in the 3-stack", InBlockStand.isStanding(
+                                center, config.yOnGround, true, true, null));
+                        if (priorGroundMove == 1) {
+                            final PlayerLocation onGround = position(0.5, 64.0, true);
+                            assertNull("prior on-ground move", move(onGround, onGround));
+                            data.playerMoves.finishCurrentMove();
+                            data.survivalFlyVL = exhaustedVl == 1 ? 36.0 : 0.0;
+                        }
+                        final Location correction = move(center, position(0.5, 64.0 + rises[riseIndex], false));
+                        result[enabled] = correction == null ? 0 : 1;
+                        result[enabled] = 100 * result[enabled] + (int) Math.round(data.survivalFlyVL);
+                    }
+                    assertEquals("C3b centre +" + rises[riseIndex] + " equals live; prior ground="
+                                    + priorGroundMove + ", exhausted VL=" + exhaustedVl,
+                            result[0], result[1]);
+                }
+            }
+        }
     }
 
     private int[] riseSequence(final boolean enabled) throws Exception {
