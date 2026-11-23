@@ -27,6 +27,8 @@ import fr.neatmonster.nocheatplus.NCPAPIProvider;
 import fr.neatmonster.nocheatplus.checks.ViolationData;
 import fr.neatmonster.nocheatplus.checks.CheckType;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
+import fr.neatmonster.nocheatplus.config.ConfPaths;
+import fr.neatmonster.nocheatplus.worlds.WorldData;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.location.tracking.LocationTrace.TraceEntryPool;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LostGround;
@@ -57,6 +59,7 @@ public class TestPhaseGuardSequence {
     private SurvivalFly check;
     private MovingData data;
     private MovingConfig config;
+    private WorldData worldData;
     private World world;
     private Player player;
     private IPlayerData playerData;
@@ -91,7 +94,8 @@ public class TestPhaseGuardSequence {
         api.registerGenericInstance(MCAccess.class, access);
         try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
             bukkit.when(Bukkit::getVersion).thenReturn("Folia (MC: 26.2)");
-            config = new MovingConfig(api.getWorldDataManager().getWorldData("landingstep-test"));
+            worldData = api.getWorldDataManager().getWorldData("landingstep-test");
+            config = new MovingConfig(worldData);
         }
         final var height = MovingConfig.class.getField("sfStepHeight");
         height.setAccessible(true);
@@ -531,7 +535,8 @@ public class TestPhaseGuardSequence {
     }
 
     private void phaseGuard(boolean enabled) throws Exception {
-        MovingConfig.class.getField("sfPhaseGuard").setBoolean(config, enabled);
+        worldData.getRawConfiguration().set(ConfPaths.MOVING_SURVIVALFLY_PHASEGUARD_ACTIVE, enabled, 0);
+        config = new MovingConfig(worldData);
     }
 
     private void teleportWithStaleGround(PlayerLocation target) {
