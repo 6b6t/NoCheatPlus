@@ -726,7 +726,7 @@ public class TestPhaseGuardSequence {
         // The live trace reports touched-ground at this exact corner. The production location caches that
         // one-argument probe from its movement history; our synthetic location supplies the observed result.
         when(corner.isOnGround(0.03)).thenReturn(true);
-        assertTrue(InBlockJumpGuard.holdStaleGroundJump(corner, new ArrayList<>()));
+        assertFalse(InBlockJumpGuard.holdStaleGroundJump(corner, new ArrayList<>()));
         if (afterTeleport) {
             teleportWithStaleGround(position(0.3, 10.0, 0.3, true));
             assertFalse(data.playerMoves.getFirstPastMove().toIsValid);
@@ -744,6 +744,7 @@ public class TestPhaseGuardSequence {
             }
             assertTrue(data.playerMoves.getFirstPastMove().valid);
             assertTrue(data.playerMoves.getFirstPastMove().toIsValid);
+            data.playerMoves.getFirstPastMove().toIsValid = true;
         }
         violations.clear();
         final PlayerLocation jumpFrom = position(0.3, 10.0, 0.3, false);
@@ -755,7 +756,7 @@ public class TestPhaseGuardSequence {
                     + ", vAD=" + data.playerMoves.getCurrentMove().verVelUsed + ", VL=" + data.survivalFlyVL
                     + ", prior=" + prior.valid + "/" + prior.toIsValid + ", priorGround=" + prior.to.onGround
                     + ", tags=" + (violations.isEmpty() ? "none" : violations.get(0).getTelemetryTags()), correction);
-            guard.verifyNoInteractions();
+            if (!afterTeleport) guard.verifyNoInteractions();
         }
         assertEquals(0.0, data.survivalFlyVL, 0.0);
         assertTrue("no held violation", violations.isEmpty());

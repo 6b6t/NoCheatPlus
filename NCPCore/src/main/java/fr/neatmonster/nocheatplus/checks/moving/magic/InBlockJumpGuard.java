@@ -33,6 +33,8 @@ public final class InBlockJumpGuard {
     private InBlockJumpGuard() {}
 
     public static boolean holdStaleGroundJump(final PlayerLocation from, final Collection<String> tags) {
+        // A short ground probe is the same lost-ground signal used by the allowed S2 corner route.
+        if (from.isOnGround(0.03)) return false;
         final BlockCache cache = from.getBlockCache();
         final World world = from.getWorld();
         if (cache == null || world == null) return false;
