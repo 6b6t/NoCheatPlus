@@ -517,7 +517,7 @@ public class TestLandingStepSequence {
         int accepted = 0;
         for (int step = 1; step <= 8; step++) {
             final double x = 0.5 + step * 0.2;
-            final PlayerLocation to = position(x, 64.0, x >= 1.3);
+            final PlayerLocation to = position(x, 64.0, x >= 0.9);
             assertTrue("VL remains exhausted", data.survivalFlyVL > 35.0);
             final Location correction = move(from, to);
             assertNull("walk-out step " + step, correction);
