@@ -557,8 +557,11 @@ public class TestLandingStepSequence {
                         configureInBlockGround(enabled == 1);
                         blocks.cleanup();
                         blocks.fill(-2, 63, -2, 2, 64, 2, Material.OBSIDIAN);
-                        blocks.set(0, 65, 0, Material.OBSIDIAN);
                         blocks.set(0, 66, 0, Material.OBSIDIAN);
+                        final PlayerLocation upperOverlap = position(0.5, 64.25, false);
+                        assertFalse("feet+2 solid overlaps the head while feet+1 is empty",
+                                InBlockStand.isStanding(upperOverlap, 0.3, true, true, null));
+                        blocks.set(0, 65, 0, Material.OBSIDIAN);
                         resetData(64.0);
                         data.survivalFlyVL = exhaustedVl == 1 ? 36.0 : 0.0;
                         final PlayerLocation center = position(0.5, 64.0, false);
