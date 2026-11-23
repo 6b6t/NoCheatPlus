@@ -520,6 +520,7 @@ public class TestLandingStepSequence {
             final PlayerLocation to = position(x, 64.0, x >= 1.3);
             assertTrue("VL remains exhausted", data.survivalFlyVL > 35.0);
             final Location correction = move(from, to);
+            assertNull("walk-out step " + step, correction);
             if (correction == null) accepted++;
             data.playerMoves.finishCurrentMove();
             from = to;
@@ -583,6 +584,8 @@ public class TestLandingStepSequence {
                 }
             }
         }
+        blocks.cleanup();
+        blocks.fill(-2, 63, -2, 2, 64, 2, Material.OBSIDIAN);
     }
 
     private int[] riseSequence(final boolean enabled) throws Exception {
