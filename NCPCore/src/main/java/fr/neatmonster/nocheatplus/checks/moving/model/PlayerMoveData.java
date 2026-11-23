@@ -66,6 +66,9 @@ public class PlayerMoveData extends MoveData {
      */
     public double hClippedBase;
 
+    /** Air moves left to validate against drag and gravity after a glide. */
+    public int elytraCoastMoves;
+
     // Properties involving the environment.
 
     /** This move was a bunny hop. */
@@ -111,6 +114,7 @@ public class PlayerMoveData extends MoveData {
         yAllowedDistance = 0.0;
         hAllowedDistance = 0.0;
         hClippedBase = 0.0;
+        elytraCoastMoves = 0;
         // Meta stuff.
         //flyCheck = null;
         //modelFlying = null;

@@ -1082,15 +1082,13 @@ public class TestElytraSwapEnvelope {
         }
     }
 
-    /** Added main-source lines since {@link #BASE}, or null without git or the base commit. */
+    /** Added elytra wiring lines since the relevant base, or null without the base commit. */
     private static List<String> addedLinesSinceBase(final File root) throws IOException, InterruptedException {
         final Process process;
         try {
             process = new ProcessBuilder("git", "-C", root.getPath(), "diff", "--unified=0", diffBase(root), "--",
-                    "NCPCore/src/main", "NCPCompatBukkit/src/main", "NCPPlugin/src/main",
-                    // Telemetry is explicitly asynchronous and timestamps observations, separate from elytra enforcement.
-                    ":!NCPCore/src/main/java/fr/neatmonster/nocheatplus/telemetry/**",
-                    ":!NCPPlugin/src/main/java/fr/neatmonster/nocheatplus/TelemetryService.java")
+                    MOVING + "MovingListener.java", MOVING + "MovingData.java",
+                    MOVING + "player/SurvivalFly.java", MOVING + "util/MovingUtil.java")
                     .redirectErrorStream(true).start();
         }
         catch (final IOException e) {
