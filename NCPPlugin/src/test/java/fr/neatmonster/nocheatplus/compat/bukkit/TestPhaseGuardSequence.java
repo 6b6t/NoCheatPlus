@@ -675,16 +675,53 @@ public class TestPhaseGuardSequence {
     }
 
 
-    @Test public void c9HeadBlockedColumnIsHeld() throws Exception {
-        phaseStack(); blocks.set(1, 10, 0, Material.AIR);
-        assertNotNull(phaseJump(0.5, 10.0, true));
+    @Test public void c9HeadBlockedColumnWithOpenSideIsHeldOnlyWhenEnabled() throws Exception {
+        phaseStackHole();
+        blocks.set(1, 10, 0, Material.AIR);
+        blocks.set(1, 11, 0, Material.AIR);
+        phaseGuard(false); setT1241IfPresent(false);
+        Location off = phaseJump(0.5, 10.0, false);
+        assertNull("C9 key OFF follows live accepted state", off);
+        resetData(10); phaseStackHole();
+        blocks.set(1, 10, 0, Material.AIR);
+        blocks.set(1, 11, 0, Material.AIR);
+        phaseGuard(true); setT1241IfPresent(false);
+        Location on = phaseJump(0.5, 10.0, true);
+        assertNotNull(on);
+        assertTrue(String.valueOf(violations.get(0).getTelemetryTags()).contains("phaseguard_hold"));
+        resetData(10); phaseStackHole();
+        blocks.set(1, 10, 0, Material.AIR);
+        blocks.set(1, 11, 0, Material.AIR);
+        phaseGuard(true);
+        if (enableT1241IfPresent()) {
+            assertNotNull(phaseJump(0.5, 10.0, true));
+            assertTrue(String.valueOf(violations.get(0).getTelemetryTags()).contains("phaseguard_hold"));
+        }
     }
 
     @Test public void evsbrSecondSetbackIsHeldAgain() throws Exception {
-        phaseStack();
-        assertNotNull(phaseJump(0.5, 10.0, true));
-        resetData(10.0);
-        assertNotNull(phaseJump(0.5, 10.0, true));
+        for (boolean t1241 : new boolean[] {false, true}) {
+            if (t1241 && !setT1241IfPresent(false)) continue;
+            for (boolean enabled : new boolean[] {false, true}) {
+                resetData(10); phaseStack(); phaseGuard(enabled); setT1241IfPresent(t1241);
+                final PlayerLocation target = position(0.5, 10.0, true);
+                teleportWithStaleGround(target);
+                Location first = move(position(0.5, 10, false), position(0.5, 10 + (double) 0.42F, false));
+                assertEquals("first EVsbR jump", enabled, first != null);
+                if (enabled) assertTrue(String.valueOf(violations.get(0).getTelemetryTags()).contains("phaseguard_hold"));
+
+                // A real setback resets player positions to its target; the stale ground bit belongs to that target.
+                teleportWithStaleGround(target);
+                assertStaleState(target);
+                violations.clear();
+                Location second = move(position(0.5, 10, false), position(0.5, 10 + (double) 0.42F, false));
+                assertEquals("second EVsbR jump", enabled, second != null);
+                if (enabled) {
+                    assertEquals(84.0, data.survivalFlyVL, 0.01);
+                    assertTrue(String.valueOf(violations.get(0).getTelemetryTags()).contains("phaseguard_hold"));
+                }
+            }
+        }
     }
 
     @Test public void freshGroundFlagFalseDoesNotAddGuardBehavior() throws Exception {
