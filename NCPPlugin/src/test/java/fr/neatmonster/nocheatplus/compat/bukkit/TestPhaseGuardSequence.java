@@ -545,17 +545,15 @@ public class TestPhaseGuardSequence {
     }
 
     private void teleportWithStaleGround(PlayerLocation target) {
-        data.setSetBack(new Location(world, -1.5, 10.0, 0.5));
-        final PlayerLocation grounded = position(-1.5, 10.0, true);
-        assertNull(move(grounded, position(-1.4, 10.0, true)));
-        data.playerMoves.finishCurrentMove();
-        // A real teleport installs the target as the setback before clearing packet history.
+        // A real teleport installs its target as the setback and the sole stale last-move record.
         data.setSetBack(target.getLocation());
         data.resetPlayerPositions(target);
         final PlayerMoveData last = data.playerMoves.getFirstPastMove();
         assertTrue(last.valid);
         assertFalse(last.toIsValid);
         assertTrue(last.to.onGround);
+        assertEquals(target.getX(), data.getSetBackX(), 0.0);
+        assertEquals(target.getY(), data.getSetBackY(), 0.0);
     }
 
     private Location phaseJump(double x, double y, boolean enabled) throws Exception {

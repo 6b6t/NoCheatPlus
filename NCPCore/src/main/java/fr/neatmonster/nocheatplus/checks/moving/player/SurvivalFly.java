@@ -1857,7 +1857,6 @@ public class SurvivalFly extends Check {
         /** Relative vertical distance violation */
         boolean vDistRelVL = false;
         /** Expected difference from current to allowed */       
-        if (yDistance > 0.4 && yDistance < 0.5) System.err.println("PHASEDBG resetFrom=" + resetFrom + " fromGround=" + thisMove.from.onGround + " lastValid=" + lastMove.valid + " lastToValid=" + lastMove.toIsValid + " lastToGround=" + lastMove.to.onGround + " phase=" + data.sfJumpPhase + " allowed=" + vAllowedDistance + " dist=" + yDistance + " guard=" + cc.sfPhaseGuard);
         final double yDistDiffEx          = yDistance - vAllowedDistance; 
         final boolean honeyBlockCollision = MovingUtil.isCollideWithHB(from, to, data) && yDistance < -0.125 && yDistance > -0.128;
         final boolean GravityEffects      = AirWorkarounds.oddJunction(from, to, yDistance, yDistChange, yDistDiffEx, maxJumpGain, resetTo, thisMove, lastMove, data, cc, resetFrom);
