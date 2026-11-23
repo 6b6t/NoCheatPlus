@@ -793,7 +793,7 @@ public class TestPhaseGuardSequence {
 
         tags.clear(); blocks.set(1, 10, 0, Material.AIR);
         assertFalse(InBlockJumpGuard.holdStaleGroundJump(position(0.8, 10, false), tags));
-        blocks.set(1, 10, 0, Material.GLASS);
+        blocks.cleanup(); phaseStack();
         blocks.set(0, 10, 0, Material.STONE_SLAB, new double[] {0, 0, 0, 1, 0.5, 1});
         assertFalse("slab bounds must remain partial", blocks.isFullBounds(0, 10, 0));
         assertFalse(InBlockJumpGuard.holdStaleGroundJump(position(0.5, 10, false), tags));
