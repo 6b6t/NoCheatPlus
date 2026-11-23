@@ -45,6 +45,7 @@ import fr.neatmonster.nocheatplus.compat.versions.ServerVersion;
 import fr.neatmonster.nocheatplus.components.modifier.DummyAttributeAccess;
 import fr.neatmonster.nocheatplus.components.modifier.IAttributeAccess;
 import fr.neatmonster.nocheatplus.logging.StaticLog;
+import fr.neatmonster.nocheatplus.telemetry.Telemetry;
 import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.test.BlockTests;
@@ -121,6 +122,7 @@ public class TestPhaseGuardSequence {
         folia.when(() -> Folia.isOwnedByCurrentRegion(any(Entity.class))).thenReturn(true);
         nativeAccess = mockStatic(NativeLandingAccess.class);
         nativeAccess.when(() -> NativeLandingAccess.canCollide(any(Player.class), any(Entity.class))).thenReturn(true);
+        Telemetry.install(mock(Telemetry.Sink.class));
         blocks = new FakeBlockCache();
         entities = new BlockCacheBukkitModern(Collections.emptyMap());
         try (MockedStatic<DataManager> ignored = mockStatic(DataManager.class)) { check = spy(new SurvivalFly()); }
@@ -138,6 +140,7 @@ public class TestPhaseGuardSequence {
         ServerVersion.setMinecraftVersion(oldVersion);
         blocks.cleanup();
         entities.cleanup();
+        Telemetry.install(null);
     }
 
     @Test public void recordedBoatLandingWithSmallHorizontalMove() { reportLanding(0.04); }
@@ -685,8 +688,8 @@ public class TestPhaseGuardSequence {
         phaseGuard(enabled);
         final PlayerLocation floor = position(0.5, 10.0, true);
         assertNull(move(floor, position(0.7, 10.0, true)));
-        assertTrue(data.playerMoves.getFirstPastMove().valid);
         data.playerMoves.finishCurrentMove();
+        assertTrue(data.playerMoves.getFirstPastMove().valid);
         Location jump = move(position(0.7, 10.0, true), position(0.7, 10.42, false));
         assertEquals(0.0, data.survivalFlyVL, 0.0);
         return jump;
@@ -762,7 +765,7 @@ public class TestPhaseGuardSequence {
         phaseGuard(false);
         PlayerLocation target = shortPose(0.5, 10, true);
         teleportWithStaleGround(target);
-        assertTrue(position(0.5, 10, false).getMaxY() < 11.0);
+        assertTrue(shortPose(0.5, 10, false).getMaxY() < 11.0);
         Location off = move(shortPose(0.5, 10, false), shortPose(0.5, 10 + (double) 0.42F, false));
         resetData(10); phaseStack(); phaseGuard(true); target = shortPose(0.5, 10, true); teleportWithStaleGround(target);
         Location on = move(shortPose(0.5, 10, false), shortPose(0.5, 10 + (double) 0.42F, false));
@@ -792,6 +795,7 @@ public class TestPhaseGuardSequence {
         assertFalse(InBlockJumpGuard.holdStaleGroundJump(position(0.8, 10, false), tags));
         blocks.set(1, 10, 0, Material.GLASS);
         blocks.set(0, 10, 0, Material.STONE_SLAB, new double[] {0, 0, 0, 1, 0.5, 1});
+        assertFalse("slab bounds must remain partial", blocks.isFullBounds(0, 10, 0));
         assertFalse(InBlockJumpGuard.holdStaleGroundJump(position(0.5, 10, false), tags));
 
         blocks.set(0, 10, 0, Material.STONE);
