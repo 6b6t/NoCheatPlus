@@ -549,6 +549,8 @@ public class TestPhaseGuardSequence {
         data.setSetBack(target.getLocation());
         data.resetPlayerPositions(target);
         final PlayerMoveData last = data.playerMoves.getFirstPastMove();
+        // The reproduction trace's stale ground bit sits on to, while resetPlayerPositions sets from.
+        last.to.setExtraProperties(target);
         assertTrue(last.valid);
         assertFalse(last.toIsValid);
         assertTrue(last.to.onGround);
