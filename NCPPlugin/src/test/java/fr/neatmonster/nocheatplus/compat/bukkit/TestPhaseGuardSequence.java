@@ -535,7 +535,7 @@ public class TestPhaseGuardSequence {
     }
 
     private void phaseGuard(boolean enabled) throws Exception {
-        worldData.getRawConfiguration().set(ConfPaths.MOVING_SURVIVALFLY_PHASEGUARD_ACTIVE, enabled, 0);
+        worldData.getRawConfiguration().set(ConfPaths.MOVING_SURVIVALFLY_PHASEGUARD_ACTIVE, enabled, 1154);
         config = new MovingConfig(worldData);
     }
 
