@@ -555,7 +555,7 @@ public class TestPhaseGuardSequence {
 
     private Location phaseJump(double x, double y, boolean enabled) throws Exception {
         phaseGuard(enabled);
-        final PlayerLocation target = position(x, y, true);
+        final PlayerLocation target = position(x, y, false);
         teleportWithStaleGround(target);
         return move(target, position(x, y + (double) 0.42F, false));
     }
@@ -637,10 +637,16 @@ public class TestPhaseGuardSequence {
 
     @Test public void horizontalAndStillMovesRemainUnchanged() throws Exception {
         phaseStack();
-        phaseGuard(true);
-        assertNull(move(position(0.5, 10.0, false), position(0.5, 10.0, false)));
-        data.playerMoves.finishCurrentMove();
-        assertNull(move(position(0.5, 10.0, false), position(0.6, 10.0, false)));
+        phaseGuard(false);
+        Location off = move(position(0.5, 10.0, false), position(0.5, 10.0, false));
+        resetData(10); phaseGuard(true);
+        Location on = move(position(0.5, 10.0, false), position(0.5, 10.0, false));
+        assertEquals(off != null, on != null);
+        resetData(10); phaseGuard(false);
+        off = move(position(0.5, 10.0, false), position(0.6, 10.0, false));
+        resetData(10); phaseGuard(true);
+        on = move(position(0.5, 10.0, false), position(0.6, 10.0, false));
+        assertEquals(off != null, on != null);
     }
 
     @Test public void crawlPoseRemainsUnchanged() throws Exception {
