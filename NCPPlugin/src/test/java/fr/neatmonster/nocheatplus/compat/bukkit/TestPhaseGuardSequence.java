@@ -555,9 +555,9 @@ public class TestPhaseGuardSequence {
 
     private Location phaseJump(double x, double y, boolean enabled) throws Exception {
         phaseGuard(enabled);
-        final PlayerLocation target = position(x, y, false);
+        final PlayerLocation target = position(x, y, true);
         teleportWithStaleGround(target);
-        return move(target, position(x, y + (double) 0.42F, false));
+        return move(position(x, y, false), position(x, y + (double) 0.42F, false));
     }
 
     @Test public void s1HoleCentreIsHeldOnlyWhenEnabled() throws Exception {
