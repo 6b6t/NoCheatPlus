@@ -387,13 +387,16 @@ public class TestLandingStepSequence {
         assertTrue("jump lands above burrow block", landed);
 
         // (iii-a) An ascending destination at the bottom of the second block is not a reset-to.
+        blocks.cleanup();
+        blocks.fill(-2, 63, -2, 2, 64, 2, Material.OBSIDIAN);
         blocks.set(0, 65, 0, Material.OBSIDIAN);
         final int[] stackClimbOn = ascendingIntoTwoBlockStack(true);
         final int[] stackClimbOff = ascendingIntoTwoBlockStack(false);
         assertArrayEquals("ascending into a block bottom preserves live result", stackClimbOff, stackClimbOn);
 
         // (iii-b) A vanilla client caps an in-block jump under a ceiling two blocks above its feet.
-        blocks.set(0, 65, 0, Material.AIR);
+        blocks.cleanup();
+        blocks.fill(-2, 63, -2, 2, 64, 2, Material.OBSIDIAN);
         blocks.set(0, 66, 0, Material.OBSIDIAN);
         final int ceilingOn = cappedCeilingJump(true);
         final int ceilingOff = cappedCeilingJump(false);
@@ -401,12 +404,18 @@ public class TestLandingStepSequence {
         assertEquals("the live in-air path cancels this jump after VL-up", 1, ceilingOff);
 
         // (iii-c) Use NCP's potion helper and the normal envelope for Jump Boost I's initial gain.
-        blocks.set(0, 65, 0, Material.AIR);
-        blocks.set(0, 66, 0, Material.AIR);
+        blocks.cleanup();
+        blocks.fill(-2, 63, -2, 2, 64, 2, Material.OBSIDIAN);
         final int jumpBoostOn = jumpBoostJump(true);
         final int jumpBoostOff = jumpBoostJump(false);
         assertEquals("jump-boost vanilla impulse is accepted", 0, jumpBoostOn);
         assertEquals("jump-boost move is cancelled by live after VL-up", 1, jumpBoostOff);
+
+        // The initial vanilla jump gain is allowed; smaller in-block rises without a ceiling match live.
+        inBlockRiseParity("C6a +0.40 probe", 0.40);
+        inBlockRiseParity("C6a +0.20 probe", 0.20);
+        inBlockRiseParity("C6a +0.0625 probe", 0.0625);
+        inBlockRiseParity("C3b centre +0.20 probe without ceiling", 0.20);
 
         // (iii-d) Sprint-jump horizontal boost remains governed by the live horizontal envelope.
         assertEquals("vanilla-sized sprint-jump impulse is accepted with the workaround", 0, sprintJump());
@@ -515,6 +524,24 @@ public class TestLandingStepSequence {
         assertEquals("all vanilla walk-out steps accepted", 8, accepted);
         assertTrue("final player footprint is fully beyond the starting block",
                 from.getMinX() >= 1.0 && from.getMaxX() > 1.0);
+    }
+
+    private void inBlockRiseParity(final String name, final double rise) throws Exception {
+        final int[] result = new int[2];
+        for (int enabled = 0; enabled <= 1; enabled++) {
+            configureInBlockGround(enabled == 1);
+            resetData(64.0);
+            data.survivalFlyVL = 36.0;
+            final PlayerLocation from = position(0.5, 64.0, false);
+            if (rise == 0.20) {
+                assertFalse("sub-jump rise without a ceiling is not a jump start",
+                        InBlockStand.isVanillaJumpStart(from, 64.0 + rise - 64.0, data.jumpAmplifier,
+                                data.liftOffEnvelope));
+            }
+            final Location correction = move(from, position(0.5, 64.0 + rise, false));
+            result[enabled] = correction == null ? 0 : 1;
+        }
+        assertEquals(name + " equals live (OFF)", result[0], result[1]);
     }
 
     private int[] riseSequence(final boolean enabled) throws Exception {
