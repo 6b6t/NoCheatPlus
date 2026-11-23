@@ -595,8 +595,12 @@ public class TestPhaseGuardSequence {
 
     private boolean enableT1241IfPresent() throws Exception {
         try {
-            final var field = MovingConfig.class.getField("sfInBlockGround");
-            field.setBoolean(config, true);
+            final var path = ConfPaths.class.getField("MOVING_SURVIVALFLY_INBLOCKGROUND_ACTIVE");
+            worldData.getRawConfiguration().set((String) path.get(null), true, 1154);
+            try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+                bukkit.when(Bukkit::getVersion).thenReturn("Folia (MC: 26.2)");
+                config = new MovingConfig(worldData);
+            }
             return true;
         } catch (NoSuchFieldException absentOnMaster) {
             return false;
