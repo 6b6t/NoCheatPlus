@@ -543,8 +543,8 @@ public class TestPhaseGuardSequence {
     }
 
     private void teleportWithStaleGround(PlayerLocation target) {
-        final PlayerLocation grounded = position(0.5, 10.0, true);
-        assertNull(move(grounded, position(0.5, 10.0, true)));
+        final PlayerLocation grounded = position(-1.5, 10.0, false);
+        assertNull(move(grounded, position(-1.4, 10.0, true)));
         data.playerMoves.finishCurrentMove();
         data.resetPlayerPositions(target);
         final PlayerMoveData last = data.playerMoves.getFirstPastMove();
