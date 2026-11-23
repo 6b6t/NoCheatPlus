@@ -547,6 +547,8 @@ public class TestPhaseGuardSequence {
         final PlayerLocation grounded = position(-1.5, 10.0, true);
         assertNull(move(grounded, position(-1.4, 10.0, true)));
         data.playerMoves.finishCurrentMove();
+        // A real teleport installs the target as the setback before clearing packet history.
+        data.setSetBack(target.getLocation());
         data.resetPlayerPositions(target);
         final PlayerMoveData last = data.playerMoves.getFirstPastMove();
         assertTrue(last.valid);
@@ -563,7 +565,8 @@ public class TestPhaseGuardSequence {
 
     @Test public void s1HoleCentreIsHeldOnlyWhenEnabled() throws Exception {
         phaseStack();
-        assertNull(phaseJump(0.5, 10.0, false));
+        Location off = phaseJump(0.5, 10.0, false);
+        assertNull("OFF move correction=" + off + ", vAD=" + data.playerMoves.getCurrentMove().verVelUsed, off);
         resetData(10.0);
         assertNotNull(phaseJump(0.5, 10.0, true));
     }
@@ -571,10 +574,12 @@ public class TestPhaseGuardSequence {
     @Test public void s4cOpenCentreIsHeldOnlyWhenEnabled() throws Exception {
         blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
         blocks.set(0, 10, 0, Material.STONE); blocks.set(0, 11, 0, Material.STONE);
-        assertNull(phaseJump(0.5, 10.0, false));
+        Location off = phaseJump(0.5, 10.0, false);
+        assertNull("OFF move correction=" + off + ", vAD=" + data.playerMoves.getCurrentMove().verVelUsed, off);
         resetData(10.0);
         assertNotNull(phaseJump(0.5, 10.0, true));
     }
+
 
     @Test public void c9HeadBlockedColumnIsHeld() throws Exception {
         phaseStack(); blocks.set(1, 10, 0, Material.AIR);
