@@ -707,6 +707,7 @@ public abstract class ConfPaths {
     public static final String MOVING_SURVIVALFLY_VLFREQUENCY_MINADDEDVLS   = MOVING_SURVIVALFLY_VLFREQUENCY + "mintoadd";
     public static final String MOVING_SURVIVALFLY_VLFREQUENCY_MOVECOUNT     = MOVING_SURVIVALFLY_VLFREQUENCY + "movecount";
     public static final String MOVING_SURVIVALFLY_VLFREQUENCY_MOREVLS       = MOVING_SURVIVALFLY_VLFREQUENCY + "morevls";
+    public static final String MOVING_SURVIVALFLY_PHASEGUARD_ACTIVE        = MOVING_SURVIVALFLY + "phaseguard.active";
 
     @GlobalConfig
     public static final String  MOVING_SURVIVALFLY_HOVER                    = MOVING_SURVIVALFLY + "hover.";

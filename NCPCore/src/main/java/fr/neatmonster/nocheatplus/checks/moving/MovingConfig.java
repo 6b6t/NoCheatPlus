@@ -138,6 +138,7 @@ public class MovingConfig extends ACheckConfig {
     public final boolean    sfSetBackPolicyVoid;
     public final boolean    sfSetBackPolicyFallDamage;
     public final ActionList survivalFlyActions;
+    public final boolean sfPhaseGuard;
 
     public final boolean 	sfHoverCheck; // TODO: Sub check ?
     public final int 		sfHoverTicks;
@@ -292,6 +293,7 @@ public class MovingConfig extends ACheckConfig {
         survivalFlyVLFreezeCount = config.getInt(ConfPaths.MOVING_SURVIVALFLY_LENIENCY_FREEZECOUNT);
         survivalFlyVLFreezeInAir = config.getBoolean(ConfPaths.MOVING_SURVIVALFLY_LENIENCY_FREEZEINAIR);
         survivalFlyActions = config.getOptimizedActionList(ConfPaths.MOVING_SURVIVALFLY_ACTIONS, Permissions.MOVING_SURVIVALFLY);
+        sfPhaseGuard = config.getBoolean(ConfPaths.MOVING_SURVIVALFLY_PHASEGUARD_ACTIVE, false);
 
         sfHoverCheck = config.getBoolean(ConfPaths.MOVING_SURVIVALFLY_HOVER_CHECK);
         sfHoverTicks = config.getInt(ConfPaths.MOVING_SURVIVALFLY_HOVER_TICKS);

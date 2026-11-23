@@ -561,6 +561,7 @@ public class DefaultConfig extends ConfigFile {
         set(ConfPaths.MOVING_SURVIVALFLY_VLFREQUENCY_MINADDEDVLS, 5, 1154);
         set(ConfPaths.MOVING_SURVIVALFLY_VLFREQUENCY_MOREVLS, 5, 1154);
         set(ConfPaths.MOVING_SURVIVALFLY_VLFREQUENCY_MOVECOUNT, 10, 1154);
+        set(ConfPaths.MOVING_SURVIVALFLY_PHASEGUARD_ACTIVE, false, 1154);
         // More leniency features
         set(ConfPaths.MOVING_SURVIVALFLY_LENIENCY_FREEZECOUNT, 40, 1144);
         set(ConfPaths.MOVING_SURVIVALFLY_LENIENCY_FREEZEINAIR, true, 1143);
