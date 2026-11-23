@@ -482,42 +482,50 @@ public class TestPhaseGuardSequence {
     }
 
     private PlayerLocation position(double x, double y, boolean ground) {
+        return position(x, y, 0.5, ground);
+    }
+
+    private PlayerLocation position(double x, double y, double z, boolean ground) {
         final PlayerLocation loc = mock(PlayerLocation.class);
         when(loc.getWorld()).thenReturn(world);
         when(loc.getWorldName()).thenReturn("world");
         when(loc.getX()).thenReturn(x);
         when(loc.getY()).thenReturn(y);
-        when(loc.getZ()).thenReturn(0.5);
+        when(loc.getZ()).thenReturn(z);
         when(loc.getMinX()).thenReturn(x - 0.3);
         when(loc.getMaxX()).thenReturn(x + 0.3);
-        when(loc.getMinZ()).thenReturn(0.2);
-        when(loc.getMaxZ()).thenReturn(0.8);
+        when(loc.getMinZ()).thenReturn(z - 0.3);
+        when(loc.getMaxZ()).thenReturn(z + 0.3);
         when(loc.getMinY()).thenReturn(y);
         when(loc.getMaxY()).thenReturn(y + 1.8);
-        when(loc.getLocation()).thenReturn(new Location(world, x, y, 0.5));
+        when(loc.getLocation()).thenReturn(new Location(world, x, y, z));
         when(loc.isOnGround()).thenReturn(ground);
         when(loc.getMCAccess()).thenReturn(access);
         when(loc.getBlockCache()).thenReturn(blocks);
         when(loc.isOnGround(anyDouble(), anyDouble(), anyDouble())).thenAnswer(inv -> {
             double margin = inv.getArgument(0), horizontal = inv.getArgument(1), vertical = inv.getArgument(2);
-            return BlockProperties.isOnGround(blocks, x - 0.3 - horizontal, y - margin - vertical, 0.2 - horizontal,
-                    x + 0.3 + horizontal, y + vertical, 0.8 + horizontal);
+            return BlockProperties.isOnGround(blocks, x - 0.3 - horizontal, y - margin - vertical, z - 0.3 - horizontal,
+                    x + 0.3 + horizontal, y + vertical, z + 0.3 + horizontal);
+        });
+        when(loc.isOnGround(anyDouble())).thenAnswer(inv -> {
+            double margin = inv.getArgument(0);
+            return BlockProperties.isOnGround(blocks, x - 0.3, y - margin, z - 0.3, x + 0.3, y, z + 0.3);
         });
         when(loc.standsOnEntityContact(anyDouble(), anyDouble(), anyDouble())).thenAnswer(inv -> {
             double margin = inv.getArgument(0), horizontal = inv.getArgument(1), vertical = inv.getArgument(2);
-            return entities.standsOnEntityContact(player, x - 0.3 - horizontal, y - margin - vertical, 0.2 - horizontal,
-                    x + 0.3 + horizontal, y + vertical, 0.8 + horizontal);
+            return entities.standsOnEntityContact(player, x - 0.3 - horizontal, y - margin - vertical, z - 0.3 - horizontal,
+                    x + 0.3 + horizontal, y + vertical, z + 0.3 + horizontal);
         });
         when(loc.stepsOnEntityTop(any(), anyDouble())).thenAnswer(inv -> {
             PlayerLocation source = inv.getArgument(0);
             double epsilon = inv.getArgument(1);
-            return entities.stepsOnEntityTop(player, x - 0.3, y - epsilon, 0.2, x + 0.3, y + epsilon, 0.8,
+            return entities.stepsOnEntityTop(player, x - 0.3, y - epsilon, z - 0.3, x + 0.3, y + epsilon, z + 0.3,
                     source.getMinX(), source.getMinZ(), source.getMaxX(), source.getMaxZ());
         });
         when(loc.standsOnEntityTop(anyDouble())).thenAnswer(inv -> {
             double epsilon = inv.getArgument(0);
-            return entities.standsOnEntityTop(player, x - 0.3, y - epsilon, 0.2,
-                    x + 0.3, y + epsilon, 0.8);
+            return entities.standsOnEntityTop(player, x - 0.3, y - epsilon, z - 0.3,
+                    x + 0.3, y + epsilon, z + 0.3);
         });
         return loc;
     }
@@ -536,6 +544,19 @@ public class TestPhaseGuardSequence {
     }
     private void phaseStack() {
         blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
+        blocks.set(0, 10, 0, Material.STONE);
+        blocks.set(0, 11, 0, Material.STONE);
+    }
+
+    private void phaseStackHole() {
+        blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
+        for (int x = -1; x <= 1; x++) {
+            for (int z = -1; z <= 1; z++) {
+                if (x == 0 && z == 0) continue;
+                blocks.set(x, 10, z, Material.STONE);
+                blocks.set(x, 11, z, Material.STONE);
+            }
+        }
         blocks.set(0, 10, 0, Material.STONE);
         blocks.set(0, 11, 0, Material.STONE);
     }
@@ -594,9 +615,13 @@ public class TestPhaseGuardSequence {
     }
 
     private boolean enableT1241IfPresent() throws Exception {
+        return setT1241IfPresent(true);
+    }
+
+    private boolean setT1241IfPresent(boolean enabled) throws Exception {
         try {
             final var path = ConfPaths.class.getField("MOVING_SURVIVALFLY_INBLOCKGROUND_ACTIVE");
-            worldData.getRawConfiguration().set((String) path.get(null), true, 1154);
+            worldData.getRawConfiguration().set((String) path.get(null), enabled, 1154);
             try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
                 bukkit.when(Bukkit::getVersion).thenReturn("Folia (MC: 26.2)");
                 config = new MovingConfig(worldData);
@@ -678,25 +703,50 @@ public class TestPhaseGuardSequence {
     }
 
     @Test public void s2CornerRouteRemainsAllowed() throws Exception {
-        Location off = s2Corner(false);
-        double offVl = data.survivalFlyVL;
-        resetData(10); phaseStack();
-        Location on = s2Corner(true);
-        assertEquals("corner path stays accepted", off != null, on != null);
-        assertNull(on);
-        assertEquals(offVl, data.survivalFlyVL, 0.0);
-        assertTrue(violations.isEmpty() || !String.valueOf(violations.get(violations.size() - 1).getTelemetryTags()).contains("phaseguard_hold"));
+        final boolean t1241Available = enableT1241IfPresent();
+        for (boolean t1241 : new boolean[] {false, true}) {
+            if (t1241 && !t1241Available) continue;
+            for (boolean afterTeleport : new boolean[] {false, true}) {
+                double offVl = runS2Corner(false, t1241, afterTeleport);
+                double onVl = runS2Corner(true, t1241, afterTeleport);
+                assertEquals("corner route VL is unchanged (t1241=" + t1241 + ", teleport=" + afterTeleport + ")",
+                        offVl, onVl, 0.0);
+                assertEquals("corner route has no violations", 0.0, onVl, 0.0);
+            }
+        }
     }
 
-    private Location s2Corner(boolean enabled) throws Exception {
+    private double runS2Corner(boolean enabled, boolean t1241, boolean afterTeleport) throws Exception {
+        resetData(10);
+        phaseStackHole();
         phaseGuard(enabled);
-        final PlayerLocation floor = position(0.5, 10.0, true);
-        assertNull(move(floor, position(0.7, 10.0, true)));
-        data.playerMoves.finishCurrentMove();
-        assertTrue(data.playerMoves.getFirstPastMove().valid);
-        Location jump = move(position(0.7, 10.0, true), position(0.7, 10.42, false));
+        final boolean t1241Available = setT1241IfPresent(t1241);
+        if (t1241) assertTrue(t1241Available);
+        final PlayerLocation corner = position(0.3, 10.0, 0.3, false);
+        assertTrue("corner body's 0.03 ground margin matches live lostground_micro", corner.isOnGround(0.03));
+        if (afterTeleport) {
+            teleportWithStaleGround(position(0.3, 10.0, 0.3, true));
+            assertFalse(data.playerMoves.getFirstPastMove().toIsValid);
+        } else {
+            // Model the S2 forward/back/left/right key sequence in the corner of the stack cell.
+            PlayerLocation at = corner;
+            final PlayerLocation[] keys = {
+                    position(0.35, 10.0, 0.3, false), position(0.3, 10.0, 0.3, false),
+                    position(0.3, 10.0, 0.35, false), position(0.3, 10.0, 0.3, false)
+            };
+            for (PlayerLocation next : keys) {
+                assertNull("corner key move is allowed", move(at, next));
+                data.playerMoves.finishCurrentMove();
+                at = next;
+            }
+            assertTrue(data.playerMoves.getFirstPastMove().valid);
+            assertTrue(data.playerMoves.getFirstPastMove().toIsValid);
+        }
+        violations.clear();
+        assertNull(move(position(0.3, 10.0, 0.3, false), position(0.3, 10.42, 0.3, false)));
         assertEquals(0.0, data.survivalFlyVL, 0.0);
-        return jump;
+        assertTrue("no held violation", violations.isEmpty());
+        return data.survivalFlyVL;
     }
 
     @Test public void groundedJumpAfterTeleportRemainsAllowed() throws Exception {
