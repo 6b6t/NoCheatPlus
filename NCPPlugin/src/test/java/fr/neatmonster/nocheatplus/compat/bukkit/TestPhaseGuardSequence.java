@@ -536,7 +536,10 @@ public class TestPhaseGuardSequence {
 
     private void phaseGuard(boolean enabled) throws Exception {
         worldData.getRawConfiguration().set(ConfPaths.MOVING_SURVIVALFLY_PHASEGUARD_ACTIVE, enabled, 1154);
-        config = new MovingConfig(worldData);
+        try (MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class)) {
+            bukkit.when(Bukkit::getVersion).thenReturn("Folia (MC: 26.2)");
+            config = new MovingConfig(worldData);
+        }
     }
 
     private void teleportWithStaleGround(PlayerLocation target) {
