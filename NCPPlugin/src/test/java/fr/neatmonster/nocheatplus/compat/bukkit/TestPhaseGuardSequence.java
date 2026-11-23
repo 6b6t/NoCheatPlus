@@ -32,6 +32,7 @@ import fr.neatmonster.nocheatplus.worlds.IWorldData;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.location.tracking.LocationTrace.TraceEntryPool;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LostGround;
+import fr.neatmonster.nocheatplus.checks.moving.magic.InBlockJumpGuard;
 import fr.neatmonster.nocheatplus.checks.moving.model.LiftOffEnvelope;
 import fr.neatmonster.nocheatplus.checks.moving.model.PlayerMoveData;
 import fr.neatmonster.nocheatplus.checks.moving.player.SurvivalFly;
@@ -567,13 +568,68 @@ public class TestPhaseGuardSequence {
         return move(position(x, y, false), position(x, y + (double) 0.42F, false));
     }
 
+    private void assertStaleState(PlayerLocation target) {
+        final PlayerMoveData last = data.playerMoves.getFirstPastMove();
+        assertTrue(last.valid);
+        assertFalse(last.toIsValid);
+        assertTrue(last.to.onGround);
+        assertEquals(target.getX(), data.getSetBackX(), 0.0);
+        assertEquals(target.getY(), data.getSetBackY(), 0.0);
+    }
+
+    private void assertEquivalentStaleJump(double x, double y) throws Exception {
+        resetData(y);
+        violations.clear();
+        Location off = phaseJump(x, y, false);
+        double offVl = data.survivalFlyVL;
+        resetData(y);
+        violations.clear();
+        Location on = phaseJump(x, y, true);
+        assertEquals("stale branch must be behaviorally equivalent", off != null, on != null);
+        assertEquals("stale branch VL", offVl, data.survivalFlyVL, 1e-9);
+        assertTrue("no phaseguard_hold tag", violations.isEmpty() || !String.valueOf(violations.get(0).getTelemetryTags()).contains("phaseguard_hold"));
+    }
+
+    private boolean enableT1241IfPresent() throws Exception {
+        try {
+            final var field = MovingConfig.class.getField("sfInBlockGround");
+            field.setBoolean(config, true);
+            return true;
+        } catch (NoSuchFieldException absentOnMaster) {
+            return false;
+        }
+    }
+
+    private PlayerLocation shortPose(double x, double y, boolean ground) {
+        final PlayerLocation loc = position(x, y, ground);
+        when(loc.getMaxY()).thenReturn(y + 0.6);
+        return loc;
+    }
+
     @Test public void s1HoleCentreIsHeldOnlyWhenEnabled() throws Exception {
         phaseStack();
+        violations.clear();
         Location off = phaseJump(0.5, 10.0, false);
         assertNull("OFF move correction=" + off + ", vAD=" + data.playerMoves.getCurrentMove().verVelUsed
                 + ", VL=" + data.survivalFlyVL + ", tags=" + (violations.isEmpty() ? "none" : violations.get(0).getTelemetryTags()), off);
         resetData(10.0);
         assertNotNull(phaseJump(0.5, 10.0, true));
+        assertEquals(42.0, data.survivalFlyVL, 0.01);
+        assertFalse("guard tag is attached to the held violation", violations.isEmpty());
+        assertTrue(String.valueOf(violations.get(0).getTelemetryTags()).contains("phaseguard_hold"));
+    }
+
+    @Test public void s1HoleCentreIsHeldWithT1241KeyAlsoOn() throws Exception {
+        phaseStack();
+        phaseGuard(true);
+        boolean available = enableT1241IfPresent();
+        final PlayerLocation target = position(0.5, 10, true);
+        teleportWithStaleGround(target);
+        assertStaleState(target);
+        Location held = move(position(0.5, 10, false), position(0.5, 10 + (double) 0.42F, false));
+        assertNotNull(held);
+        assertEquals(42.0, data.survivalFlyVL, 0.01);
+        if (available) assertTrue(String.valueOf(violations.get(0).getTelemetryTags()).contains("phaseguard_hold"));
     }
 
     @Test public void s4cOpenCentreIsHeldOnlyWhenEnabled() throws Exception {
@@ -601,80 +657,157 @@ public class TestPhaseGuardSequence {
 
     @Test public void freshGroundFlagFalseDoesNotAddGuardBehavior() throws Exception {
         phaseStack();
-        final PlayerLocation at = position(0.5, 10.0, false);
-        phaseGuard(false); final Location off = move(at, position(0.5, 10.42, false));
-        resetData(10.0); phaseGuard(true); final Location on = move(at, position(0.5, 10.42, false));
+        phaseGuard(false);
+        final PlayerLocation target = position(0.5, 10.0, true);
+        teleportWithStaleGround(target);
+        data.playerMoves.getFirstPastMove().to.onGround = false;
+        final Location off = move(position(0.5, 10, false), position(0.5, 10 + (double) 0.42F, false));
+        resetData(10.0); phaseGuard(true); teleportWithStaleGround(target);
+        data.playerMoves.getFirstPastMove().to.onGround = false;
+        final Location on = move(position(0.5, 10, false), position(0.5, 10 + (double) 0.42F, false));
         assertEquals(off != null, on != null);
+        assertEquals(42.0, data.survivalFlyVL, 0.01);
+        assertTrue(violations.isEmpty() || !String.valueOf(violations.get(violations.size() - 1).getTelemetryTags()).contains("phaseguard_hold"));
     }
 
     @Test public void s2CornerRouteRemainsAllowed() throws Exception {
-        phaseStack();
+        Location off = s2Corner(false);
+        double offVl = data.survivalFlyVL;
+        resetData(10); phaseStack();
+        Location on = s2Corner(true);
+        assertEquals("corner path stays accepted", off != null, on != null);
+        assertNull(on);
+        assertEquals(offVl, data.survivalFlyVL, 0.0);
+        assertTrue(violations.isEmpty() || !String.valueOf(violations.get(violations.size() - 1).getTelemetryTags()).contains("phaseguard_hold"));
+    }
+
+    private Location s2Corner(boolean enabled) throws Exception {
+        phaseGuard(enabled);
         final PlayerLocation floor = position(0.5, 10.0, true);
-        phaseGuard(true);
         assertNull(move(floor, position(0.7, 10.0, true)));
+        assertTrue(data.playerMoves.getFirstPastMove().valid);
         data.playerMoves.finishCurrentMove();
-        assertNull(move(position(0.7, 10.0, true), position(0.7, 10.42, false)));
+        Location jump = move(position(0.7, 10.0, true), position(0.7, 10.42, false));
+        assertEquals(0.0, data.survivalFlyVL, 0.0);
+        return jump;
     }
 
     @Test public void groundedJumpAfterTeleportRemainsAllowed() throws Exception {
-        phaseStack(); phaseGuard(true);
-        assertNull(move(position(0.5, 10.0, true), position(0.5, 10.42, false)));
+        blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
+        phaseGuard(true);
+        final PlayerLocation target = position(0.5, 10.0, true);
+        teleportWithStaleGround(target);
+        assertStaleState(target);
+        assertNull(move(position(0.5, 10.0, true), position(0.5, 10 + (double) 0.42F, false)));
+        assertEquals(0.0, data.survivalFlyVL, 0.0);
     }
 
     @Test public void staleGroundFlagAboveAirRemainsUnchanged() throws Exception {
         blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
-        PlayerLocation at = position(0.5, 10.0, true);
-        phaseGuard(false); Location off = move(at, position(0.5, 10.42, false));
-        resetData(10); phaseGuard(true); Location on = move(at, position(0.5, 10.42, false));
-        assertEquals(off != null, on != null);
+        assertEquivalentStaleJump(0.5, 10.25);
     }
 
     @Test public void headClearBurrowRemainsUnchanged() throws Exception {
         blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
         blocks.set(0, 10, 0, Material.STONE);
-        PlayerLocation at = position(0.5, 10.0, false);
-        phaseGuard(false); Location off = move(at, position(0.5, 10.42, false));
-        resetData(10); phaseGuard(true); Location on = move(at, position(0.5, 10.42, false));
-        assertEquals(off != null, on != null);
+        assertEquivalentStaleJump(0.5, 10.0);
+    }
+
+    @Test public void headClearBurrowZeroDyKeyMoveThenJumpMatchesT1241Alone() throws Exception {
+        blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
+        blocks.set(0, 10, 0, Material.STONE);
+        resetData(10); phaseGuard(false);
+        PlayerLocation target = position(0.5, 10, true); teleportWithStaleGround(target);
+        Location offKey = move(position(0.5, 10, false), position(0.6, 10, false));
+        data.playerMoves.finishCurrentMove();
+        Location offJump = move(position(0.6, 10, false), position(0.6, 10 + (double) 0.42F, false));
+        resetData(10); phaseGuard(true);
+        target = position(0.5, 10, true); teleportWithStaleGround(target);
+        enableT1241IfPresent();
+        Location onKey = move(position(0.5, 10, false), position(0.6, 10, false));
+        data.playerMoves.finishCurrentMove();
+        Location onJump = move(position(0.6, 10, false), position(0.6, 10 + (double) 0.42F, false));
+        assertEquals(offKey != null, onKey != null);
+        assertEquals(offJump != null, onJump != null);
+        assertEquals("zero-dy burrow key path matches t1241 alone", offJump != null, onJump != null);
     }
 
     @Test public void pearlFaceStraddleWithAirFootColumnRemainsUnchanged() throws Exception {
         blocks.fill(-2, 9, -2, 2, 9, 2, Material.GLASS);
         blocks.set(0, 10, 0, Material.STONE); blocks.set(0, 11, 0, Material.STONE);
-        PlayerLocation at = position(0.8, 10.0, false);
-        phaseGuard(false); Location off = move(at, position(0.8, 10.42, false));
-        resetData(10); phaseGuard(true); Location on = move(at, position(0.8, 10.42, false));
-        assertEquals(off != null, on != null);
+        assertEquivalentStaleJump(0.8, 10.0);
     }
 
     @Test public void horizontalAndStillMovesRemainUnchanged() throws Exception {
         phaseStack();
-        phaseGuard(false);
-        Location off = move(position(0.5, 10.0, false), position(0.5, 10.0, false));
-        resetData(10); phaseGuard(true);
-        Location on = move(position(0.5, 10.0, false), position(0.5, 10.0, false));
+        Location off = staleHorizontal(false, 0.5, 0.5);
+        resetData(10); phaseStack();
+        Location on = staleHorizontal(true, 0.5, 0.5);
         assertEquals(off != null, on != null);
-        resetData(10); phaseGuard(false);
-        off = move(position(0.5, 10.0, false), position(0.6, 10.0, false));
-        resetData(10); phaseGuard(true);
-        on = move(position(0.5, 10.0, false), position(0.6, 10.0, false));
+        resetData(10); phaseStack(); off = staleHorizontal(false, 0.5, 0.6);
+        resetData(10); phaseStack(); on = staleHorizontal(true, 0.5, 0.6);
         assertEquals(off != null, on != null);
+    }
+
+    private Location staleHorizontal(boolean enabled, double fromX, double toX) throws Exception {
+        phaseGuard(enabled);
+        PlayerLocation target = position(fromX, 10, true);
+        teleportWithStaleGround(target);
+        assertStaleState(target);
+        return move(position(fromX, 10, false), position(toX, 10, false));
     }
 
     @Test public void crawlPoseRemainsUnchanged() throws Exception {
         phaseStack();
-        PlayerLocation at = position(0.5, 10.0, false);
-        phaseGuard(false); Location off = move(at, position(0.5, 10.42, false));
-        resetData(10); phaseGuard(true); Location on = move(at, position(0.5, 10.42, false));
+        phaseGuard(false);
+        PlayerLocation target = shortPose(0.5, 10, true);
+        teleportWithStaleGround(target);
+        assertTrue(position(0.5, 10, false).getMaxY() < 11.0);
+        Location off = move(shortPose(0.5, 10, false), shortPose(0.5, 10 + (double) 0.42F, false));
+        resetData(10); phaseStack(); phaseGuard(true); target = shortPose(0.5, 10, true); teleportWithStaleGround(target);
+        Location on = move(shortPose(0.5, 10, false), shortPose(0.5, 10 + (double) 0.42F, false));
         assertEquals(off != null, on != null);
     }
 
     @Test public void netherRoofGuardIsNeverMoreLenient() throws Exception {
-        phaseStack();
-        PlayerLocation at = position(0.5, 127.0, false);
-        phaseGuard(false); Location off = move(at, position(0.5, 127.42, false));
-        resetData(127); phaseGuard(true); Location on = move(at, position(0.5, 127.42, false));
+        blocks.fill(-2, 126, -2, 2, 126, 2, Material.GLASS);
+        blocks.set(0, 127, 0, Material.STONE); blocks.set(0, 128, 0, Material.STONE);
+        resetData(127); phaseGuard(false);
+        PlayerLocation target = position(0.5, 127.0, true); teleportWithStaleGround(target);
+        Location off = move(position(0.5, 127, false), position(0.5, 127 + (double) 0.42F, false));
+        resetData(127); blocks.fill(-2, 126, -2, 2, 126, 2, Material.GLASS);
+        blocks.set(0, 127, 0, Material.STONE); blocks.set(0, 128, 0, Material.STONE);
+        phaseGuard(true); target = position(0.5, 127, true); teleportWithStaleGround(target);
+        Location on = move(position(0.5, 127, false), position(0.5, 127 + (double) 0.42F, false));
         assertFalse(off != null && on == null);
+    }
+
+    @Test public void predicateRejectsAnAirColumnAndPartialFeetButChecksHeadGeometry() {
+        phaseStack();
+        List<String> tags = new ArrayList<>();
+        assertTrue(InBlockJumpGuard.holdStaleGroundJump(position(0.5, 10, false), tags));
+        assertTrue(tags.contains("phaseguard_hold"));
+
+        tags.clear(); blocks.set(1, 10, 0, Material.AIR);
+        assertFalse(InBlockJumpGuard.holdStaleGroundJump(position(0.8, 10, false), tags));
+        blocks.set(1, 10, 0, Material.GLASS);
+        blocks.set(0, 10, 0, Material.STONE_SLAB, new double[] {0, 0, 0, 1, 0.5, 1});
+        assertFalse(InBlockJumpGuard.holdStaleGroundJump(position(0.5, 10, false), tags));
+
+        blocks.set(0, 10, 0, Material.STONE);
+        blocks.set(0, 11, 0, Material.AIR);
+        assertFalse(InBlockJumpGuard.holdStaleGroundJump(position(0.5, 10, false), tags));
+        blocks.set(0, 11, 0, Material.STONE_SLAB, new double[] {0, 0, 0, 1, 0.5, 1});
+        assertTrue(InBlockJumpGuard.holdStaleGroundJump(position(0.5, 10, false), tags));
+        blocks.set(0, 11, 0, Material.STONE);
+        assertTrue(InBlockJumpGuard.holdStaleGroundJump(position(0.5, 10, false), tags));
+    }
+
+    @Test public void predicateAcceptsFeetMinYJustBelowBlockBoundaryWithinEpsilon() {
+        phaseStack();
+        PlayerLocation loc = position(0.5, 10, false);
+        when(loc.getMinY()).thenReturn(10.0 - 5.0E-8);
+        assertTrue(InBlockJumpGuard.holdStaleGroundJump(loc, new ArrayList<>()));
     }
 
     @Test public void phaseGuardDefaultsOffAndCanBeEnabled() throws Exception {
