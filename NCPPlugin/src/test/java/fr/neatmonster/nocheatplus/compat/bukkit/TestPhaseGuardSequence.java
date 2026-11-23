@@ -722,7 +722,7 @@ public class TestPhaseGuardSequence {
         phaseGuard(enabled);
         final boolean t1241Available = setT1241IfPresent(t1241);
         if (t1241) assertTrue(t1241Available);
-        final PlayerLocation corner = position(0.3, 10.0, 0.3, false);
+        final PlayerLocation corner = position(0.3, 10.0, 0.3, !afterTeleport);
         // The live trace reports touched-ground at this exact corner. The production location caches that
         // one-argument probe from its movement history; our synthetic location supplies the observed result.
         when(corner.isOnGround(0.03)).thenReturn(true);
@@ -734,8 +734,8 @@ public class TestPhaseGuardSequence {
             // Model the S2 forward/back/left/right key sequence in the corner of the stack cell.
             PlayerLocation at = corner;
             final PlayerLocation[] keys = {
-                    position(0.35, 10.0, 0.3, false), position(0.3, 10.0, 0.3, false),
-                    position(0.3, 10.0, 0.35, false), position(0.3, 10.0, 0.3, false)
+                    position(0.35, 10.0, 0.3, true), position(0.3, 10.0, 0.3, true),
+                    position(0.3, 10.0, 0.35, true), position(0.3, 10.0, 0.3, true)
             };
             for (PlayerLocation next : keys) {
                 assertNull("corner key move is allowed", move(at, next));
