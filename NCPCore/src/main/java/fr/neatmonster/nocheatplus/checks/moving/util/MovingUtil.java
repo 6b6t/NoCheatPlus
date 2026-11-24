@@ -48,6 +48,7 @@ import fr.neatmonster.nocheatplus.logging.StaticLog;
 import fr.neatmonster.nocheatplus.players.DataManager;
 import fr.neatmonster.nocheatplus.players.IPlayerData;
 import fr.neatmonster.nocheatplus.utilities.CheckUtils;
+import fr.neatmonster.nocheatplus.utilities.TickTask;
 import fr.neatmonster.nocheatplus.utilities.location.LocUtil;
 import fr.neatmonster.nocheatplus.utilities.location.PlayerLocation;
 import fr.neatmonster.nocheatplus.utilities.location.RichBoundsLocation;
@@ -287,6 +288,8 @@ public class MovingUtil {
     public static boolean isGlidingWithElytraValid(final Player player, final PlayerLocation fromLocation, 
                                                    final MovingData data, final MovingConfig cc) {
 
+        if (data.isElytraRelightBlocked(TickTask.getTick())) return false;
+
         // TODO: Configuration for which/if to check on either lift-off / unknown / gliding.
         // TODO: Item durability?
         // TODO: TEST LAVA (ordinary and boost, lift off and other).
@@ -340,6 +343,7 @@ public class MovingUtil {
      * @return
      */
     public static boolean canLiftOffWithElytra(final Player player, final PlayerLocation loc, final MovingData data) {
+        if (data.isElytraRelightBlocked(TickTask.getTick())) return false;
         // TODO: Item durability here too?
         // TODO: this/firstPast- Move not touching or not explicitly on ground would be enough?
         return 

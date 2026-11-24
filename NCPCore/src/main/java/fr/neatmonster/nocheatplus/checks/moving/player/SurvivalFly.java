@@ -563,14 +563,17 @@ public class SurvivalFly extends Check {
 
 
 
-        // Elytra unequip: the client may still glide until it gets the equipment
+        // Elytra unequip or depletion: the client may still glide until it gets the equipment
         // change, then coasts with air drag and gravity. Inside that window the
         // move is accepted; ground, liquid, climbable or any move outside the
         // window ends it and the move is judged as a normal survival move. So does an
-        // elytra back in the chest slot, gliding or not.
+        // usable elytra back in the chest slot, gliding or not.
+        final boolean glideExit = lastMove.flyCheck == CheckType.MOVING_CREATIVEFLY
+                && lastMove.modelFlying != null && MovingConfig.ID_JETPACK_ELYTRA.equals(lastMove.modelFlying.getId());
+        final int coastMoves = glideExit ? ElytraResidual.MAX_COAST_MOVES : lastMove.elytraCoastMoves;
         if (ElytraResidual.allow(data.elytraResidual, hDistance, yDistance, to.getPitch(),
                 fromOnGround || toOnGround, from.isResetCond() || to.isResetCond(),
-                data.elytraResidual.open && Bridge1_9.isWearingElytra(player))) {
+                data.elytraResidual.open && Bridge1_9.isWearingUsableElytra(player))) {
             hDistanceAboveLimit = 0.0;
             vDistanceAboveLimit = 0.0;
             context.tags.remove("hspeed");
@@ -578,6 +581,21 @@ public class SurvivalFly extends Check {
             context.tags.add("elytra_residual");
             // Same as an accepted CreativeFly glide: the last allowed position is the set back.
             data.setSetBack(to);
+        }
+        else if (coastMoves > 0 && lastMove.toIsValid && Magic.inAir(thisMove) && !resetFrom && !resetTo
+                && TrigUtil.isSamePos(thisMove.from, lastMove.to)
+                && Bridge1_9.isWearingUsableElytra(player)) {
+            final double lastX = lastMove.to.getX() - lastMove.from.getX();
+            final double lastZ = lastMove.to.getZ() - lastMove.from.getZ();
+            if (ElytraResidual.matchesGlideCoast(lastX, lastMove.yDistance, lastZ, xDistance, yDistance, zDistance, glideExit)
+                    || glideExit && data.fireworksBoostTickExpire >= tick && data.fireworksBoostTickExpire != 0
+                        && ElytraResidual.matchesRocketGlideExit(lastX, lastMove.yDistance, lastZ,
+                                xDistance, yDistance, zDistance, from.getYaw(), from.getPitch())) {
+                thisMove.elytraCoastMoves = coastMoves - 1;
+                hDistanceAboveLimit = 0.0;
+                vDistanceAboveLimit = 0.0;
+                context.tags.add("elytra_glide_coast");
+            }
         }
 
 
