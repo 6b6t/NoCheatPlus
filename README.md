@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> This repository has moved to **[git.6b6t.org/6b6t/NoCheatPlus](https://git.6b6t.org/6b6t/NoCheatPlus)**. This GitHub copy is archived and no longer updated.
+
 
 NoCheatPlus
 ---------
