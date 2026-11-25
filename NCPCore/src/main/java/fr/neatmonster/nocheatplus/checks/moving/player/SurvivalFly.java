@@ -37,6 +37,7 @@ import fr.neatmonster.nocheatplus.checks.moving.ElytraResidual;
 import fr.neatmonster.nocheatplus.checks.moving.MovingConfig;
 import fr.neatmonster.nocheatplus.checks.moving.MovingData;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LostGround;
+import fr.neatmonster.nocheatplus.checks.moving.magic.InBlockJumpGuard;
 import fr.neatmonster.nocheatplus.checks.moving.magic.Magic;
 import fr.neatmonster.nocheatplus.checks.moving.magic.MagicBunny;
 import fr.neatmonster.nocheatplus.checks.moving.magic.AirWorkarounds;
@@ -1852,7 +1853,8 @@ public class SurvivalFly extends Check {
                 // vAllowedDistance = lastMove.yDistance * data.lastFrictionVertical - Magic.GRAVITY_MIN;
             }
             // Allow jumping.
-            else if (thisMove.from.onGround || (lastMove.valid && lastMove.to.onGround)) {
+            else if (thisMove.from.onGround || (lastMove.valid && lastMove.to.onGround
+                    && !(cc.sfPhaseGuard && yDistance > 0.0 && InBlockJumpGuard.holdStaleGroundJump(from, context.tags)))) {
                 // TODO: Is (lastMove.valid && lastMove.to.onGround) safe?
                 vAllowedDistance = maxJumpGain + jumpGainMargin;
                 if (lastMove.to.onGround && vAllowedDistance < 0.1) vAllowedDistance = maxJumpGain + jumpGainMargin;
