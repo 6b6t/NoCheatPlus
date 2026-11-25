@@ -43,6 +43,7 @@ import fr.neatmonster.nocheatplus.checks.moving.magic.AirWorkarounds;
 import fr.neatmonster.nocheatplus.checks.moving.magic.BedBounce;
 import fr.neatmonster.nocheatplus.checks.moving.magic.ShelfBounce;
 import fr.neatmonster.nocheatplus.checks.moving.magic.CornerStep;
+import fr.neatmonster.nocheatplus.checks.moving.magic.InBlockStand;
 import fr.neatmonster.nocheatplus.checks.moving.magic.FluidEntityClimb;
 import fr.neatmonster.nocheatplus.checks.moving.magic.LiquidWorkarounds;
 import fr.neatmonster.nocheatplus.checks.moving.model.LiftOffEnvelope;
@@ -191,7 +192,9 @@ public class SurvivalFly extends Check {
         final boolean HasHorizontalDistance;
         final boolean fromOnGround = thisMove.from.onGround;
         final boolean toOnGround = thisMove.to.onGround || useBlockChangeTracker && toOnGroundPastStates(from, to, thisMove, tick, data, cc);  // TODO: Work in the past ground stuff differently (thisMove, touchedGround?, from/to ...)
-        final boolean resetTo = toOnGround || to.isResetCond();
+        final boolean resetTo = toOnGround || to.isResetCond()
+                || cc.sfInBlockGround && thisMove.yDistance <= 0.0 && InBlockStand.isStanding(to, cc.yOnGround, false,
+                        cc.sfInBlockGroundHeadBlocked, from);
 
         if (debug) {
             data.ws.setJustUsedIds(context.justUsedWorkarounds);
@@ -274,7 +277,7 @@ public class SurvivalFly extends Check {
                 data.getPlayerMoveCount(), data.sfCornerStepX, data.sfCornerStepY, data.sfCornerStepZ,
                 from.getX(), from.getY(), from.getZ());
         data.sfCornerStepArmed = false;
-        final boolean resetFrom;
+        boolean resetFrom;
         if (fromOnGround || from.isResetCond()) {
             resetFrom = true;
         }
@@ -298,6 +301,17 @@ public class SurvivalFly extends Check {
         // TODO: Consider if (!resetTo) ?
         // Check lost-ground workarounds.
         else resetFrom = LostGround.lostGround(player, from, to, hDistance, yDistance, sprinting, lastMove, data, cc, useBlockChangeTracker ? blockChangeTracker : null, context.tags);
+
+        // Keep the existing live chain (including its state and side effects) authoritative.
+        // The in-block rule is only a fallback when no live ground workaround matched.
+        if (!resetFrom && cc.sfInBlockGround
+                && InBlockStand.isStanding(from, cc.yOnGround, yDistance > 0.0,
+                cc.sfInBlockGroundHeadBlocked, null)
+                && (yDistance <= 0.0
+                || InBlockStand.isVanillaJumpStart(from, yDistance, data.jumpAmplifier, data.liftOffEnvelope))) {
+            resetFrom = true;
+            context.tags.add("inblock_ground");
+        }
 
         if (thisMove.touchedGround) {
             // Lost ground workaround has just been applied, check resetting of the dirty flag.
